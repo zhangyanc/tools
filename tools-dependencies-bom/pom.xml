@@ -19,6 +19,38 @@
 
     <dependencyManagement>
         <dependencies>
+            <!--zyc tools-->
+            <dependency>
+                <groupId>pers.zyc.tools</groupId>
+                <artifactId>tools-event</artifactId>
+                <version>${version}</version>
+            </dependency>
+            <dependency>
+                <groupId>pers.zyc.tools</groupId>
+                <artifactId>tools-lifecycle</artifactId>
+                <version>${version}</version>
+            </dependency>
+            <dependency>
+                <groupId>pers.zyc.tools</groupId>
+                <artifactId>tools-retry</artifactId>
+                <version>${version}</version>
+            </dependency>
+            <dependency>
+                <groupId>pers.zyc.tools</groupId>
+                <artifactId>tools-spring-validation-ext</artifactId>
+                <version>${version}</version>
+            </dependency>
+            <dependency>
+                <groupId>pers.zyc.tools</groupId>
+                <artifactId>tools-utils</artifactId>
+                <version>${version}</version>
+            </dependency>
+            <dependency>
+                <groupId>pers.zyc.tools</groupId>
+                <artifactId>tools-zkclient</artifactId>
+                <version>${version}</version>
+            </dependency>
+
             <!--slf4j-->
             <dependency>
                 <groupId>org.slf4j</groupId>
