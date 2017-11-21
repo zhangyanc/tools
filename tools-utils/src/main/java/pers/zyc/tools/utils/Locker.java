@@ -5,6 +5,6 @@ import java.util.concurrent.locks.Lock;
 /**
  * @author zhangyancheng
  */
-public interface LockHolder<L extends Lock> {
+public interface Locker<L extends Lock> {
     L getLock();
 }
