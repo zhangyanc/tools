@@ -8,7 +8,7 @@ import java.util.Objects;
  * @author zhangyancheng
  */
 public abstract class PeriodicService extends Service implements Thread.UncaughtExceptionHandler {
-    private Thread serviceThread;
+    private Thread periodicThread;
     private Runnable periodic;
 
     @Override
@@ -25,16 +25,16 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
 
     @Override
     protected void afterStart() {
-        serviceThread = new Thread(periodic, getName());
-        serviceThread.setUncaughtExceptionHandler(this);
-        serviceThread.setDaemon(true);
-        serviceThread.start();
+        periodicThread = new Thread(periodic, getName());
+        periodicThread.setUncaughtExceptionHandler(this);
+        periodicThread.setDaemon(true);
+        periodicThread.start();
     }
 
     @Override
     protected void doStop() throws Exception {
-        serviceThread.interrupt();
-        serviceThread = null;
+        periodicThread.interrupt();
+        periodicThread = null;
     }
 
     /**
@@ -53,13 +53,15 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
          * @return 检查周期任务是否存活
          */
         protected boolean isAlive() {
-            return isRunning() && serviceThread.isInterrupted();
+            return isRunning() && !periodicThread.isInterrupted();
         }
 
         /**
-         * @return 周期
+         * @return 周期间隔, 大于0休眠
          */
-        protected abstract long getPeriod();
+        protected long getPeriod() {
+            return -1;
+        }
 
         /**
          * 周期执行逻辑
@@ -79,7 +81,7 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
                     }
                     execute();
                 } catch (InterruptedException e) {
-                    serviceThread.interrupt();
+                    periodicThread.interrupt();
                 }
             }
         }
