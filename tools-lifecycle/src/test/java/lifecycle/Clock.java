@@ -57,7 +57,7 @@ public class Clock extends PeriodicService {
         try {
             clock.now();
             throw new RuntimeException();
-        } catch (ServiceException.NotRunningException must) {
+        } catch (ServiceException.NotRunningException ignored) {
         }
         if (clock.getState() != ServiceState.NEW) {
             throw new RuntimeException();
@@ -78,7 +78,8 @@ public class Clock extends PeriodicService {
         }
         try {
             clock.now();
-        } catch (ServiceException.NotRunningException must) {
+            throw new RuntimeException();
+        } catch (ServiceException.NotRunningException ignored) {
         }
     }
 }
