@@ -18,6 +18,11 @@
 
     <modules>
         <module>tools-dependencies-bom</module>
-        <module>tools-parent</module>
+        <module>tools-event</module>
+        <module>tools-lifecycle</module>
+        <module>tools-retry</module>
+        <module>tools-spring-validation-ext</module>
+        <module>tools-utils</module>
+        <module>tools-zkclient</module>
     </modules>
 </project>

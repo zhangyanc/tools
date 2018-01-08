@@ -4,9 +4,9 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <parent>
         <groupId>pers.zyc.tools</groupId>
-        <artifactId>tools-parent</artifactId>
+        <artifactId>tools-dependencies-bom</artifactId>
         <version>${revision}</version>
-        <relativePath>../tools-parent</relativePath>
+        <relativePath>../tools-dependencies-bom</relativePath>
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
