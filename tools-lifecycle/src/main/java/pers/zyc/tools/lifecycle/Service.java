@@ -1,6 +1,5 @@
 package pers.zyc.tools.lifecycle;
 
-import pers.zyc.tools.utils.Locker;
 import pers.zyc.tools.utils.Stateful;
 
 import java.util.Objects;
@@ -12,7 +11,7 @@ import java.util.concurrent.locks.ReentrantLock;
  *
  * @author zhangyancheng
  */
-public abstract class Service implements Lifecycle, Locker<Lock>, Stateful<ServiceState> {
+public abstract class Service implements Lifecycle, Stateful<ServiceState> {
 
     /**
      * 服务状态
@@ -21,7 +20,7 @@ public abstract class Service implements Lifecycle, Locker<Lock>, Stateful<Servi
     /**
      * 服务锁
      */
-    private final Lock serviceLock = Objects.requireNonNull(initServiceLock());
+    protected final Lock serviceLock = Objects.requireNonNull(initServiceLock());
 
     @Override
     public ServiceState getState() {
@@ -36,11 +35,6 @@ public abstract class Service implements Lifecycle, Locker<Lock>, Stateful<Servi
     @Override
     public boolean checkState(ServiceState serviceState) {
         return this.serviceState == serviceState;
-    }
-
-    @Override
-    public Lock getLock() {
-        return serviceLock;
     }
 
     /**
@@ -80,7 +74,7 @@ public abstract class Service implements Lifecycle, Locker<Lock>, Stateful<Servi
      */
     @Override
     public void start() {
-        final Lock lock = getLock();
+        final Lock lock = this.serviceLock;
         lock.lock();
         try {
             //只有在非运行状态才启动服务
@@ -105,7 +99,7 @@ public abstract class Service implements Lifecycle, Locker<Lock>, Stateful<Servi
      */
     @Override
     public void stop() {
-        final Lock lock = getLock();
+        final Lock lock = this.serviceLock;
         lock.lock();
         try {
             //只有在运行状态才停止服务
@@ -132,10 +126,8 @@ public abstract class Service implements Lifecycle, Locker<Lock>, Stateful<Servi
 
     /**
      * 子类需要重写的具体启动逻辑
-     *
-     * @throws Exception 启动异常
      */
-    protected abstract void doStart() throws Exception;
+    protected abstract void doStart();
 
     /**
      * 只有在afterStart中启动的线程才能保证读到RUNNING状态

@@ -14,20 +14,10 @@ public class Clock extends PeriodicService {
 
     private volatile long timeMillis = 0;
 
-    @Override
-    protected Periodic createPeriodic() {
-        return new Periodic() {
+    private static final Clock CLOCK = new Clock();
 
-            @Override
-            protected long getPeriod() {
-                return 1;
-            }
-
-            @Override
-            protected void execute() throws InterruptedException {
-                timeMillis = System.currentTimeMillis();
-            }
-        };
+    public static Clock getClock() {
+        return CLOCK;
     }
 
     @Override
@@ -36,15 +26,19 @@ public class Clock extends PeriodicService {
     }
 
     @Override
-    protected void doStart() throws Exception {
+    protected void doStart() {
         //标记一下当前时间, 不然start后可能读到0(periodic未工作前)
         timeMillis = System.currentTimeMillis();
     }
 
-    private static final Clock CLOCK = new Clock();
+    @Override
+    protected long period() {
+        return 1;
+    }
 
-    public static Clock getClock() {
-        return CLOCK;
+    @Override
+    protected void execute() throws InterruptedException {
+        timeMillis = System.currentTimeMillis();
     }
 
     public long now() {
