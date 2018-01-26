@@ -1,5 +1,7 @@
 package pers.zyc.tools.lifecycle;
 
+import java.util.concurrent.TimeUnit;
+
 /**
  * 带周期执行逻辑的服务类
  *
@@ -47,13 +49,9 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
 
     @Override
     public final void run() {
-        long period;
         while (isAlive()) {
             try {
-                period = period();
-                if (period > 0) {
-                    Thread.sleep(period);
-                }
+                TimeUnit.MILLISECONDS.sleep(period());
                 execute();
             } catch (InterruptedException e) {
                 periodicThread.interrupt();
