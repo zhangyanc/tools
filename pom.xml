@@ -24,5 +24,6 @@
         <module>tools-spring-validation-ext</module>
         <module>tools-utils</module>
         <module>tools-zkclient</module>
+        <module>tools-spi-plugin</module>
     </modules>
 </project>
