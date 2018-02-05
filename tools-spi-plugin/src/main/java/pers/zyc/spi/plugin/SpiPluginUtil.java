@@ -33,11 +33,14 @@ public class SpiPluginUtil {
 
     /**
      * 加载指定类型插件, 如果不存在则返回null
+     *
+     * @throws ClassCastException 类型不匹配
      */
-    public static <P extends TypeSpiPlugin<T>, T> P getByType(Class<P> pClass, T type) {
+    @SuppressWarnings("unchecked")
+    public static <T, P extends TypeSpiPlugin<T>, S extends P> S getByType(Class<P> pClass, T type) {
         for (P plugin : loadPlugins(pClass)) {
             if (plugin.match(type)) {
-                return plugin;
+                return (S) plugin;
             }
         }
         return null;
