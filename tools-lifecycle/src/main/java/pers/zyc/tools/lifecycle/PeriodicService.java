@@ -67,5 +67,6 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
      */
     @Override
     public void uncaughtException(Thread t, Throwable e) {
+        stop();
     }
 }
