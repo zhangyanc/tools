@@ -12,5 +12,40 @@
 
     <artifactId>tools-zkclient</artifactId>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.apache.zookeeper</groupId>
+            <artifactId>zookeeper</artifactId>
+        </dependency>
 
+        <dependency>
+            <groupId>pers.zyc.tools</groupId>
+            <artifactId>tools-lifecycle</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>pers.zyc.tools</groupId>
+            <artifactId>tools-event</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>pers.zyc.tools</groupId>
+            <artifactId>tools-retry</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-simple</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+        </dependency>
+    </dependencies>
 </project>
