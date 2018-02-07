@@ -21,4 +21,9 @@ public interface EventSource<E> extends Listenable<EventListener<E>> {
      * 设置listener调用器
      */
     void setListenerInvoker(ListenerInvoker listenerInvoker);
+
+    /**
+     * 返回调用器
+     */
+    ListenerInvoker getListenerInvoker();
 }

@@ -14,14 +14,12 @@ import java.util.concurrent.*;
  * @author zhangyancheng
  */
 public class EventManager<E> extends PeriodicService implements EventSource<E> {
-    private static final ListenerInvoker DEFAULT_INVOKER = new SerialInvoker();
-
     private String name;
     private long idleTime;
     private long mergeInterval;
     private long lastEventTime;
     private IdleCallback idleCallback;
-    private ListenerInvoker listenerInvoker = DEFAULT_INVOKER;
+    private ListenerInvoker listenerInvoker = new SerialInvoker();
     private Set<EventListener<E>> listeners = new CopyOnWriteArraySet<>();
     private BlockingQueue<Ownership> eventQueue = new LinkedBlockingDeque<>();
 
@@ -97,6 +95,11 @@ public class EventManager<E> extends PeriodicService implements EventSource<E> {
     @Override
     public void setListenerInvoker(ListenerInvoker listenerInvoker) {
         this.listenerInvoker = Objects.requireNonNull(listenerInvoker);
+    }
+
+    @Override
+    public ListenerInvoker getListenerInvoker() {
+        return this.listenerInvoker;
     }
 
     /**
