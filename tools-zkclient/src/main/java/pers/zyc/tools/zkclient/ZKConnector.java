@@ -5,9 +5,7 @@ import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.event.EventListener;
-import pers.zyc.tools.event.EventSource;
-import pers.zyc.tools.event.ListenerInvoker;
+import pers.zyc.tools.event.*;
 import pers.zyc.tools.lifecycle.PeriodicService;
 import pers.zyc.tools.zkclient.event.ConnectionEvent;
 
@@ -27,9 +25,9 @@ import java.util.concurrent.locks.Lock;
 class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent> {
     private static final Logger LOGGER = LoggerFactory.getLogger(ZKConnector.class);
 
-    private ListenerInvoker listenerInvoker;
     private final ConnectorHelper connectorHelper;
     private Set<EventListener<ConnectionEvent>> connectionListeners = new CopyOnWriteArraySet<>();
+    private EventPublisher eventPublisher = new SerialEventPublisher(new LogPublishExceptionHandler(LOGGER));
 
     public ZKConnector(String connectStr, int sessionTimeout) {
         connectorHelper = new ConnectorHelper(serviceLock, connectStr, sessionTimeout);
@@ -41,7 +39,7 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
             //如果当前处于连接状态则单独发布CONNECTED事件
             serviceLock.lock();
             try {
-                listenerInvoker.invoke(ConnectionEvent.CONNECTED, listener);
+                eventPublisher.publish(ConnectionEvent.CONNECTED, listener);
             } finally {
                 serviceLock.unlock();
             }
@@ -54,13 +52,13 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
     }
 
     @Override
-    public void setListenerInvoker(ListenerInvoker listenerInvoker) {
-        this.listenerInvoker = Objects.requireNonNull(listenerInvoker);
+    public void setEventPublisher(EventPublisher eventPublisher) {
+        this.eventPublisher = Objects.requireNonNull(eventPublisher);
     }
 
     @Override
-    public ListenerInvoker getListenerInvoker() {
-        return this.listenerInvoker;
+    public EventPublisher getEventPublisher() {
+        return this.eventPublisher;
     }
 
     @Override
@@ -91,7 +89,7 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
             ConnectionEvent connectionEvent = connectorHelper.process();
             if (connectionEvent != null) {
                 LOGGER.info("Publish event {}", connectionEvent);
-                listenerInvoker.invoke(connectionEvent, connectionListeners);
+                eventPublisher.publish(connectionEvent, connectionListeners);
             }
         } finally {
             serviceLock.unlock();
