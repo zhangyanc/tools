@@ -18,12 +18,12 @@ public interface EventSource<E> extends Listenable<EventListener<E>> {
     void removeListener(EventListener<E> listener);
 
     /**
-     * 设置listener调用器
+     * 设置事件发布器
      */
-    void setListenerInvoker(ListenerInvoker listenerInvoker);
+    void setEventPublisher(EventPublisher eventPublisher);
 
     /**
-     * 返回调用器
+     * 返回件发布器
      */
-    ListenerInvoker getListenerInvoker();
+    EventPublisher getEventPublisher();
 }
