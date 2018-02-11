@@ -25,7 +25,6 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
     @Override
     protected void doStop() throws Exception {
         periodicThread.interrupt();
-        periodicThread = null;
     }
 
     /**
@@ -54,7 +53,7 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
                 TimeUnit.MILLISECONDS.sleep(period());
                 execute();
             } catch (InterruptedException e) {
-                periodicThread.interrupt();
+                break;
             }
         }
     }
