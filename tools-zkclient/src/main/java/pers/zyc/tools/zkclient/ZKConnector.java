@@ -29,21 +29,13 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
     private Set<EventListener<ConnectionEvent>> connectionListeners = new CopyOnWriteArraySet<>();
     private EventPublisher eventPublisher = new SerialEventPublisher(new LogPublishExceptionHandler(LOGGER));
 
-    public ZKConnector(String connectStr, int sessionTimeout) {
+    ZKConnector(String connectStr, int sessionTimeout) {
         connectorHelper = new ConnectorHelper(serviceLock, connectStr, sessionTimeout);
     }
 
     @Override
     public void addListener(EventListener<ConnectionEvent> listener) {
-        if (connectionListeners.add(Objects.requireNonNull(listener)) && isConnected()) {
-            //如果当前处于连接状态则单独发布CONNECTED事件
-            serviceLock.lock();
-            try {
-                eventPublisher.publish(ConnectionEvent.CONNECTED, listener);
-            } finally {
-                serviceLock.unlock();
-            }
-        }
+        connectionListeners.add(Objects.requireNonNull(listener));
     }
 
     @Override
@@ -82,10 +74,16 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
     }
 
     @Override
+    public void uncaughtException(Thread t, Throwable e) {
+        LOGGER.error("Connector error!", e);
+        super.uncaughtException(t, e);
+    }
+
+    @Override
     protected void execute() throws InterruptedException {
         serviceLock.lockInterruptibly();
         try {
-            //处理并返回连接事件, 异常后停止连接器
+            //处理并返回连接事件, 异常后关闭连接器
             ConnectionEvent connectionEvent = connectorHelper.process();
             if (connectionEvent != null) {
                 LOGGER.info("Publish event {}", connectionEvent);
@@ -94,12 +92,6 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
         } finally {
             serviceLock.unlock();
         }
-    }
-
-    @Override
-    public void uncaughtException(Thread t, Throwable e) {
-        LOGGER.error("Connector error!", e);
-        super.uncaughtException(t, e);
     }
 
     /**
@@ -224,7 +216,7 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
         void closeZooKeeper() throws InterruptedException {
             ZooKeeper badClient = zooKeeper;
             if (badClient != null) {
-                LOGGER.info("ZooKeeper {} closed!", badClient);
+                LOGGER.info("ZooKeeper closed, {}", badClient);
                 reset();
                 badClient.close();
             }
@@ -235,8 +227,8 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
          */
         void reset() {
             zooKeeper = null;
-            incomeEvent = currentEvent = null;
             zooKeeperSessionId = 0;
+            incomeEvent = currentEvent = null;
             eventWaitTimeout = sessionTimeout;
         }
     }
