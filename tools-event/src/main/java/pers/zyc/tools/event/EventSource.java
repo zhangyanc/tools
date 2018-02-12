@@ -5,7 +5,7 @@ package pers.zyc.tools.event;
  *
  * @author zhangyancheng
  */
-public interface EventSource<E> extends Listenable<EventListener<E>> {
+public interface EventSource<E extends Event> extends Listenable<EventListener<E>> {
 
     /**
      * 添加事件监听
@@ -18,12 +18,7 @@ public interface EventSource<E> extends Listenable<EventListener<E>> {
     void removeListener(EventListener<E> listener);
 
     /**
-     * 设置事件发布器
+     * @return 事件递送器
      */
-    void setEventPublisher(EventPublisher eventPublisher);
-
-    /**
-     * 返回件发布器
-     */
-    EventPublisher getEventPublisher();
+    EventDelivery getEventDelivery();
 }

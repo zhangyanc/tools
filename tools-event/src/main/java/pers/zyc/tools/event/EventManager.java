@@ -13,13 +13,13 @@ import java.util.concurrent.*;
  *
  * @author zhangyancheng
  */
-public final class EventManager<E> extends PeriodicService implements EventSource<E> {
-    private final String name;
-    private final long idleTime;
-    private final long mergeInterval;
+public final class EventManager<E extends Event> extends PeriodicService implements EventSource<E> {
+    private String name;
+    private long idleTime;
+    private long mergeInterval;
     private long lastEventTime;
-    private final IdleCallback idleCallback;
-    private EventPublisher eventPublisher;
+    private IdleCallback idleCallback;
+    private EventDelivery eventDelivery = new SyncDelivery();
     private Set<EventListener<E>> listeners = new CopyOnWriteArraySet<>();
     private BlockingQueue<Ownership> eventQueue = new LinkedBlockingDeque<>();
 
@@ -67,9 +67,9 @@ public final class EventManager<E> extends PeriodicService implements EventSourc
             lastEventTime = TimeMillis.get();
             EventListener<E> eventOwner = event.value();
             if (eventOwner == null) {
-                eventPublisher.publish(event.key(), listeners);
+                eventDelivery.deliver(event.key(), listeners);
             } else {
-                eventPublisher.publish(event.key(), eventOwner);
+                eventDelivery.deliver(event.key(), eventOwner);
             }
         } else if (idleTime > 0 && idleCallback != null &&
                 (TimeMillis.get() - lastEventTime) >= idleTime) {
@@ -90,13 +90,8 @@ public final class EventManager<E> extends PeriodicService implements EventSourc
     }
 
     @Override
-    public void setEventPublisher(EventPublisher eventPublisher) {
-        this.eventPublisher = Objects.requireNonNull(eventPublisher);
-    }
-
-    @Override
-    public EventPublisher getEventPublisher() {
-        return this.eventPublisher;
+    public EventDelivery getEventDelivery() {
+        return this.eventDelivery;
     }
 
     /**
@@ -136,8 +131,7 @@ public final class EventManager<E> extends PeriodicService implements EventSourc
         private long idleTime;
         private long mergeInterval;
         private IdleCallback idleCallback;
-        private EventPublisher eventPublisher = new SerialEventPublisher();
-        private PublishExceptionHandler publishExceptionHandler;
+        private DeliverExceptionHandler deliverExceptionHandler;
 
         /**
          * 设置事件管理器名称
@@ -168,30 +162,21 @@ public final class EventManager<E> extends PeriodicService implements EventSourc
         }
 
         /**
-         * 设置事件发布器
-         */
-        public Builder eventPublisher(BaseEventPublisher eventPublisher) {
-            this.eventPublisher = Objects.requireNonNull(eventPublisher);
-            return this;
-        }
-
-        /**
          * 设置发布异常处理器
          */
-        public Builder publishExceptionHandler(PublishExceptionHandler publishExceptionHandler) {
-            this.publishExceptionHandler = Objects.requireNonNull(publishExceptionHandler);
+        public Builder deliverExceptionHandler(DeliverExceptionHandler deliverExceptionHandler) {
+            this.deliverExceptionHandler = Objects.requireNonNull(deliverExceptionHandler);
             return this;
         }
 
         /**
          * 创建事件管理器
          */
-        public <E> EventManager<E> build() {
+        public <E extends Event> EventManager<E> build() {
             EventManager<E> eventManager = new EventManager<>(name, idleTime, mergeInterval, idleCallback);
-            if (publishExceptionHandler != null) {
-                eventPublisher.setPublishExceptionHandler(publishExceptionHandler);
+            if (deliverExceptionHandler != null) {
+                eventManager.getEventDelivery().setDeliverExceptionHandler(deliverExceptionHandler);
             }
-            eventManager.setEventPublisher(eventPublisher);
             return eventManager;
         }
     }
