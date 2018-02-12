@@ -1,8 +1,9 @@
 package pers.zyc.tools.zkclient;
 
 import org.slf4j.Logger;
+import pers.zyc.tools.event.Event;
 import pers.zyc.tools.event.EventListener;
-import pers.zyc.tools.event.PublishExceptionHandler;
+import pers.zyc.tools.event.DeliverExceptionHandler;
 
 import java.util.Objects;
 
@@ -11,15 +12,15 @@ import java.util.Objects;
  *
  * @author zhangyancheng
  */
-public class LogPublishExceptionHandler implements PublishExceptionHandler {
+public class LogDeliverExceptionHandler implements DeliverExceptionHandler {
     private final Logger logger;
 
-    public LogPublishExceptionHandler(Logger logger) {
+    public LogDeliverExceptionHandler(Logger logger) {
         this.logger = Objects.requireNonNull(logger);
     }
 
     @Override
-    public void handleException(Exception e, Object event, EventListener eventListener) {
+    public void handleException(Exception e, Event event, EventListener eventListener) {
         logger.error("Event publish error!", e);
     }
 }
