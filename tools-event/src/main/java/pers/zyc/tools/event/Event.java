@@ -7,7 +7,7 @@ import java.util.EventObject;
 /**
  * @author zhangyancheng
  */
-public abstract class Event<S> extends EventObject {
+public abstract class Event<S extends EventSource> extends EventObject {
     private long eventTime;
 
     public Event(S source) {
