@@ -5,7 +5,10 @@ import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.event.*;
+import pers.zyc.tools.event.EventDelivery;
+import pers.zyc.tools.event.EventListener;
+import pers.zyc.tools.event.EventSource;
+import pers.zyc.tools.event.SyncDelivery;
 import pers.zyc.tools.lifecycle.PeriodicService;
 import pers.zyc.tools.zkclient.event.ConnectionEvent;
 
@@ -17,17 +20,19 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 
+import static pers.zyc.tools.zkclient.event.ConnectionEvent.EventType.*;
+
 /**
  * ZooKeeper连接器
  *
  * @author zhangyancheng
  */
-class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent> {
+public class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent> {
     private static final Logger LOGGER = LoggerFactory.getLogger(ZKConnector.class);
 
     private final ConnectorHelper connectorHelper;
     private Set<EventListener<ConnectionEvent>> connectionListeners = new CopyOnWriteArraySet<>();
-    private EventPublisher eventPublisher = new SerialEventPublisher(new LogPublishExceptionHandler(LOGGER));
+    private EventDelivery eventDelivery = new SyncDelivery(new LogDeliverExceptionHandler(LOGGER));
 
     ZKConnector(String connectStr, int sessionTimeout) {
         connectorHelper = new ConnectorHelper(serviceLock, connectStr, sessionTimeout);
@@ -44,13 +49,8 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
     }
 
     @Override
-    public void setEventPublisher(EventPublisher eventPublisher) {
-        this.eventPublisher = Objects.requireNonNull(eventPublisher);
-    }
-
-    @Override
-    public EventPublisher getEventPublisher() {
-        return this.eventPublisher;
+    public EventDelivery getEventDelivery() {
+        return this.eventDelivery;
     }
 
     @Override
@@ -84,10 +84,10 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
         serviceLock.lockInterruptibly();
         try {
             //处理并返回连接事件, 异常后关闭连接器
-            ConnectionEvent connectionEvent = connectorHelper.process();
-            if (connectionEvent != null) {
-                LOGGER.info("Publish event {}", connectionEvent);
-                eventPublisher.publish(connectionEvent, connectionListeners);
+            ConnectionEvent.EventType eventType = connectorHelper.process();
+            if (eventType != null) {
+                LOGGER.info("Publish connection event, type: {}", eventType);
+                eventDelivery.deliver(new ConnectionEvent(this, eventType), connectionListeners);
             }
         } finally {
             serviceLock.unlock();
@@ -140,9 +140,9 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
         /**
          * 处理WatchedEvent, 并转换事件
          *
-         * @return 需要发布的连接事件, 为null表示无需发布
+         * @return 需要发布的连接事件类型, 为null表示无需发布
          */
-        ConnectionEvent process() throws InterruptedException {
+        ConnectionEvent.EventType process() throws InterruptedException {
             if (zooKeeper == null) {
                 createZooKeeper();
             }
@@ -164,21 +164,20 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
              *      6. 当前状态不为null且不为连接状态, server已经会话过期, 关闭ZooKeeper实例, 返回SESSION_CLOSED
              *      7. 当前状态不为null且为连接状态, 正常连通, 不发布事件
              */
-            ConnectionEvent event = null;
+            ConnectionEvent.EventType eventType = null;
             if (incomeEvent != null) {
                 Watcher.Event.KeeperState incomeState = incomeEvent.getState();
                 incomeEvent = null;
                 switch (incomeState) {
                     case SyncConnected:
                         //session id不变表示现有会话重连成功
-                        event = zooKeeperSessionId != zooKeeper.getSessionId() ?
-                                ConnectionEvent.CONNECTED : ConnectionEvent.RECONNECTED;
+                        eventType = zooKeeperSessionId != zooKeeper.getSessionId() ? CONNECTED : RECONNECTED;
                         break;
                     case Disconnected:
-                        event = ConnectionEvent.DISCONNECTED;
+                        eventType = DISCONNECTED;
                         break;
                     case Expired:
-                        event = ConnectionEvent.SESSION_CLOSED;
+                        eventType = SESSION_CLOSED;
                         break;
                     default:
                         //暂不支持其他类型
@@ -188,18 +187,18 @@ class ZKConnector extends PeriodicService implements EventSource<ConnectionEvent
                     currentEvent.getState() != Watcher.Event.KeeperState.SyncConnected) {
 
                 //断开连接后扔未收到事件, 则主动关闭会话
-                event = ConnectionEvent.SESSION_CLOSED;
+                eventType = SESSION_CLOSED;
             }
 
-            if (event == ConnectionEvent.CONNECTED) {
+            if (eventType == CONNECTED) {
                 //更新协商后真正的超时时间
                 eventWaitTimeout = zooKeeper.getSessionTimeout();
                 //保存新会话id, 用于收到SyncConnected后判断是否为新会话
                 zooKeeperSessionId = zooKeeper.getSessionId();
-            } else if (event == ConnectionEvent.SESSION_CLOSED) {
+            } else if (eventType == SESSION_CLOSED) {
                 closeZooKeeper();
             }
-            return event;
+            return eventType;
         }
 
         void createZooKeeper() {

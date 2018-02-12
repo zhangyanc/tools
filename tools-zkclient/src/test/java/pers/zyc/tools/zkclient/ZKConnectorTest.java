@@ -19,11 +19,11 @@ public class ZKConnectorTest {
     private static class TestConnectorConnectionListener implements ConnectionListener {
 
         Semaphore eventSemaphore = new Semaphore(0);
-        LinkedList<ConnectionEvent> receivedEvents = new LinkedList<>();
+        LinkedList<ConnectionEvent.EventType> receivedEvents = new LinkedList<>();
 
         @Override
         public void onEvent(ConnectionEvent event) {
-            receivedEvents.add(event);
+            receivedEvents.add(event.getEventType());
             eventSemaphore.release();
         }
 
@@ -31,7 +31,7 @@ public class ZKConnectorTest {
             return receivedEvents.isEmpty();
         }
 
-        ConnectionEvent lastEvent() {
+        ConnectionEvent.EventType lastEvent() {
             return receivedEvents.getLast();
         }
     }
@@ -84,33 +84,33 @@ public class ZKConnectorTest {
 
         connector.start();
         testListener.eventSemaphore.acquire();
-        Assert.assertEquals(ConnectionEvent.CONNECTED, testListener.lastEvent());
+        Assert.assertEquals(ConnectionEvent.EventType.CONNECTED, testListener.lastEvent());
         Assert.assertTrue(connector.isConnected());
 
         zkSwitch.close();
         testListener.eventSemaphore.acquire();
-        Assert.assertEquals(ConnectionEvent.DISCONNECTED, testListener.lastEvent());
+        Assert.assertEquals(ConnectionEvent.EventType.DISCONNECTED, testListener.lastEvent());
         Assert.assertFalse(connector.isConnected());
 
         Thread.sleep((long) (Math.random() * SESSION_TIMEOUT) - 1000);
         zkSwitch.open();
         testListener.eventSemaphore.acquire();
-        Assert.assertEquals(ConnectionEvent.RECONNECTED, testListener.lastEvent());
+        Assert.assertEquals(ConnectionEvent.EventType.RECONNECTED, testListener.lastEvent());
         Assert.assertTrue(connector.isConnected());
 
         zkSwitch.close();
         testListener.eventSemaphore.acquire();
-        Assert.assertEquals(ConnectionEvent.DISCONNECTED, testListener.lastEvent());
+        Assert.assertEquals(ConnectionEvent.EventType.DISCONNECTED, testListener.lastEvent());
         Assert.assertFalse(connector.isConnected());
 
 
         testListener.eventSemaphore.acquire();
-        Assert.assertEquals(ConnectionEvent.SESSION_CLOSED, testListener.lastEvent());
+        Assert.assertEquals(ConnectionEvent.EventType.SESSION_CLOSED, testListener.lastEvent());
         Assert.assertFalse(connector.isConnected());
 
         zkSwitch.open();
         testListener.eventSemaphore.acquire();
-        Assert.assertEquals(ConnectionEvent.CONNECTED, testListener.lastEvent());
+        Assert.assertEquals(ConnectionEvent.EventType.CONNECTED, testListener.lastEvent());
         Assert.assertTrue(connector.isConnected());
 
         connector.stop();
