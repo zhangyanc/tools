@@ -59,8 +59,8 @@ public class ZKConnectorTest {
      */
     @Test
     public void case_unStarted() throws Exception {
-        Assert.assertNotNull(connector.getZooKeeper());
-        Assert.assertTrue(connector.isConnected());
+        Assert.assertNull(connector.getZooKeeper());
+        Assert.assertFalse(connector.isConnected());
     }
 
     /**
