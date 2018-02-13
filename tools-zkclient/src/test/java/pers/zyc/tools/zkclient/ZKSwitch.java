@@ -135,7 +135,7 @@ class ZKSwitch {
         });
         starter.start();
         try {
-            starter.join(1000);
+            starter.join(2000);
         } catch (InterruptedException ignored) {
         }
         //获取zk server的进程pid
