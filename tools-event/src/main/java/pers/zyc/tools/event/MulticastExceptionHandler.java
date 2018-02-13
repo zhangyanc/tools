@@ -5,7 +5,7 @@ package pers.zyc.tools.event;
  *
  * @author zhangyancheng
  */
-public interface DeliverExceptionHandler {
+public interface MulticastExceptionHandler {
 
     void handleException(Exception exception, Event event, EventListener eventListener);
 }

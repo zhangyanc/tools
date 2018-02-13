@@ -5,8 +5,9 @@ import pers.zyc.tools.utils.Pair;
 import pers.zyc.tools.utils.TimeMillis;
 
 import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 事件管理器
@@ -19,8 +20,7 @@ public final class EventManager<E extends Event> extends PeriodicService impleme
     private long mergeInterval;
     private long lastEventTime;
     private IdleCallback idleCallback;
-    private EventDelivery eventDelivery = new SyncDelivery();
-    private Set<EventListener<E>> listeners = new CopyOnWriteArraySet<>();
+    private EventMulticaster eventMulticaster = new SyncEventMulticaster();
     private BlockingQueue<Ownership> eventQueue = new LinkedBlockingDeque<>();
 
     private EventManager(String name,
@@ -51,6 +51,13 @@ public final class EventManager<E extends Event> extends PeriodicService impleme
     }
 
     @Override
+    protected void doStop() throws Exception {
+        super.doStop();
+        eventQueue.clear();
+        eventMulticaster.removeAllListeners();
+    }
+
+    @Override
     protected void execute() throws InterruptedException {
         Ownership event = null;
 
@@ -66,10 +73,10 @@ public final class EventManager<E extends Event> extends PeriodicService impleme
         if (event != null) {
             lastEventTime = TimeMillis.get();
             EventListener<E> eventOwner = event.value();
-            if (eventOwner == null) {
-                eventDelivery.deliver(event.key(), listeners);
+            if (eventOwner != null) {
+                eventOwner.onEvent(event.key());
             } else {
-                eventDelivery.deliver(event.key(), eventOwner);
+                eventMulticaster.multicastEvent(event.key());
             }
         } else if (idleTime > 0 && idleCallback != null &&
                 (TimeMillis.get() - lastEventTime) >= idleTime) {
@@ -81,17 +88,12 @@ public final class EventManager<E extends Event> extends PeriodicService impleme
 
     @Override
     public void addListener(EventListener<E> listener) {
-        listeners.add(Objects.requireNonNull(listener));
+        eventMulticaster.addListener(listener);
     }
 
     @Override
     public void removeListener(EventListener<E> listener) {
-        listeners.remove(Objects.requireNonNull(listener));
-    }
-
-    @Override
-    public EventDelivery getEventDelivery() {
-        return this.eventDelivery;
+        eventMulticaster.removeListener(listener);
     }
 
     /**
@@ -131,7 +133,7 @@ public final class EventManager<E extends Event> extends PeriodicService impleme
         private long idleTime;
         private long mergeInterval;
         private IdleCallback idleCallback;
-        private DeliverExceptionHandler deliverExceptionHandler;
+        private MulticastExceptionHandler multicastExceptionHandler;
 
         /**
          * 设置事件管理器名称
@@ -161,11 +163,8 @@ public final class EventManager<E extends Event> extends PeriodicService impleme
             return this;
         }
 
-        /**
-         * 设置发布异常处理器
-         */
-        public Builder deliverExceptionHandler(DeliverExceptionHandler deliverExceptionHandler) {
-            this.deliverExceptionHandler = Objects.requireNonNull(deliverExceptionHandler);
+        public Builder multicastExceptionResolver(MulticastExceptionHandler multicastExceptionHandler) {
+            this.multicastExceptionHandler = multicastExceptionHandler;
             return this;
         }
 
@@ -174,8 +173,8 @@ public final class EventManager<E extends Event> extends PeriodicService impleme
          */
         public <E extends Event> EventManager<E> build() {
             EventManager<E> eventManager = new EventManager<>(name, idleTime, mergeInterval, idleCallback);
-            if (deliverExceptionHandler != null) {
-                eventManager.getEventDelivery().setDeliverExceptionHandler(deliverExceptionHandler);
+            if (multicastExceptionHandler != null) {
+                eventManager.eventMulticaster.setDeliverExceptionHandler(multicastExceptionHandler);
             }
             return eventManager;
         }

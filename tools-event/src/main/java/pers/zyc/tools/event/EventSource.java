@@ -16,9 +16,4 @@ public interface EventSource<E extends Event> extends Listenable<EventListener<E
      * 移除事件监听
      */
     void removeListener(EventListener<E> listener);
-
-    /**
-     * @return 事件递送器
-     */
-    EventDelivery getEventDelivery();
 }
