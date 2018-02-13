@@ -37,12 +37,12 @@ public class ZKConnectorTest {
     }
 
     private ZKSwitch zkSwitch;
-    private ZKConnector connector;
+    private DefaultZKConnector connector;
     private TestConnectorConnectionListener testListener;
 
     @Before
     public void setUp() {
-        connector = new ZKConnector("localhost:2181", SESSION_TIMEOUT);
+        connector = new DefaultZKConnector("localhost:2181", SESSION_TIMEOUT);
         zkSwitch = new ZKSwitch("E:/Tools/zookeeper-3.4.6");
         testListener = new TestConnectorConnectionListener();
         zkSwitch.open();
@@ -92,7 +92,7 @@ public class ZKConnectorTest {
         Assert.assertEquals(ConnectionEvent.EventType.DISCONNECTED, testListener.lastEvent());
         Assert.assertFalse(connector.isConnected());
 
-        Thread.sleep((long) (Math.random() * SESSION_TIMEOUT) - 1000);
+        Thread.sleep(Math.abs((long) (Math.random() * SESSION_TIMEOUT) - 1000));
         zkSwitch.open();
         testListener.eventSemaphore.acquire();
         Assert.assertEquals(ConnectionEvent.EventType.RECONNECTED, testListener.lastEvent());

@@ -24,7 +24,7 @@ public class ConnectionEvent extends Event<ZKConnector> {
         /**
          * 会话关闭
          */
-        SESSION_CLOSED;
+        SESSION_CLOSED
     }
 
     private EventType eventType;
