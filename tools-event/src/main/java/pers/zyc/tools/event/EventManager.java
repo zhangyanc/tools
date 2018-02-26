@@ -163,7 +163,7 @@ public final class EventManager<E extends Event> extends PeriodicService impleme
             return this;
         }
 
-        public Builder multicastExceptionResolver(MulticastExceptionHandler multicastExceptionHandler) {
+        public Builder multicastExceptionHandler(MulticastExceptionHandler multicastExceptionHandler) {
             this.multicastExceptionHandler = multicastExceptionHandler;
             return this;
         }
