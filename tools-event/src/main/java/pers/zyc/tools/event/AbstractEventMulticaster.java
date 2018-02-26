@@ -15,8 +15,8 @@ public abstract class AbstractEventMulticaster implements EventMulticaster {
     private MulticastExceptionHandler exceptionHandler;
 
     @Override
-    public void addListener(EventListener listener) {
-        eventListeners.add(Objects.requireNonNull(listener));
+    public boolean addListener(EventListener listener) {
+        return eventListeners.add(Objects.requireNonNull(listener));
     }
 
     @Override

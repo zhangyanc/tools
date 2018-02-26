@@ -14,9 +14,10 @@ public interface EventMulticaster {
     /**
      * 添加监听器, 同一个listener不会重复添加
      * @param listener 监听器
+     * @return 是否添加成功
      * @throws NullPointerException listener为null抛出
      */
-    void addListener(EventListener listener);
+    boolean addListener(EventListener listener);
 
     /**
      * 删除监听器
