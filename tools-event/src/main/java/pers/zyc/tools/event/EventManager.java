@@ -14,7 +14,7 @@ import java.util.concurrent.TimeUnit;
  *
  * @author zhangyancheng
  */
-public final class EventManager<E extends Event> extends PeriodicService implements EventSource<E> {
+public final class EventManager<E> extends PeriodicService implements Listenable<EventListener<E>> {
     private String name;
     private long idleTime;
     private long mergeInterval;
@@ -171,7 +171,7 @@ public final class EventManager<E extends Event> extends PeriodicService impleme
         /**
          * 创建事件管理器
          */
-        public <E extends Event> EventManager<E> build() {
+        public <E> EventManager<E> build() {
             EventManager<E> eventManager = new EventManager<>(name, idleTime, mergeInterval, idleCallback);
             if (multicastExceptionHandler != null) {
                 eventManager.eventMulticaster.setDeliverExceptionHandler(multicastExceptionHandler);

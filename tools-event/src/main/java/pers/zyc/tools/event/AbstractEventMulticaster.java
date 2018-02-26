@@ -35,14 +35,14 @@ public abstract class AbstractEventMulticaster implements EventMulticaster {
     }
 
     @Override
-    public void multicastEvent(Event event) {
+    public void multicastEvent(Object event) {
         for (EventListener listener : eventListeners) {
             multicast(event, listener);
         }
     }
 
     @SuppressWarnings("unchecked")
-    private void multicast(final Event event, final EventListener eventListener) {
+    private void multicast(final Object event, final EventListener eventListener) {
         getMulticastExecutor().execute(new Runnable() {
             @Override
             public void run() {

@@ -1,12 +1,12 @@
 package pers.zyc.tools.zkclient.event;
 
-import pers.zyc.tools.event.Event;
+import pers.zyc.tools.event.SourcedEvent;
 import pers.zyc.tools.zkclient.ZKConnector;
 
 /**
  * @author zhangyancheng
  */
-public class ConnectionEvent extends Event<ZKConnector> {
+public class ConnectionEvent extends SourcedEvent<ZKConnector> {
 
     public enum EventType {
         /**

@@ -1,7 +1,6 @@
 package pers.zyc.tools.zkclient;
 
 import org.slf4j.Logger;
-import pers.zyc.tools.event.Event;
 import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.event.MulticastExceptionHandler;
 
@@ -20,7 +19,7 @@ public class LogMulticastExceptionHandler implements MulticastExceptionHandler {
     }
 
     @Override
-    public void handleException(Exception e, Event event, EventListener eventListener) {
+    public void handleException(Exception e, Object event, EventListener eventListener) {
         logger.error("Event publish error!", e);
     }
 }

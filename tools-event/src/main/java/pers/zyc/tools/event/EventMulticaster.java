@@ -33,7 +33,7 @@ public interface EventMulticaster {
      * 向已添加的所有监听器广播事件
      * @param event 事件
      */
-    void multicastEvent(Event event);
+    void multicastEvent(Object event);
 
     /**
      * @return 广播任务执行器

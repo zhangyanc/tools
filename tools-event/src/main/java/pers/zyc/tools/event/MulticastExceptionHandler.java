@@ -7,5 +7,5 @@ package pers.zyc.tools.event;
  */
 public interface MulticastExceptionHandler {
 
-    void handleException(Exception exception, Event event, EventListener eventListener);
+    void handleException(Exception exception, Object event, EventListener eventListener);
 }
