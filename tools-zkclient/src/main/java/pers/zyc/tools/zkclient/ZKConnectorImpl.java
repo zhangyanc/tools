@@ -5,14 +5,18 @@ import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.event.*;
+import pers.zyc.tools.event.EventListener;
+import pers.zyc.tools.event.EventMulticaster;
+import pers.zyc.tools.event.MulticastExceptionHandler;
+import pers.zyc.tools.event.SyncEventMulticaster;
 import pers.zyc.tools.lifecycle.PeriodicService;
 import pers.zyc.tools.zkclient.event.ConnectionEvent;
+import pers.zyc.tools.zkclient.listener.SpecialEventListener;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
-import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static pers.zyc.tools.zkclient.event.ConnectionEvent.EventType.*;
 
@@ -20,23 +24,66 @@ import static pers.zyc.tools.zkclient.event.ConnectionEvent.EventType.*;
  * 连接器实现
  * @author zhangyancheng
  */
-final class DefaultZKConnector extends PeriodicService implements ZKConnector {
-    private static final Logger LOGGER = LoggerFactory.getLogger(DefaultZKConnector.class);
+final class ZKConnectorImpl extends PeriodicService implements ZKConnector {
+    private final static Logger LOGGER = LoggerFactory.getLogger(ZKConnectorImpl.class);
 
-    private final ConnectorHelper connectorHelper;
     /**
-     * 在connector线程中同步广播事件给所有监听器
+     * 监听器回调异常处理器
      */
-    private final EventMulticaster eventMulticaster;
+    private final static MulticastExceptionHandler EXCEPTION_HANDLER = new LogMulticastExceptionHandler(LOGGER);
 
-    DefaultZKConnector(String connectStr, int sessionTimeout) {
-        connectorHelper = new ConnectorHelper(serviceLock, connectStr, sessionTimeout);
-        eventMulticaster = new SyncEventMulticaster(new LogMulticastExceptionHandler(LOGGER));
+    private final String connectStr;
+    private final int sessionTimeout;
+
+    /**
+     * 同步广播事件给所有监听器, listener回调的阻塞将影响connector线程对新连接事件的处理
+     */
+    private final EventMulticaster eventMulticaster = new SyncEventMulticaster(EXCEPTION_HANDLER);
+    private final ReentrantLock eventLock = new ReentrantLock();
+
+    /**
+     * 连接事件锁, 用于ZK连接事件的等待和唤醒
+     */
+    private final Condition eventCondition = eventLock.newCondition();
+
+    /**
+     * 协商后的sessionTimeout, 期望连接事件到达的超时时间
+     */
+    private int eventWaitTimeout;
+    /**
+     * session id用来判断是否同一个ZooKeeper实例重连成功
+     */
+    private long zooKeeperSessionId;
+    /**
+     * 新入事件
+     */
+    private WatchedEvent incomeEvent;
+    /**
+     * 当前事件(对比新入等同于老的事件), 用于比较新入事件来判断ZooKeeper状态
+     */
+    private WatchedEvent currentEvent;
+    private volatile ZooKeeper zooKeeper;
+
+    /**
+     * @param connectStr 连接地址
+     * @param sessionTimeout 会话超时时间
+     */
+    ZKConnectorImpl(String connectStr, int sessionTimeout) {
+        this.connectStr = connectStr;
+        this.sessionTimeout = sessionTimeout;
     }
 
     @Override
     public void addListener(EventListener<ConnectionEvent> listener) {
         eventMulticaster.addListener(listener);
+        if (listener instanceof SpecialEventListener &&
+            isConnected() && eventLock.tryLock()) {
+            try {
+                listener.onEvent(new ConnectionEvent(this, CONNECTED));
+            } finally {
+                eventLock.unlock();
+            }
+        }
     }
 
     @Override
@@ -52,18 +99,18 @@ final class DefaultZKConnector extends PeriodicService implements ZKConnector {
     @Override
     protected void doStop() throws Exception {
         super.doStop();
-        connectorHelper.closeZooKeeper();
+        closeZooKeeper();
         eventMulticaster.removeAllListeners();
     }
 
     @Override
     public boolean isConnected() {
-        return connectorHelper.isConnected();
+        return zooKeeper != null && zooKeeper.getState().isConnected();
     }
 
     @Override
     public ZooKeeper getZooKeeper() {
-        return connectorHelper.getZooKeeper();
+        return zooKeeper;
     }
 
     @Override
@@ -77,70 +124,25 @@ final class DefaultZKConnector extends PeriodicService implements ZKConnector {
         super.uncaughtException(t, e);
     }
 
-    @Override
-    protected void execute() throws InterruptedException {
-        serviceLock.lockInterruptibly();
-        try {
-            //处理并返回连接事件, 异常后关闭连接器
-            ConnectionEvent.EventType eventType = connectorHelper.process();
-            if (eventType != null) {
-                LOGGER.info("Publish connection event, type: {}", eventType);
-                eventMulticaster.multicastEvent(new ConnectionEvent(this, eventType));
-            }
-        } finally {
-            serviceLock.unlock();
-        }
-    }
-
-    /**
-     * 连接器辅助, 负责ZooKeeper状态处理及事件转换
-     */
-    private static class ConnectorHelper implements Watcher {
-        final Lock lock;
-        final Condition eventCondition;
-
-        final String connectStr;
-        final int sessionTimeout;
-        int eventWaitTimeout;
-        long zooKeeperSessionId;
-        WatchedEvent incomeEvent;
-        WatchedEvent currentEvent;
-        volatile ZooKeeper zooKeeper;
-
-        ConnectorHelper(Lock lock, String connectStr, int sessionTimeout) {
-            this.lock = lock;
-            this.eventCondition = lock.newCondition();
-            this.connectStr = connectStr;
-            this.sessionTimeout = sessionTimeout;
-            this.eventWaitTimeout = sessionTimeout;
-        }
+    private class ConnectionWatcher implements Watcher {
 
         @Override
         public void process(WatchedEvent event) {
-            lock.lock();
+            eventLock.lock();
             try {
-                LOGGER.info(event.toString());
                 currentEvent = incomeEvent = event;
                 eventCondition.signal();
             } finally {
-                lock.unlock();
+                eventLock.unlock();
             }
         }
+    }
 
-        boolean isConnected() {
-            return zooKeeper != null && zooKeeper.getState().isConnected();
-        }
-
-        ZooKeeper getZooKeeper() {
-            return zooKeeper;
-        }
-
-        /**
-         * 处理WatchedEvent, 并转换事件
-         *
-         * @return 需要发布的连接事件类型, 为null表示无需发布
-         */
-        ConnectionEvent.EventType process() throws InterruptedException {
+    @Override
+    protected void execute() throws InterruptedException {
+        eventLock.lockInterruptibly();
+        ConnectionEvent connectionEvent;
+        try {
             if (zooKeeper == null) {
                 createZooKeeper();
             }
@@ -162,7 +164,7 @@ final class DefaultZKConnector extends PeriodicService implements ZKConnector {
              *      6. 当前状态不为null且不为连接状态, server已经会话过期, 关闭ZooKeeper实例, 返回SESSION_CLOSED
              *      7. 当前状态不为null且为连接状态, 正常连通, 不发布事件
              */
-            ConnectionEvent.EventType eventType = null;
+            ConnectionEvent.EventType eventType;
             if (incomeEvent != null) {
                 Watcher.Event.KeeperState incomeState = incomeEvent.getState();
                 incomeEvent = null;
@@ -182,10 +184,13 @@ final class DefaultZKConnector extends PeriodicService implements ZKConnector {
                         throw new IllegalStateException("Unexpected state: " + incomeState);
                 }
             } else if (currentEvent != null &&
-                    currentEvent.getState() != Watcher.Event.KeeperState.SyncConnected) {
+                       currentEvent.getState() != Watcher.Event.KeeperState.SyncConnected) {
 
                 //断开连接后扔未收到事件, 则主动关闭会话
                 eventType = SESSION_CLOSED;
+            } else {
+                //正常连通, 无需发布事件
+                eventType = null;
             }
 
             if (eventType == CONNECTED) {
@@ -196,37 +201,39 @@ final class DefaultZKConnector extends PeriodicService implements ZKConnector {
             } else if (eventType == SESSION_CLOSED) {
                 closeZooKeeper();
             }
-            return eventType;
+            connectionEvent = eventType == null ? null : new ConnectionEvent(this, eventType);
+        } finally {
+            eventLock.unlock();
         }
 
-        void createZooKeeper() {
+        if (connectionEvent != null && isAlive()) {
+            LOGGER.info("Publish connection event: ", connectionEvent);
+            eventMulticaster.multicastEvent(connectionEvent);
+        }
+    }
+
+    private void createZooKeeper() {
+        try {
+            zooKeeper = new ZooKeeper(connectStr, sessionTimeout, new ConnectionWatcher());
+        } catch (IOException e) {
+            throw new RuntimeException("New ZooKeeper instance error!", e);
+        }
+    }
+
+    /**
+     * 关闭ZooKeeper及自身的重连机制
+     */
+    private void closeZooKeeper() throws InterruptedException {
+        if (zooKeeper != null) {
+            LOGGER.info("ZooKeeper closed, {}", zooKeeper);
             try {
-                zooKeeper = new ZooKeeper(connectStr, sessionTimeout, this);
-            } catch (IOException e) {
-                throw new RuntimeException("New ZooKeeper instance error!", e);
+                zooKeeper.close();
+            } finally {
+                zooKeeper = null;
+                zooKeeperSessionId = 0;
+                incomeEvent = currentEvent = null;
+                eventWaitTimeout = sessionTimeout;
             }
-        }
-
-        /**
-         * 关闭ZooKeeper及自身的重连机制
-         */
-        void closeZooKeeper() throws InterruptedException {
-            ZooKeeper badClient = zooKeeper;
-            if (badClient != null) {
-                LOGGER.info("ZooKeeper closed, {}", badClient);
-                reset();
-                badClient.close();
-            }
-        }
-
-        /**
-         * 重置状态
-         */
-        void reset() {
-            zooKeeper = null;
-            zooKeeperSessionId = 0;
-            incomeEvent = currentEvent = null;
-            eventWaitTimeout = sessionTimeout;
         }
     }
 }

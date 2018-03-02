@@ -37,12 +37,12 @@ public class ZKConnectorTest {
     }
 
     private ZKSwitch zkSwitch;
-    private DefaultZKConnector connector;
+    private ZKConnectorImpl connector;
     private TestConnectorConnectionListener testListener;
 
     @Before
     public void setUp() {
-        connector = new DefaultZKConnector("localhost:2181", SESSION_TIMEOUT);
+        connector = new ZKConnectorImpl("localhost:2181", SESSION_TIMEOUT);
         zkSwitch = new ZKSwitch("E:/Tools/zookeeper-3.4.6");
         testListener = new TestConnectorConnectionListener();
         zkSwitch.open();

@@ -118,7 +118,7 @@ class ZKSwitch {
                             return Integer.parseInt(line.split(" ")[0]);
                         }
                     }
-                    throw new RuntimeException("Can not find zookeeper pid for process name: " + processName);
+                    throw new RuntimeException("Can not find zookeeper pid for execute name: " + processName);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
