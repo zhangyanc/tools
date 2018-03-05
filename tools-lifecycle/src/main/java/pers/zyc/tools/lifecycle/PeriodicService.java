@@ -7,8 +7,9 @@ import java.util.concurrent.TimeUnit;
  *
  * @author zhangyancheng
  */
-public abstract class PeriodicService extends Service implements Thread.UncaughtExceptionHandler, Runnable {
+public abstract class PeriodicService extends Service implements Thread.UncaughtExceptionHandler {
     private Thread periodicThread;
+    private final PeriodicRunnable periodicRunnable = new PeriodicRunnable();
 
     @Override
     protected void doStart() {
@@ -16,7 +17,7 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
 
     @Override
     protected void afterStart() {
-        periodicThread = new Thread(this, getName());
+        periodicThread = new Thread(periodicRunnable, getName());
         periodicThread.setUncaughtExceptionHandler(this);
         periodicThread.setDaemon(true);
         periodicThread.start();
@@ -25,6 +26,17 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
     @Override
     protected void doStop() throws Exception {
         periodicThread.interrupt();
+    }
+
+    /**
+     * 守护线程结束时可在这里记录异常
+     *
+     * @param t 线程
+     * @param e 异常
+     */
+    @Override
+    public void uncaughtException(Thread t, Throwable e) {
+        stop();
     }
 
     /**
@@ -46,26 +58,18 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
      */
     protected abstract void execute() throws InterruptedException;
 
-    @Override
-    public final void run() {
-        while (isAlive()) {
-            try {
-                TimeUnit.MILLISECONDS.sleep(period());
-                execute();
-            } catch (InterruptedException e) {
-                break;
+    private class PeriodicRunnable implements Runnable {
+
+        @Override
+        public void run() {
+            while (isAlive()) {
+                try {
+                    TimeUnit.MILLISECONDS.sleep(period());
+                    execute();
+                } catch (InterruptedException e) {
+                    break;
+                }
             }
         }
-    }
-
-    /**
-     * 守护线程结束时可在这里记录异常
-     *
-     * @param t 线程
-     * @param e 异常
-     */
-    @Override
-    public void uncaughtException(Thread t, Throwable e) {
-        stop();
     }
 }
