@@ -1,19 +1,23 @@
 package pers.zyc.tools.event;
 
 /**
- * 监听事件源
+ * 事件源
  *
  * @author zhangyancheng
  */
-public interface EventSource<E extends SourcedEvent> extends Listenable<EventListener<E>> {
+public interface EventSource<L extends EventListener> extends Listenable<L> {
 
     /**
-     * 添加事件监听
+     * 添加事件监听器
+     * @param listener 事件监听器
      */
-    void addListener(EventListener<E> listener);
+    @Override
+    void addListener(L listener);
 
     /**
-     * 移除事件监听
+     * 删除事件监听器
+     * @param listener 事件监听器
      */
-    void removeListener(EventListener<E> listener);
+    @Override
+    void removeListener(L listener);
 }

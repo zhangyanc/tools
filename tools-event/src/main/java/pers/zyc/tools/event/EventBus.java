@@ -5,7 +5,9 @@ import pers.zyc.tools.utils.Pair;
 import pers.zyc.tools.utils.TimeMillis;
 
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.TimeUnit;
 
@@ -14,19 +16,19 @@ import java.util.concurrent.TimeUnit;
  *
  * @author zhangyancheng
  */
-public final class EventManager<E> extends PeriodicService implements Listenable<EventListener<E>> {
+public final class EventBus<E> extends PeriodicService implements Listenable<EventHandler<E>> {
     private String name;
     private long idleTime;
     private long mergeInterval;
     private long lastEventTime;
     private IdleCallback idleCallback;
-    private EventMulticaster eventMulticaster = new SyncEventMulticaster();
+    private Set<EventHandler<E>> eventHandlers = new CopyOnWriteArraySet<>();
     private BlockingQueue<Ownership> eventQueue = new LinkedBlockingDeque<>();
 
-    private EventManager(String name,
-                         long idleTime,
-                         long mergeInterval,
-                         IdleCallback idleCallback) {
+    private EventBus(String name,
+                     long idleTime,
+                     long mergeInterval,
+                     IdleCallback idleCallback) {
 
         this.name = name;
         this.idleTime = idleTime;
@@ -40,11 +42,6 @@ public final class EventManager<E> extends PeriodicService implements Listenable
     }
 
     @Override
-    protected long period() {
-        return mergeInterval;
-    }
-
-    @Override
     protected void afterStart() {
         super.afterStart();
         lastEventTime = TimeMillis.get();
@@ -54,7 +51,11 @@ public final class EventManager<E> extends PeriodicService implements Listenable
     protected void doStop() throws Exception {
         super.doStop();
         eventQueue.clear();
-        eventMulticaster.removeAllListeners();
+    }
+
+    @Override
+    protected long period() {
+        return mergeInterval;
     }
 
     @Override
@@ -72,11 +73,14 @@ public final class EventManager<E> extends PeriodicService implements Listenable
 
         if (event != null) {
             lastEventTime = TimeMillis.get();
-            EventListener<E> eventOwner = event.value();
+            EventHandler<E> eventOwner = event.value();
+            E realEvent = event.key();
             if (eventOwner != null) {
-                eventOwner.onEvent(event.key());
+                inform(eventOwner, realEvent);
             } else {
-                eventMulticaster.multicastEvent(event.key());
+                for (EventHandler<E> eventHandler : eventHandlers) {
+                    inform(eventHandler, realEvent);
+                }
             }
         } else if (idleTime > 0 && idleCallback != null &&
                 (TimeMillis.get() - lastEventTime) >= idleTime) {
@@ -86,14 +90,21 @@ public final class EventManager<E> extends PeriodicService implements Listenable
         }
     }
 
-    @Override
-    public void addListener(EventListener<E> listener) {
-        eventMulticaster.addListener(listener);
+    private void inform(EventHandler<E> eventHandler, E event) {
+        try {
+            eventHandler.handleEvent(event);
+        } catch (Exception ignored) {
+        }
     }
 
     @Override
-    public void removeListener(EventListener<E> listener) {
-        eventMulticaster.removeListener(listener);
+    public void addListener(EventHandler<E> listener) {
+        eventHandlers.add(Objects.requireNonNull(listener));
+    }
+
+    @Override
+    public void removeListener(EventHandler<E> listener) {
+        eventHandlers.remove(listener);
     }
 
     /**
@@ -111,7 +122,7 @@ public final class EventManager<E> extends PeriodicService implements Listenable
      * @param event 事件
      * @param owner 事件所属监听器, 如果为null表示事件通知给所有监听器
      */
-    public void add(E event, EventListener<E> owner) {
+    public void add(E event, EventHandler<E> owner) {
         Objects.requireNonNull(event);
 
         Ownership ownership = new Ownership();
@@ -121,7 +132,7 @@ public final class EventManager<E> extends PeriodicService implements Listenable
         eventQueue.offer(ownership);
     }
 
-    private class Ownership extends Pair<E, EventListener<E>> {
+    private class Ownership extends Pair<E, EventHandler<E>> {
     }
 
     public interface IdleCallback {
@@ -133,7 +144,6 @@ public final class EventManager<E> extends PeriodicService implements Listenable
         private long idleTime;
         private long mergeInterval;
         private IdleCallback idleCallback;
-        private MulticastExceptionHandler multicastExceptionHandler;
 
         /**
          * 设置事件管理器名称
@@ -163,20 +173,11 @@ public final class EventManager<E> extends PeriodicService implements Listenable
             return this;
         }
 
-        public Builder multicastExceptionHandler(MulticastExceptionHandler multicastExceptionHandler) {
-            this.multicastExceptionHandler = multicastExceptionHandler;
-            return this;
-        }
-
         /**
          * 创建事件管理器
          */
-        public <E> EventManager<E> build() {
-            EventManager<E> eventManager = new EventManager<>(name, idleTime, mergeInterval, idleCallback);
-            if (multicastExceptionHandler != null) {
-                eventManager.eventMulticaster.setDeliverExceptionHandler(multicastExceptionHandler);
-            }
-            return eventManager;
+        public <E> EventBus<E> build() {
+            return new EventBus<>(name, idleTime, mergeInterval, idleCallback);
         }
     }
 }

@@ -3,7 +3,7 @@ package pers.zyc.tools.event;
 /**
  * @author zhangyancheng
  */
-public interface Listenable<L extends Listener> {
+public interface Listenable<L> {
 
     void addListener(L listener);
 
