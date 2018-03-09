@@ -1,7 +1,12 @@
 package pers.zyc.tools.event;
 
 /**
+ * 事件监听器
+ * @param <E> 事件泛型
+ * @see EventSource
  * @author zhangyancheng
  */
-public interface EventListener {
+public interface EventListener<E> extends Listener {
+
+    void onEvent(E event);
 }
