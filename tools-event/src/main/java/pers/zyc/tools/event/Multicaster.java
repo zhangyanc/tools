@@ -1,9 +1,6 @@
 package pers.zyc.tools.event;
 
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
+import java.lang.reflect.*;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -11,9 +8,10 @@ import java.util.concurrent.Executor;
 
 /**
  * 事件广播器
+ * @param <L> 监听器接口泛型
  * @author zhangyancheng
  */
-public final class EventMulticaster<L extends EventListener> implements Listenable<L> {
+public abstract class Multicaster<L extends Listener> implements Listenable<L> {
 
     /**
      * 同步执行器, 在multicaster调用线程中执行广播
@@ -26,10 +24,16 @@ public final class EventMulticaster<L extends EventListener> implements Listenab
     };
 
     /**
-     * 代理, 完成事件广播
+     * 泛型接口的代理实例, 在代理实例上调用事件, 则将此调用广播给所有已添加的监听器
+     *
+     * 定义为listeners在调用时会像作用在所有监听器上一样(事实上确实是)如: multicaster.listeners.onXxxEvent();
      */
-    private final L multicaster;
+    public final L listeners;
 
+    /**
+     * 读取子类设置的listener接口类型, 用于创建代理
+     */
+    private final Class<L> listenerInterfaceClass;
     /**
      * 广播异常处理器
      */
@@ -42,40 +46,17 @@ public final class EventMulticaster<L extends EventListener> implements Listenab
     /**
      * 监听器set, 同一个监听器不会重复添加
      */
-    private Set<EventListener> eventListeners = new CopyOnWriteArraySet<>();
+    private Set<L> eventListeners = new CopyOnWriteArraySet<>();
 
-    public EventMulticaster(Class<L> listenerClass) {
-        this(listenerClass, null, null);
-    }
-
-    public EventMulticaster(Class<L> listenerClass,
-                            Executor multicastExecutor) {
-
-        this(listenerClass, multicastExecutor, null);
-    }
-
-    public EventMulticaster(Class<L> listenerClass,
-                            MulticastExceptionHandler exceptionHandle) {
-
-        this(listenerClass, null, exceptionHandle);
-    }
-
-    public EventMulticaster(Class<L> listenerClass,
-                            Executor multicastExecutor,
-                            MulticastExceptionHandler exceptionHandle) {
-
-        Objects.requireNonNull(listenerClass);
-        //multicastExecutor不能为空
-        if (multicastExecutor != null) {
-            this.multicastExecutor = multicastExecutor;
+    @SuppressWarnings("unchecked")
+    protected Multicaster() {
+        //子类继承后需声明listener接口类型, 如果为null或者泛型不是接口Multicaster无法工作, 抛出异常
+        listenerInterfaceClass = Objects.requireNonNull((Class<L>) ((ParameterizedType)
+                getClass().getGenericSuperclass()).getActualTypeArguments()[0]);
+        if (!listenerInterfaceClass.isInterface()) {
+            throw new IllegalArgumentException(listenerInterfaceClass + " is not Interface!");
         }
-        //exceptionHandler可以为空, 为空则不处理回调异常
-        this.exceptionHandler = exceptionHandle;
-
-        //创建针对监听器接口的代理对象
-        Object proxy = Proxy.newProxyInstance(listenerClass.getClassLoader(),
-                new Class[] { listenerClass }, new MulticastInvocationHandler());
-        this.multicaster = listenerClass.cast(proxy);
+        this.listeners = createProxy();
     }
 
     @Override
@@ -96,19 +77,22 @@ public final class EventMulticaster<L extends EventListener> implements Listenab
     }
 
     /**
-     * 返回泛型接口的代理实例, 在代理实例上调用事件, 则将此调用广播给所有已添加的监听器
-     * @return 代理实例
+     * 创建针对监听器接口的代理对象
+     *
+     * @return 代理对象
      */
-    public L cast() {
-        return multicaster;
+    protected L createProxy() {
+        Object proxy = Proxy.newProxyInstance(listenerInterfaceClass.getClassLoader(),
+                new Class[] { listenerInterfaceClass }, new MulticastInvocationHandler());
+        return listenerInterfaceClass.cast(proxy);
     }
 
-    private class MulticastInvocationHandler implements InvocationHandler {
+    protected class MulticastInvocationHandler implements InvocationHandler {
 
         @Override
         public Object invoke(Object proxy, final Method method, final Object[] args) throws Throwable {
             //回调所有监听器
-            for (final EventListener listener : eventListeners) {
+            for (final Listener listener : eventListeners) {
                 multicastExecutor.execute(new Runnable() {
                     @Override
                     public void run() {
@@ -122,13 +106,14 @@ public final class EventMulticaster<L extends EventListener> implements Listenab
                                 }
                                 try {
                                     exceptionHandler.handleException(throwable, listener, method, args);
-                                } catch (Exception ignored) {
+                                } catch (Throwable ignored) {
                                 }
                             }
                         }
                     }
                 });
             }
+            //回调不支持返回值
             return null;
         }
     }
