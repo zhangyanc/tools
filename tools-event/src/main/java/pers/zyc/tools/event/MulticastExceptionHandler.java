@@ -16,10 +16,10 @@ public interface MulticastExceptionHandler {
      *@param listener 监听器
      *@param method 事件方法
      *@param args 方法参数
-     *@throws Exception 处理异常
+     *@throws Throwable 处理异常
      */
     void handleException(Throwable throwable,
                          Listener listener,
                          Method method,
-                         Object[] args) throws Exception;
+                         Object[] args) throws Throwable;
 }
