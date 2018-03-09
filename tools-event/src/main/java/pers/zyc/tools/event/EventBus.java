@@ -101,7 +101,6 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 		
 		if (mergeInterval > 0) {
             MergedEvents mergedEvents = new MergedEvents();
-            eventQueue.drainTo(mergedEvents);
             
             if (eventQueue.drainTo(mergedEvents) > 0) {
                 List<Ownership> events = mergedEvents.events;
@@ -174,7 +173,8 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	 * 添加事件, 如果队列满则阻塞至队列空闲或者被中断
 	 *
 	 * @param event 待添加事件
-	 * @param owner 事件所属监听器, 如果为null表示事件通知给所有监听器
+	 * @param owner 事件所属监听器, 如果为null表示事件通知给所有监听器,
+	 *              否则表示当前事件为专有事件只发布给当前监听器
 	 * @throws InterruptedException 等待过程中被中断
      * @throws NullPointerException event为null时抛出
 	 */
@@ -197,7 +197,8 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
      * 添加事件, 如果当前队列满则返回添加失败
      *
      * @param event 待添加事件
-     * @param owner 事件所属监听器, 如果为null表示事件通知给所有监听器
+     * @param owner 事件专有监听器, 如果为null表示事件通知给所有监听器,
+     *              否则表示当前事件为专有事件只发布给当前监听器
      * @return 是否添加成功
      * @throws NullPointerException event为null时抛出
      */
