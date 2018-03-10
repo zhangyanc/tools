@@ -96,60 +96,77 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	@Override
 	@SuppressWarnings("unchecked")
 	protected void execute() throws InterruptedException {
-		//此轮处理的event, 还用于判断是否空闲
-		Ownership event = null;
-		
 		if (mergeInterval > 0) {
-            MergedEvents mergedEvents = new MergedEvents();
-            
-            if (eventQueue.drainTo(mergedEvents) > 0) {
-                List<Ownership> events = mergedEvents.events;
-                for (int i = 0; i < events.size(); i++) {
-                    event = events.get(i);
-                    //当前是专有事件则直接发布, 否则比较是否最后一个非专有事件, 如果是则发布
-                    if (event.value() != null) {
-                        inform(event.key(), event.value());
-                    } else if (mergedEvents.mergedEventIndex == i) {
-                        multicaster.listeners.onEvent(event.key());
-                    }
-                }
+			/*
+			 * 尝试取出所有事件, 如果没有取到需要检查是否空闲否则进行事件发布
+			 * 专有事件不合并仍按照顺序依次发布, 非专有事件则只发布最后一个(合并)
+			 */
+			MergedEvents mergedEvents = new MergedEvents();
+            if (eventQueue.drainTo(mergedEvents) == 0) {
+	            checkIdle();
+            } else {
+	            lastEventTime = TimeMillis.get();
+
+	            List<Ownership> events = mergedEvents.events;
+	            for (int i = 0; i < events.size(); i++) {
+		            Ownership event = events.get(i);
+		            //当前是专有事件则发布, 否则比较是否最后一个非专有事件, 如果是则发布
+		            if (event.value() != null) {
+			            inform(event.key(), event.value());
+		            } else if (mergedEvents.mergedEventIndex == i) {
+			            multicaster.listeners.onEvent(event.key());
+		            }
+	            }
             }
 		} else {
-			event = eventQueue.poll(internalPollTimeout, TimeUnit.MILLISECONDS);
+			Ownership event = eventQueue.poll(internalPollTimeout, TimeUnit.MILLISECONDS);
 			
-			if (event != null) {
-                if (event.value() != null) {
-                    inform(event.key(), event.value());
-                } else {
-                    multicaster.listeners.onEvent(event.key());
-                }
-            }
+			if (event == null) {
+				checkIdle();
+            } else {
+				lastEventTime = TimeMillis.get();
+				if (event.value() != null) {
+					inform(event.key(), event.value());
+				} else {
+					multicaster.listeners.onEvent(event.key());
+				}
+			}
 		}
-		
-		if (event == null && idleTime > 0 && (TimeMillis.get() - lastEventTime) >= idleTime) {
-            lastEventTime = TimeMillis.get();
-            onIdle();
-        }
 	}
-	
+
+	/**
+	 * 检查是否需要触发空闲
+	 */
+	protected void checkIdle() {
+		if (idleTime > 0 && (TimeMillis.get() - lastEventTime) >= idleTime) {
+			lastEventTime = TimeMillis.get();
+			onIdle();
+		}
+	}
+
 	/**
 	 * 专有事件通知
 	 * @param event 事件
 	 * @param eventOwner 事件专有监听器
 	 */
-	protected void inform(E event, EventListener<E> eventOwner) {
-        try {
-            eventOwner.onEvent(event);
-        } catch (Throwable throwable) {
-        	//异常后加入出错处理
-            if (multicaster.getExceptionHandler() != null) {
-	            try {
-		            multicaster.getExceptionHandler().handleException(throwable,
-				            eventOwner, ON_EVENT_METHOD, new Object[]{ event });
-	            } catch (Throwable ignored) {
-	            }
-            }
-        }
+	protected void inform(final E event, final EventListener<E> eventOwner) {
+		multicaster.getMulticastExecutor().execute(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					eventOwner.onEvent(event);
+				} catch (Throwable throwable) {
+					//异常后加入出错处理
+					if (multicaster.getExceptionHandler() != null) {
+						try {
+							multicaster.getExceptionHandler().handleException(throwable,
+									eventOwner, ON_EVENT_METHOD, new Object[]{ event });
+						} catch (Throwable ignored) {
+						}
+					}
+				}
+			}
+		});
     }
 	
 	/**
