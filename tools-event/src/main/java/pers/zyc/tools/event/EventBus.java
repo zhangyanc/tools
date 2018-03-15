@@ -6,10 +6,7 @@ import pers.zyc.tools.utils.TimeMillis;
 
 import java.lang.reflect.Method;
 import java.util.*;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * 事件异步派发
@@ -24,11 +21,11 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	 */
 	private String name;
 	/**
-	 * 空闲时间(ms), 超过空闲时间没有事件触发onIdle
+	 * 空闲时间(ms, 默认不检查空闲), 超过空闲时间没有事件触发onIdle
 	 */
 	private long idleTime;
 	/**
-	 * 事件合并周期(ms), 周期内如果有多个事件, 默认只发布最后一个
+	 * 事件合并周期(ms, 默认不进行合并), 周期内如果有多个事件, 只发布最后一个
 	 */
 	private long mergeInterval;
 	/**
@@ -37,12 +34,12 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	private long internalPollTimeout = 1000;
 
 	/**
-	 * 事件队列长度
+	 * 事件队列长度, 默认或者设置的值不大0, 将创建无界队列(Linked)否则为有界队列(Array)
 	 */
-	private int eventQueueCapacity = Integer.MAX_VALUE;
+	private int eventQueueCapacity;
 
 	/**
-	 * 上次触发事件
+	 * 上次事件事件, 用于计算是否空闲
 	 */
 	private long lastEventTime;
 	/**
@@ -77,7 +74,11 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 
 	@Override
 	protected void doStart() {
-		eventQueue = new ArrayBlockingQueue<>(eventQueueCapacity);
+		if (eventQueueCapacity > 0) {
+			eventQueue = new ArrayBlockingQueue<>(eventQueueCapacity);
+		} else {
+			eventQueue = new LinkedBlockingDeque<>();
+		}
 		lastEventTime = TimeMillis.get();
 		super.doStart();
 	}
@@ -98,7 +99,7 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	protected void execute() throws InterruptedException {
 		if (mergeInterval > 0) {
 			/*
-			 * 尝试取出所有事件, 如果没有取到需要检查是否空闲否则进行事件发布
+			 * 尝试取出所有事件, 如果没有取到需要检查是否空闲, 取到则合并发布事件
 			 * 专有事件不合并仍按照顺序依次发布, 非专有事件则只发布最后一个(合并)
 			 */
 			MergedEvents mergedEvents = new MergedEvents();
@@ -156,9 +157,9 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 				try {
 					eventOwner.onEvent(event);
 				} catch (Throwable throwable) {
-					//异常后加入出错处理
 					if (multicaster.getExceptionHandler() != null) {
 						try {
+							//出错处理
 							multicaster.getExceptionHandler().handleException(throwable,
 									eventOwner, ON_EVENT_METHOD, new Object[]{ event });
 						} catch (Throwable ignored) {
@@ -249,7 +250,7 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 
 	/**
 	 * 设置空闲时间, 空闲时间段内无事件触发空闲
-	 * @param idleTime 空闲时间(ms), 默认不触发空闲
+	 * @param idleTime 空闲时间(ms), 大于0为有效值
 	 */
 	public EventBus<E> idleTime(long idleTime) {
 		this.idleTime = idleTime;
@@ -258,7 +259,7 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 
 	/**
 	 * 设置事件合并间隔(ms), 间隔段内如果有多个事件默认只发布最后一个
-	 * @param mergeInterval 事件合并间隔(ms), 默认不进行事件合并
+	 * @param mergeInterval 事件合并间隔(ms), 大于0为有效值
 	 */
 	public EventBus<E> mergeInterval(long mergeInterval) {
 		this.mergeInterval = mergeInterval;
@@ -304,14 +305,14 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	}
 	
 	private class MergedEvents extends AbstractCollection<Ownership> {
-		//最后一个非专有事件下标
+		//最后一个非专有事件位置
         int mergedEventIndex;
         List<Ownership> events = new ArrayList<>();
         
         @Override
         public boolean add(Ownership ownership) {
-            //合并不针对专属事件
             if (ownership.value() == null) {
+            	//记录最后一个非专有事件位置
                 mergedEventIndex = events.size();
             }
             events.add(ownership);
