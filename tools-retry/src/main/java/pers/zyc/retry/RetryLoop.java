@@ -1,49 +1,41 @@
 package pers.zyc.retry;
 
-import pers.zyc.retry.exception.RetryCanceledException;
-import pers.zyc.retry.exception.RetryFailedException;
-import pers.zyc.retry.exception.RunOutOfPolicyException;
+import java.util.concurrent.Callable;
 
 /**
  * @author zhangyancheng
  */
-public final class RetryLoop {
+public class RetryLoop {
 
-    /**
-     * 执行重试
-     *
-     * @param retryAble 重试任务
-     * @param retryPolicy 重试策略 为null表示为无需重试任务
-     * @return 重试成功结果或者默认值
-     * @throws NullPointerException retryAble is null
-     * @throws InterruptedException 线程被打断
-     * @throws RetryCanceledException 重试结束之前, 任务被取消
-     * @throws RunOutOfPolicyException 重试结束之前, 策略耗尽
-     */
-    public static <R> R execute(RetryAble<R> retryAble, RetryPolicy retryPolicy)
-            throws InterruptedException, RetryFailedException {
+	/**
+	 * @param retryAble 重试任务
+	 * @param retryPolicy 重试策略
+	 * @param <V> 重试结果泛型
+	 * @return 重试结果
+	 * @throws InterruptedException 重试过程中线程被中断
+	 * @throws RetryFailedException 重试失败
+	 */
+	public static <V> V execute(Callable<V> retryAble,
+								RetryPolicy retryPolicy)
+			throws InterruptedException, RetryFailedException {
 
-        Long nextRetryTime;
-        RetryStat retryStat = new RetryStat();
-        //retry loop
-        while (retryAble.isNotCanceled()) {
-            try {
-                return retryAble.call();
-            } catch (InterruptedException | RetryCanceledException ie) {
-                throw ie;
-            } catch (Exception e) {
-                retryStat.loop(e);
-                //是否接着重试
-                if (retryPolicy == null || !retryAble.onException(e)) {
-                    break;
-                }
-                nextRetryTime = retryPolicy.nextRetryTime(retryStat);
-                if (nextRetryTime == null) {
-                    break;
-                }
-                retryAble.waitUntil(nextRetryTime);
-            }
-        }
-        return retryAble.checkDefault();
-    }
+		RetryStat retryStat = new RetryStat();
+
+		while (true) {
+			try {
+				return retryAble.call();
+			} catch (Throwable cause) {
+				if (retryPolicy == null) {
+					//没有重试策略不进行重试
+					break;
+				}
+				retryStat.loop(cause);
+				if (!retryPolicy.checkAndAwait(retryStat)) {
+					//不再继续重试
+					break;
+				}
+			}
+		}
+		throw new RetryFailedException(retryStat);
+	}
 }
