@@ -10,13 +10,6 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>tools-retry</artifactId>
-
-    <dependencies>
-        <dependency>
-            <groupId>pers.zyc.tools</groupId>
-            <artifactId>tools-utils</artifactId>
-        </dependency>
-    </dependencies>
+    <artifactId>tools-useRetry</artifactId>
 
 </project>
