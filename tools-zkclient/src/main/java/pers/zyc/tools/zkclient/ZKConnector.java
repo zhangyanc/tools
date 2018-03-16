@@ -190,41 +190,35 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 			}
 			LOGGER.info("Processing income state: {}, session id: {}", incomeState, zooKeeperSessionId);
 			if (incomeState == SyncConnected) {
-				if (zooKeeperSessionId == zooKeeper.getSessionId()) {
-					publisher = new Publisher() {
-						@Override
-						public void run() {
-							multicaster.listeners.onReconnected();
-						}
-					};
-				} else {
-					//更新协商后真正的超时时间
-					eventWaitTimeout = zooKeeper.getSessionTimeout();
-					//保存新会话id, 用于收到SyncConnected后判断是否为新会话
-					zooKeeperSessionId = zooKeeper.getSessionId();
-					publisher = new Publisher() {
-						@Override
-						public void run() {
-							multicaster.listeners.onConnected();
-						}
-					};
-				}
-			} else if (incomeState == Disconnected) {
-				/*
-				 * 断连后只需要等待自动重连, 如果下轮未收到事件(SyncConnected), 则在ZooKeeper Server
-				 * 端实际上已经会话超时了, 则进入下面的else流程主动关闭会话
-				 */
-				publisher = new Publisher() {
+				publisher = zooKeeperSessionId == zooKeeper.getSessionId() ? new Publisher() {
 					@Override
-					public void run() {
-						multicaster.listeners.onSuspend();
+					public void publish() throws InterruptedException {
+						multicaster.listeners.onReconnected();
+					}
+				} : new Publisher() {
+					@Override
+					public void publish() throws InterruptedException {
+						//更新协商后真正的超时时间
+						eventWaitTimeout = zooKeeper.getSessionTimeout();
+						//保存新会话id, 用于收到SyncConnected后判断是否为新会话
+						zooKeeperSessionId = zooKeeper.getSessionId();
+						multicaster.listeners.onConnected();
 					}
 				};
 			} else {
-				closeZooKeeper();
-				publisher = new Publisher() {
+				/*
+				 * 断连后只需要等待自动重连,
+				 * 如果下轮未收到事件(SyncConnected), 则在ZooKeeper Server端实际上已经会话超时了
+				 */
+				publisher = incomeState == Disconnected ? new Publisher() {
 					@Override
-					public void run() {
+					public void publish() throws InterruptedException {
+						multicaster.listeners.onSuspend();
+					}
+				} : new Publisher() {
+					@Override
+					public void publish() throws InterruptedException {
+						closeZooKeeper();
 						multicaster.listeners.onSessionClosed();
 					}
 				};
@@ -233,10 +227,11 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 			serviceLock.unlock();
 		}
 		//发布事件
-		publisher.run();
+		publisher.publish();
 	}
 
-	private static abstract class Publisher implements Runnable {
+	interface Publisher {
+		void publish() throws InterruptedException;
 	}
 
 	/**
@@ -247,6 +242,10 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 			LOGGER.info("Closing zookeeper: {}", zooKeeper);
 			try {
 				zooKeeper.close();
+			} catch (InterruptedException interrupted) {
+				throw interrupted;
+			} catch (Exception e) {
+				LOGGER.warn("Closing error", e);
 			} finally {
 				zooKeeper = null;
 				zooKeeperSessionId = 0;
