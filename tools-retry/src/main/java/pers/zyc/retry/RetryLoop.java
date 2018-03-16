@@ -1,5 +1,6 @@
 package pers.zyc.retry;
 
+import java.util.Objects;
 import java.util.concurrent.Callable;
 
 /**
@@ -8,10 +9,12 @@ import java.util.concurrent.Callable;
 public class RetryLoop {
 
 	/**
+	 * 按照指定的重试策略执行重试逻辑
+	 *
 	 * @param retryAble 重试任务
-	 * @param retryPolicy 重试策略
-	 * @param <V> 重试结果泛型
-	 * @return 重试结果
+	 * @param retryPolicy 重试策略, 如果为null表示不进行重试
+	 * @param <V> 执行结果泛型
+	 * @return 任务执行结果
 	 * @throws InterruptedException 重试过程中线程被中断
 	 * @throws RetryFailedException 重试失败
 	 */
@@ -19,23 +22,26 @@ public class RetryLoop {
 								RetryPolicy retryPolicy)
 			throws InterruptedException, RetryFailedException {
 
-		RetryStat retryStat = new RetryStat();
+		Objects.requireNonNull(retryAble);
+		final RetryStat retryStat = new RetryStat();
 
+		Throwable cause;//记录异常
 		while (true) {
 			try {
 				return retryAble.call();
-			} catch (Throwable cause) {
-				if (retryPolicy == null) {
-					//没有重试策略不进行重试
+			} catch (Throwable throwable) {
+				cause = throwable;
+				if (retryPolicy == null ||
+					//非可继续重试异常
+					!retryPolicy.handleException(cause, retryAble) ||
+					//根据重试统计等待直到下次重试
+					!retryPolicy.awaitToRetry(retryStat)) {
 					break;
 				}
-				retryStat.loop(cause);
-				if (!retryPolicy.checkAndAwait(retryStat)) {
-					//不再继续重试
-					break;
-				}
+				//标记一轮重试
+				retryStat.retry();
 			}
 		}
-		throw new RetryFailedException(retryStat);
+		throw new RetryFailedException(cause, retryStat);
 	}
 }

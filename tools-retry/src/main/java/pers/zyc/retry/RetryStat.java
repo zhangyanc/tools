@@ -1,22 +1,42 @@
 package pers.zyc.retry;
 
+import pers.zyc.tools.utils.TimeMillis;
+
 /**
+ * 重试统计
+ *
  * @author zhangyancheng
+ * @see RetryLoop
+ * @see RetryPolicy
  */
 public class RetryStat {
-	private long startTime;
-	private int alreadyRetryCounts;
-	private long loopTime;
-	private Throwable cause;
+	/**
+	 * 重试任务开始时间
+	 */
+	private long startTime = TimeMillis.get();
+	/**
+	 * 已经重试的次数
+	 */
+	private int alreadyRetryTimes;
+	/**
+	 * 首次重试时间
+	 */
+	private long firstRetryTime;
+	/**
+	 * 最后一次重试时间
+	 */
+	private long lastRetryTime;
 
-	void loop(Throwable cause) {
-		this.cause = cause;
-		loopTime = System.currentTimeMillis();
-		//根据startTime区分是否为首次异常, 是首次异常则记录启动为重试启动时间, 否则增加重试次数
-		if (startTime == 0) {
-			startTime = loopTime;
+	/**
+	 * 重试任务执行失败
+	 */
+	void retry() {
+		lastRetryTime = TimeMillis.get();
+		//根据firstRetryTime区分是否为首次失败, 是则记录重试开始时间, 不是则增加重试次数
+		if (firstRetryTime == 0) {
+			firstRetryTime = lastRetryTime;
 		} else {
-			alreadyRetryCounts++;
+			alreadyRetryTimes++;
 		}
 	}
 
@@ -24,15 +44,25 @@ public class RetryStat {
 		return startTime;
 	}
 
-	public int getAlreadyRetryCounts() {
-		return alreadyRetryCounts;
+	public int getAlreadyRetryTimes() {
+		return alreadyRetryTimes;
 	}
 
-	public long getLoopTime() {
-		return loopTime;
+	public long getLastRetryTime() {
+		return lastRetryTime;
 	}
 
-	public Throwable getCause() {
-		return cause;
+	public long getFirstRetryTime() {
+		return firstRetryTime;
+	}
+
+	@Override
+	public String toString() {
+		return "RetryStat{" +
+				"startTime=" + startTime +
+				", alreadyRetryTimes=" + alreadyRetryTimes +
+				", firstRetryTime=" + firstRetryTime +
+				", lastRetryTime=" + lastRetryTime +
+				'}';
 	}
 }
