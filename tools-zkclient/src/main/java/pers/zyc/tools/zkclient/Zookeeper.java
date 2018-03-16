@@ -6,11 +6,7 @@ import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.retry.RetryFailedException;
-import pers.zyc.retry.RetryLoop;
-import pers.zyc.retry.RetryPolicy;
-import pers.zyc.retry.RetryStat;
-import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.retry.*;
 import pers.zyc.tools.zkclient.listener.ConnectionListenerAdapter;
 
 import java.lang.reflect.InvocationHandler;
@@ -38,27 +34,20 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 	 */
 	private ZKClient zkClient;
 	/**
-	 * 重试次数, 只有启用重试才使用到
+	 * 重试策略
 	 */
-	private int retryTimes;
-	/**
-	 * 操作失败到下次重试中的等待超时时间, 超时了也就不会继续等待已经重试
-	 */
-	private int retryPerWaitTimeout;
-	/**
-	 * 重试策略, 只有期待用重试才使用到
-	 */
-	private RetryPolicy retryPolicy;
+	private BaseRetryPolicy retryPolicy;
 
 	Zookeeper(ZKClient zkClient) {
 		this.zkClient = zkClient;
 		//添加连接监听器, 用于连通时唤醒可能存在的重试等待线程
 		zkClient.addConnectionListener(new ConnectionListener());
 
-		if (zkClient.getConfig().isUseRetry()) {
-			this.retryTimes = zkClient.getConfig().getRetryTimes();
-			this.retryPerWaitTimeout = zkClient.getConfig().getRetryPerWaitTimeout();
-			this.retryPolicy = new AwaitRetryPolicy();
+		ClientConfig config = zkClient.getConfig();
+		if (config.isUseRetry()) {
+			retryPolicy = new AwaitConnectedRetryPolicy(new ConnectedRetryCondition());
+			retryPolicy.setMaxRetryTimes(config.getRetryTimes());
+			retryPolicy.setRetryDelay(config.getRetryPerWaitTimeout());
 		}
 	}
 
@@ -79,8 +68,8 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 		} catch (InterruptedException interrupted) {
 			throw interrupted;
 		} catch (RetryFailedException retryFailed) {
-			Throwable relCause = retryFailed.getRetryStat().getCause();
-			LOGGER.error("Retry failed", relCause);
+			LOGGER.error("Retry failed, {}", retryFailed.getRetryStat());
+			Throwable relCause = retryFailed.getCause();
 			if (relCause instanceof InvocationTargetException) {
 				//抛出ZooKeeper实例调用异常
 				throw ((InvocationTargetException) relCause).getTargetException();
@@ -113,47 +102,37 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 		}
 	}
 
-	private class AwaitRetryPolicy implements RetryPolicy {
+	private class ConnectedRetryCondition implements RetryCondition {
 
-		/**
-		 * 检查是否为可重试异常, 是则返回true等待重试
-		 * @param cause 异常
-		 * @return 是否继续重试
-		 */
-		boolean checkException(Throwable cause) {
+		@Override
+		public boolean check() {
+			return zkClient.isConnected();
+		}
+
+		@Override
+		public Object getMutex() {
+			return Zookeeper.this;
+		}
+	}
+
+	private class AwaitConnectedRetryPolicy extends ConditionalRetryPolicy {
+
+		AwaitConnectedRetryPolicy(RetryCondition retryCondition) {
+			super(retryCondition);
+		}
+
+		@Override
+		public Boolean handleException(Throwable cause, Callable<?> callable) {
 			LOGGER.error("Call error!", cause);
 			if (cause instanceof InvocationTargetException) {
 				Throwable throwable = ((InvocationTargetException) cause).getTargetException();
 				return throwable instanceof KeeperException &&
-								(throwable instanceof ConnectionLossException ||
-								 throwable instanceof OperationTimeoutException ||
-								 throwable instanceof SessionExpiredException ||
-								 throwable instanceof SessionMovedException);
+						(throwable instanceof ConnectionLossException ||
+								throwable instanceof OperationTimeoutException ||
+								throwable instanceof SessionExpiredException ||
+								throwable instanceof SessionMovedException);
 			}
 			return false;
-		}
-
-		@Override
-		public boolean checkAndAwait(RetryStat retryStat) throws InterruptedException {
-			if (retryTimes <= retryStat.getAlreadyRetryCounts()) {
-				//已达重试次数
-				return false;
-			}
-			if (!checkException(retryStat.getCause())) {
-				//不可重试异常
-				return false;
-			}
-			long waitTimeout = retryPerWaitTimeout;
-			synchronized (Zookeeper.this) {
-				//符合重试条件后, 等待重连成功直至超时
-				while (!zkClient.isConnected() && waitTimeout > 0) {
-					long waitTime = TimeMillis.get();
-					Zookeeper.this.wait(waitTimeout);
-					waitTimeout -= TimeMillis.get() - waitTime;
-				}
-			}
-			//确认如果连通了则进行下次重试
-			return zkClient.isConnected();
 		}
 	}
 
