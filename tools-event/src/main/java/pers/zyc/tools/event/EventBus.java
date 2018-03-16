@@ -159,9 +159,8 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 				} catch (Throwable throwable) {
 					if (multicaster.getExceptionHandler() != null) {
 						try {
-							//出错处理
 							multicaster.getExceptionHandler().handleException(throwable,
-									eventOwner, ON_EVENT_METHOD, new Object[]{ event });
+									new MulticastDetail(eventOwner, ON_EVENT_METHOD, new Object[]{ event }));
 						} catch (Throwable ignored) {
 						}
 					}

@@ -1,10 +1,9 @@
 package pers.zyc.tools.zkclient;
 
 import org.slf4j.Logger;
-import pers.zyc.tools.event.Listener;
+import pers.zyc.tools.event.MulticastDetail;
 import pers.zyc.tools.event.MulticastExceptionHandler;
 
-import java.lang.reflect.Method;
 import java.util.Objects;
 
 /**
@@ -13,18 +12,15 @@ import java.util.Objects;
  * @author zhangyancheng
  */
 public class LogMulticastExceptionHandler implements MulticastExceptionHandler {
-    private final Logger logger;
+	private final Logger logger;
 
-    public LogMulticastExceptionHandler(Logger logger) {
-        this.logger = Objects.requireNonNull(logger);
-    }
+	public LogMulticastExceptionHandler(Logger logger) {
+		this.logger = Objects.requireNonNull(logger);
+	}
 
-    @Override
-    public void handleException(Throwable throwable,
-                                Listener eventListener,
-                                Method method,
-                                Object[] args) throws Exception {
-
-        logger.error("Event multicast error: {}, {}|{}", throwable, eventListener, method);
-    }
+	@Override
+	public Void handleException(Throwable throwable, MulticastDetail multicastDetail) {
+		logger.error("Event multicast error: {}, {}|{}", throwable, multicastDetail.listener, multicastDetail.method);
+		return null;
+	}
 }

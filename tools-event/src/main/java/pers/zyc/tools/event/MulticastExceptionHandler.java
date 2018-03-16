@@ -1,25 +1,19 @@
 package pers.zyc.tools.event;
 
-import java.lang.reflect.Method;
+import pers.zyc.tools.utils.ExceptionHandler;
 
 /**
- * 异常处理器
+ * 广播异常处理器
  *
  * @author zhangyancheng
  */
-public interface MulticastExceptionHandler {
+public interface MulticastExceptionHandler extends ExceptionHandler<Throwable, MulticastDetail, Void> {
 
-    /**
-     * 处理监听器回调异常
-     *
-     *@param throwable 监听器回调异常
-     *@param listener 监听器
-     *@param method 事件方法
-     *@param args 方法参数
-     *@throws Exception 处理异常
-     */
-    void handleException(Throwable throwable,
-                         Listener listener,
-                         Method method,
-                         Object[] args) throws Exception;
+	/**
+	 * 处理广播异常
+	 *
+	 * @param cause 广播异常
+	 * @param multicastDetail 广播调用信息
+	 */
+	Void handleException(Throwable cause, MulticastDetail multicastDetail);
 }
