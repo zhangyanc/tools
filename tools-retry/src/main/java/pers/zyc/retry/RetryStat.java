@@ -32,12 +32,10 @@ public class RetryStat {
 	 */
 	void retry() {
 		lastRetryTime = TimeMillis.get();
-		//根据firstRetryTime区分是否为首次失败, 是则记录重试开始时间, 不是则增加重试次数
 		if (firstRetryTime == 0) {
 			firstRetryTime = lastRetryTime;
-		} else {
-			alreadyRetryTimes++;
 		}
+		alreadyRetryTimes++;
 	}
 
 	public long getStartTime() {
