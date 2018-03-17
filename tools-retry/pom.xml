@@ -1,21 +1,25 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project xmlns="http://maven.apache.org/POM/4.0.0"
-         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <parent>
-        <groupId>pers.zyc.tools</groupId>
-        <artifactId>tools-dependencies-bom</artifactId>
-        <version>${revision}</version>
-        <relativePath>../tools-dependencies-bom</relativePath>
-    </parent>
-    <modelVersion>4.0.0</modelVersion>
+		 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+		 xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<parent>
+		<groupId>pers.zyc.tools</groupId>
+		<artifactId>tools-dependencies-bom</artifactId>
+		<version>${revision}</version>
+		<relativePath>../tools-dependencies-bom</relativePath>
+	</parent>
+	<modelVersion>4.0.0</modelVersion>
 
-    <artifactId>tools-retry</artifactId>
-    <dependencies>
-        <dependency>
-            <groupId>pers.zyc.tools</groupId>
-            <artifactId>tools-utils</artifactId>
-        </dependency>
-    </dependencies>
+	<artifactId>tools-retry</artifactId>
+	<dependencies>
+		<dependency>
+			<groupId>pers.zyc.tools</groupId>
+			<artifactId>tools-utils</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+		</dependency>
+	</dependencies>
 
 </project>
