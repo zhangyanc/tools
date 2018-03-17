@@ -1,7 +1,5 @@
 package pers.zyc.retry;
 
-import pers.zyc.tools.utils.TimeMillis;
-
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 
@@ -63,11 +61,16 @@ public class BaseRetryPolicy implements RetryPolicy {
 			//超过了最大重试次数
 			return null;
 		}
+		long delay;
 		if (!useExp) {
-			return retryDelay;
+			delay = retryDelay;
+		} else {
+			delay = (long) (Math.pow(baseNum, alreadyRetryTimes) * retryDelay);
+			if (maxRetryDelay > 0) {
+				delay = Math.min(maxRetryDelay, delay);
+			}
 		}
-		long delay = (long) (Math.pow(baseNum, alreadyRetryTimes) * retryDelay);
-		return maxRetryDelay > 0 ? Math.min(maxRetryDelay, delay) : delay;
+		return System.currentTimeMillis() + delay;
 	}
 
 	/**
@@ -76,7 +79,7 @@ public class BaseRetryPolicy implements RetryPolicy {
 	 * @throws InterruptedException 线程被中断
 	 */
 	protected boolean await(long nextRetryTime) throws InterruptedException {
-		TimeUnit.MILLISECONDS.sleep(nextRetryTime - TimeMillis.get());
+		TimeUnit.MILLISECONDS.sleep(nextRetryTime - System.currentTimeMillis());
 		return true;
 	}
 
