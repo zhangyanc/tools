@@ -1,11 +1,9 @@
 package pers.zyc.retry;
 
-import pers.zyc.tools.utils.TimeMillis;
-
 import java.util.Objects;
 
 /**
- * "条件决定"重试策略, 可被提前唤醒
+ * "条件检查"重试策略, 可被提前唤醒
  * @author zhangyancheng
  */
 public class ConditionalRetryPolicy extends BaseRetryPolicy {
@@ -19,11 +17,12 @@ public class ConditionalRetryPolicy extends BaseRetryPolicy {
 	}
 
 	@Override
-	protected boolean await(long nextRetryTime) throws InterruptedException {
-		long now;
+	protected boolean await(long awaitTime) throws InterruptedException {
 		synchronized (retryCondition.getMutex()) {
-			while (!retryCondition.check() && (now = TimeMillis.get()) < nextRetryTime) {
-				retryCondition.wait(nextRetryTime - now);
+			while (!retryCondition.check() && awaitTime > 0) {
+				long now = System.currentTimeMillis();
+				retryCondition.wait(awaitTime);
+				awaitTime -= System.currentTimeMillis() - now;
 			}
 			//条件到达或者已到retry time
 		}

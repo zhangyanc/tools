@@ -30,7 +30,7 @@ public class BaseRetryPolicy implements RetryPolicy {
 	/**
 	 * 底数
 	 */
-	private double baseNum;
+	private double baseNum = 1.0;
 	/**
 	 * 最大重试间隔(ms), 默认没有最大间隔限制(如果是指数增长的总是按照指数增长值)
 	 */
@@ -45,41 +45,32 @@ public class BaseRetryPolicy implements RetryPolicy {
 
 	@Override
 	public boolean awaitToRetry(final RetryStat retryStat) throws InterruptedException {
-		Long nextRetryTime = checkNextRetryTime(retryStat);
-		//没有下次重试时间则不再重试
-		return nextRetryTime != null && await(nextRetryTime);
-	}
-
-	/**
-	 * 检查下次重试时间
-	 * @param retryStat 重试统计
-	 * @return 下次重试时间, 为null表示不再重试
-	 */
-	protected Long checkNextRetryTime(RetryStat retryStat) {
 		int alreadyRetryTimes = retryStat.getAlreadyRetryTimes();
 		if (maxRetryTimes > 0 && alreadyRetryTimes >= maxRetryTimes) {
 			//超过了最大重试次数
-			return null;
+			return false;
 		}
-		long delay;
+
+		long awaitTime;
 		if (!useExp) {
-			delay = retryDelay;
+			awaitTime = retryDelay;
 		} else {
-			delay = (long) (Math.pow(baseNum, alreadyRetryTimes) * retryDelay);
+			awaitTime = (long) (Math.pow(baseNum, alreadyRetryTimes) * retryDelay);
 			if (maxRetryDelay > 0) {
-				delay = Math.min(maxRetryDelay, delay);
+				awaitTime = Math.min(maxRetryDelay, awaitTime);
 			}
 		}
-		return System.currentTimeMillis() + delay;
+		//等待直到下次重试
+		return await(awaitTime);
 	}
 
 	/**
 	 * 休眠到下次重试时间
-	 * @param nextRetryTime 下次重试时间
+	 * @param awaitTime 等待时间
 	 * @throws InterruptedException 线程被中断
 	 */
-	protected boolean await(long nextRetryTime) throws InterruptedException {
-		TimeUnit.MILLISECONDS.sleep(nextRetryTime - System.currentTimeMillis());
+	protected boolean await(long awaitTime) throws InterruptedException {
+		TimeUnit.MILLISECONDS.sleep(awaitTime);
 		return true;
 	}
 
