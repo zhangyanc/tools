@@ -299,21 +299,6 @@ public class RetryTest {
 	}
 
 	/**
-	 * 测试RetryLoop: 当重试任务为null时抛出NPE
-	 */
-	@Test
-	public void case_RetryLoop_NullCallable() {
-		try {
-			RetryLoop.execute(null , null);
-			Assert.fail();
-		} catch (Exception e) {
-			if (!(e instanceof NullPointerException)) {
-				Assert.fail();
-			}
-		}
-	}
-
-	/**
 	 * 测试RetryLoop: 不设置重试策略, 不进行重试
 	 */
 	@Test
