@@ -5,8 +5,11 @@ import org.junit.Test;
 
 import java.util.LinkedList;
 import java.util.Queue;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author zhangyancheng
@@ -175,6 +178,40 @@ public class RetryTest {
 	}
 
 	/**
+	 * 测试BaseRetryPolicy: 异常处理
+	 */
+	@Test
+	public void case_BaseRetryPolicy_ExceptionHandler() {
+		Callable<Object> callable = new Callable<Object>() {
+			@Override
+			public Object call() throws Exception {
+				return new Object();
+			}
+		};
+
+		BaseRetryPolicy baseRetryPolicy = new BaseRetryPolicy();
+		//非ExceptionHandler callable则总是返回true
+		Assert.assertTrue(baseRetryPolicy.handleException(new Exception(), callable));
+
+		class ExceptionHandledCallable implements Callable<Object>, RetryExceptionHandler {
+
+			@Override
+			public Object call() throws Exception {
+				return new Object();
+			}
+
+			@Override
+			public Boolean handleException(Throwable cause, Callable<?> callable) {
+				return cause instanceof RuntimeException;
+			}
+		}
+		callable = new ExceptionHandledCallable();
+		//返回ExceptionHandler callable的处理结果
+		Assert.assertFalse(baseRetryPolicy.handleException(new Exception(), callable));
+		Assert.assertTrue(baseRetryPolicy.handleException(new NullPointerException(), callable));
+	}
+
+	/**
 	 * 测试ConditionalRetryPolicy: 条件检查不通过将不进行重试
 	 */
 	@Test
@@ -259,5 +296,149 @@ public class RetryTest {
 		}
 
 		Assert.assertTrue(maxRetryTimes == stat.getAlreadyRetryTimes());
+	}
+
+	/**
+	 * 测试RetryLoop: 当重试任务为null时抛出NPE
+	 */
+	@Test
+	public void case_RetryLoop_NullCallable() {
+		try {
+			RetryLoop.execute(null , null);
+			Assert.fail();
+		} catch (Exception e) {
+			if (!(e instanceof NullPointerException)) {
+				Assert.fail();
+			}
+		}
+	}
+
+	/**
+	 * 测试RetryLoop: 不设置重试策略, 不进行重试
+	 */
+	@Test
+	public void case_RetryLoop_DoNotRetry() throws InterruptedException {
+		final Exception testException = new Exception();
+		try {
+			RetryLoop.execute(new Callable<Object>() {
+				@Override
+				public Object call() throws Exception {
+					throw testException;
+				}
+			}, null);
+		} catch (RetryFailedException e) {
+			Assert.assertTrue(testException == e.getCause());
+			Assert.assertTrue(0 == e.getRetryStat().getAlreadyRetryTimes());
+		}
+	}
+
+	/**
+	 * 测试RetryLoop: 重试策略的异常处理
+	 */
+	@Test
+	public void case_RetryLoop_SpecificRetryPolicy() throws InterruptedException {
+		final AtomicReference<Exception> exceptionHolder = new AtomicReference<>();
+		final Exception testException = new Exception();
+		exceptionHolder.set(testException);
+
+		final AtomicInteger exeTimes = new AtomicInteger(0);
+		final Callable<Object> callable = new Callable<Object>() {
+			@Override
+			public Object call() throws Exception {
+				exeTimes.getAndIncrement();
+				throw exceptionHolder.get();
+			}
+		};
+
+		final int maxRetryTimes = 3;
+		final RetryPolicy retryPolicy = new BaseRetryPolicy() {
+			@Override
+			public Boolean handleException(Throwable cause, Callable<?> callable) {
+				//只对testException可继续重试
+				return cause == testException;
+			}
+
+			{
+				setMaxRetryTimes(maxRetryTimes);
+				setRetryDelay(200);
+			}
+		};
+
+		try {
+			RetryLoop.execute(callable, retryPolicy);
+			//call总是抛出异常, 不会重试成功
+			Assert.fail();
+		} catch (RetryFailedException e) {
+			Assert.assertTrue(testException == e.getCause());
+			Assert.assertTrue(maxRetryTimes == e.getRetryStat().getAlreadyRetryTimes());
+			//重试次数比执行次数少1
+			Assert.assertTrue(maxRetryTimes == (exeTimes.get() - 1));
+		}
+
+		Exception newException = new Exception();
+		exceptionHolder.set(newException);//非可重试异常, 将不会重试
+		exeTimes.set(0);
+
+		try {
+			RetryLoop.execute(callable, retryPolicy);
+			Assert.fail();
+		} catch (RetryFailedException e) {
+			Assert.assertTrue(newException == e.getCause());
+			Assert.assertTrue(0 == e.getRetryStat().getAlreadyRetryTimes());
+			Assert.assertTrue(0 == (exeTimes.get() - 1));
+		}
+	}
+
+	/**
+	 * 测试RetryLoop: 重试任务执行成功
+	 */
+	@Test
+	public void case_RetryLoop_CallSuccess() throws InterruptedException {
+		final AtomicInteger exeTimes = new AtomicInteger(0);
+		final AtomicInteger whenCallSuccess = new AtomicInteger(1);
+
+		final Object result = new Object();
+		final Callable<Object> callable = new Callable<Object>() {
+			@Override
+			public Object call() throws Exception {
+				if (exeTimes.incrementAndGet() == whenCallSuccess.get()) {
+					return result;
+				}
+				throw new Exception();
+			}
+		};
+		RetryPolicy retryPolicy = new BaseRetryPolicy() {
+			{
+				setRetryDelay(500);
+				setMaxRetryTimes(3);
+			}
+		};
+
+		try {
+			Assert.assertTrue(result == RetryLoop.execute(callable, retryPolicy));
+			Assert.assertTrue(exeTimes.get() == whenCallSuccess.get());
+		} catch (RetryFailedException e) {
+			Assert.fail();
+		}
+
+		exeTimes.set(0);
+		whenCallSuccess.set(3);
+
+		try {
+			Assert.assertTrue(result == RetryLoop.execute(callable, retryPolicy));
+			Assert.assertTrue(exeTimes.get() == whenCallSuccess.get());
+		} catch (RetryFailedException e) {
+			Assert.fail();
+		}
+
+		exeTimes.set(0);
+		whenCallSuccess.set(5);
+
+		try {
+			RetryLoop.execute(callable, retryPolicy);
+			Assert.fail();
+		} catch (RetryFailedException e) {
+			Assert.assertTrue(e.getRetryStat().getAlreadyRetryTimes() == (exeTimes.get() - 1));
+		}
 	}
 }
