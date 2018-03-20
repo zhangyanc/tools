@@ -86,6 +86,7 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	@Override
 	protected void doStop() throws Exception {
 		eventQueue.clear();
+		multicaster.removeAllListeners();
 		super.doStop();
 	}
 
@@ -290,6 +291,17 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	 */
 	public EventBus<E> multicastExceptionHandler(MulticastExceptionHandler multicastExceptionHandler) {
 		this.multicaster.setExceptionHandler(multicastExceptionHandler);
+		return this;
+	}
+
+	/**
+	 * 添加多个监听器
+	 * @param listeners 监听器
+	 */
+	public EventBus<E> addListeners(EventListener<E>... listeners) {
+		for (EventListener<E> listener : listeners) {
+			addListener(listener);
+		}
 		return this;
 	}
 
