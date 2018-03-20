@@ -5,9 +5,12 @@ import org.apache.zookeeper.data.Stat;
 import pers.zyc.tools.lifecycle.Service;
 import pers.zyc.tools.zkclient.listener.ConnectionListener;
 import pers.zyc.tools.zkclient.listener.ConnectionListenerAdapter;
+import pers.zyc.tools.zkclient.listener.ExistsEventListener;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
@@ -23,6 +26,7 @@ public class ZKClient extends Service implements IZookeeper {
 	private ZKConnector connector;
 	private final ClientConfig config;
 	private final Zookeeper zookeeper = new Zookeeper(this);
+	private ConcurrentMap<String, NodeEventManager> nodeEventManagers = new ConcurrentHashMap<>();
 
 	public ZKClient(ClientConfig config) {
 		this.config = config;
@@ -40,20 +44,22 @@ public class ZKClient extends Service implements IZookeeper {
 		connector = new ZKConnector(config.getConnectStr(), config.getSessionTimeout());
 		connector.start();
 
-		delegate = (IZookeeper) Proxy.newProxyInstance(getClass().getClassLoader(),
-				new Class<?>[] {IZookeeper.class}, zookeeper);
-
-		if (config.isSyncStart() && !connector.isConnected()) {
+		if (config.isSyncStart()) {
 			SyncStartListener syncStartListener = new SyncStartListener();
 			connector.addListener(syncStartListener);
 			try {
-				syncStartListener.latch.await();
+				if (!connector.isConnected()) {
+					syncStartListener.latch.await();
+				}
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
 			} finally {
 				connector.removeListener(syncStartListener);
 			}
 		}
+
+		delegate = (IZookeeper) Proxy.newProxyInstance(getClass().getClassLoader(),
+				new Class<?>[] {IZookeeper.class}, zookeeper);
 	}
 
 	@Override
@@ -87,8 +93,24 @@ public class ZKClient extends Service implements IZookeeper {
 		return connector.isConnected();
 	}
 
-	public void addConnectionListener(ConnectionListener connectionListener) {
+	public void addListener(ConnectionListener connectionListener) {
 		connector.addListener(connectionListener);
+	}
+
+	public void addListener(String path, ExistsEventListener existsEventListener) {
+		NodeEventManager nodeEventManager = nodeEventManagers.get(path);
+		if (nodeEventManager == null) {
+			nodeEventManager = new NodeEventManager(path, this);
+
+			NodeEventManager prev = nodeEventManagers.putIfAbsent(path, nodeEventManager);
+			if (prev != null) {
+				nodeEventManager = prev;
+			} else {
+				nodeEventManager.start();
+			}
+		}
+
+		nodeEventManager.getNodeEventTransfer().addListener(existsEventListener);
 	}
 
 
@@ -161,6 +183,11 @@ public class ZKClient extends Service implements IZookeeper {
 	@Override
 	public byte[] getData(String path, Watcher watcher) throws KeeperException, InterruptedException {
 		return delegate.getData(path, watcher);
+	}
+
+	@Override
+	public byte[] getData(String path, Watcher watcher, Stat stat) throws KeeperException, InterruptedException {
+		return delegate.getData(path, watcher, stat);
 	}
 
 	@Override

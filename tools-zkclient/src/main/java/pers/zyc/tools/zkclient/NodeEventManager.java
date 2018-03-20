@@ -5,87 +5,76 @@ import org.apache.zookeeper.Watcher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.event.EventBus;
-import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.event.MulticastExceptionHandler;
-import pers.zyc.tools.event.Multicaster;
 import pers.zyc.tools.lifecycle.Service;
 import pers.zyc.tools.zkclient.listener.ConnectionListenerAdapter;
-import pers.zyc.tools.zkclient.listener.ExistsEventListener;
-import pers.zyc.tools.zkclient.listener.NodeDataEventListener;
 
 /**
  * @author zhangyancheng
  */
-public class NodeEventManager extends Service {
+class NodeEventManager extends Service {
 	private static final Logger LOGGER = LoggerFactory.getLogger(NodeEventManager.class);
-	private static MulticastExceptionHandler EXCEPTION_HANDLER = new LogMulticastExceptionHandler(LOGGER);
+	static final MulticastExceptionHandler EXCEPTION_HANDLER = new LogMulticastExceptionHandler(LOGGER);
+	static final WatchedEvent START_EVENT = new WatchedEvent(null, null, null);
 
-	/**
-	 * 节点路径
-	 */
-	private final String path;
+	private final ZKClient zkClient;
+	private final ConnectionListener connectionListener = new ConnectionListener();
 
-	private final NodeWatcher nodeWatcher = new NodeWatcher();
-	private final EventBus<WatchedEvent> watchedEventBus = new EventBus<>();
-	private final Multicaster<ExistsEventListener> existsEventMulticaster = new Multicaster<ExistsEventListener>() {};
-	private final Multicaster<NodeDataEventListener> nodeDataEventMulticaster = new Multicaster<NodeDataEventListener>() {};
+	private final NodeEventTransfer nodeEventTransfer;
+	private final EventBus<WatchedEvent> watchedEventBus;
 
-	public NodeEventManager(String path) {
-		this.path = path;
+	NodeEventManager(String path, ZKClient zkClient) {
+		this.zkClient = zkClient;
+
+		nodeEventTransfer = new NodeEventTransfer(path, zkClient, new NodeEventWatcher());
+
+		watchedEventBus = new EventBus<WatchedEvent>().name("NodeEventManager - " + path)
+				.multicastExceptionHandler(EXCEPTION_HANDLER).addListeners(nodeEventTransfer);
 	}
 
 	@Override
 	protected void doStart() {
-		watchedEventBus.name("NodeEventManager - " + path);
-		watchedEventBus.multicastExceptionHandler(EXCEPTION_HANDLER);
-		watchedEventBus.addListener(new WatchedEventListener());
 		watchedEventBus.start();
-
-		existsEventMulticaster.setExceptionHandler(EXCEPTION_HANDLER);
-		existsEventMulticaster.setExceptionHandler(EXCEPTION_HANDLER);
+		zkClient.addListener(connectionListener);
+		if (zkClient.isConnected()) {
+			watchedEventBus.offer(START_EVENT);
+		}
 	}
 
 	@Override
 	protected void doStop() throws Exception {
-
+		watchedEventBus.stop();
 	}
 
-	private class ConnectionListener extends ConnectionListenerAdapter {
-		@Override
-		public void onConnected() {
-
-		}
-	}
-
-	private class WatchedEventListener implements EventListener<WatchedEvent> {
-
-		@Override
-		public void onEvent(WatchedEvent event) {
-
-		}
-	}
-
-	private class NodeWatcher implements Watcher {
+	private class NodeEventWatcher implements Watcher {
 
 		@Override
 		public void process(WatchedEvent event) {
-			watchedEventBus.offer(event);
+			if (event.getPath() != null) {
+				watchedEventBus.offer(event);
+			}
 		}
 	}
 
-	public void addListener(ExistsEventListener existsEventListener) {
-		existsEventMulticaster.addListener(existsEventListener);
+	private class ConnectionListener extends ConnectionListenerAdapter {
+
+		@Override
+		public void onConnected() {
+			watchedEventBus.offer(START_EVENT);
+		}
+
+		@Override
+		public void onReconnected() {
+			watchedEventBus.offer(START_EVENT);
+		}
+
+		@Override
+		public void onSessionClosed() {
+			nodeEventTransfer.allResetWatch();
+		}
 	}
 
-	public void removeListener(ExistsEventListener existsEventListener) {
-		existsEventMulticaster.removeListener(existsEventListener);
-	}
-
-	public void addListener(NodeDataEventListener nodeDataEventListener) {
-		nodeDataEventMulticaster.addListener(nodeDataEventListener);
-	}
-
-	public void removeListener(NodeDataEventListener nodeDataEventListener) {
-		nodeDataEventMulticaster.removeListener(nodeDataEventListener);
+	NodeEventTransfer getNodeEventTransfer() {
+		return nodeEventTransfer;
 	}
 }
