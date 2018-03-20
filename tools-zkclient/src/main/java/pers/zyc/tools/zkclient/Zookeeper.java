@@ -32,7 +32,7 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 	/**
 	 * 提供读写锁控制, 在操作ZooKeeper时禁止关闭客户端
 	 */
-	private ZKClient zkClient;
+	private final ZKClient zkClient;
 	/**
 	 * 重试策略
 	 */
@@ -41,7 +41,7 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 	Zookeeper(ZKClient zkClient) {
 		this.zkClient = zkClient;
 		//添加连接监听器, 用于连通时唤醒可能存在的重试等待线程
-		zkClient.addConnectionListener(new ConnectionListener());
+		zkClient.addListener(new ConnectionListener());
 
 		ClientConfig config = zkClient.getConfig();
 		if (config.isUseRetry()) {
@@ -102,6 +102,9 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 		}
 	}
 
+	/**
+	 * 重试检查条件, 检查是否连接成功
+	 */
 	private class ConnectedRetryCondition implements RetryCondition {
 
 		@Override
@@ -115,6 +118,9 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 		}
 	}
 
+	/**
+	 * 重试策略, 等待连接成功后重试
+	 */
 	private class AwaitConnectedRetryPolicy extends ConditionalRetryPolicy {
 
 		AwaitConnectedRetryPolicy(RetryCondition retryCondition) {
@@ -124,10 +130,14 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 		@Override
 		public Boolean handleException(Throwable cause, Callable<?> callable) {
 			LOGGER.error("Call error!", cause);
+			/*
+			 * retry callable通过反射调用zookeeper, 需要判断zookeeper api调用异常.
+			 * 当且仅当发生了KeeperException且为连接异常才进行重试
+			 */
 			if (cause instanceof InvocationTargetException) {
 				Throwable throwable = ((InvocationTargetException) cause).getTargetException();
 				return throwable instanceof KeeperException &&
-						(throwable instanceof ConnectionLossException ||
+							   (throwable instanceof ConnectionLossException ||
 								throwable instanceof OperationTimeoutException ||
 								throwable instanceof SessionExpiredException ||
 								throwable instanceof SessionMovedException);
@@ -192,6 +202,11 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 	@Override
 	public byte[] getData(String path, Watcher watcher) throws KeeperException, InterruptedException {
 		return zooKeeper.getData(path, watcher, null);
+	}
+
+	@Override
+	public byte[] getData(String path, Watcher watcher, Stat stat) throws KeeperException, InterruptedException {
+		return zooKeeper.getData(path, watcher, stat);
 	}
 
 	@Override

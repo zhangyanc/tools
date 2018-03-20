@@ -21,6 +21,7 @@ interface IZookeeper {
 	void exists(String path, Watcher watcher, StatCallback cb, Object ctx);
 	byte[] getData(String path) throws KeeperException, InterruptedException;
 	byte[] getData(String path, Watcher watcher) throws KeeperException, InterruptedException;
+	byte[] getData(String path, Watcher watcher, Stat stat) throws KeeperException, InterruptedException;
 	void getData(String path, Watcher watcher, DataCallback cb, Object ctx);
 	Stat setData(String path, byte[] data, int version) throws KeeperException, InterruptedException;
 	void setData(String path, byte data[], int version, StatCallback cb, Object ctx);
