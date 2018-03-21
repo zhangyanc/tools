@@ -162,6 +162,7 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 			if (zooKeeper == null) {
 				try {
 					zooKeeper = new ZooKeeper(connectStr, sessionTimeout, connectionWatcher);
+					LOGGER.info("ZooKeeper instance created!");
 				} catch (IOException e) {
 					throw new RuntimeException("New ZooKeeper instance error!", e);
 				}
@@ -172,7 +173,7 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 				//等待新事件
 				timeout = incomeEventCondition.awaitNanos(timeout);
 			}
-			Watcher.Event.KeeperState incomeState = this.incomeState;
+			final Watcher.Event.KeeperState incomeState = this.incomeState;
 			//清空incomeState(如果有的话), 表示此轮已经消费
 			this.incomeState = null;
 
@@ -180,49 +181,41 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 			 * 状态判断分以下情况:
 			 *      1. 未收到事件且当前状态为空, 表示当前ZooKeeper尚未连通过, 无需发布事件继续等待连接
 			 *      1. 未收到事件且当前处于连通状态, 表示正常连通无需发布事件
-			 *      2. 收到SyncConnected事件, 判断是否是同一个ZooKeeper实例重连成功, 发布connected或者reconnected事件
-			 *      3. 收到Disconnected事件, 发布suspend事件, 然后等待ZooKeeper的自动重连
-			 *      4. 其他均为错误(未支持)状态, 主动关闭ZooKeeper, 发布会话关闭事件
+			 *      2. 收到SyncConnected事件, 判断是否是同一个ZooKeeper实例重连成功, 发布connected并指示是否为新会话
+			 *      3. 收到Disconnected事件, 发布Disconnected事件, 然后等待ZooKeeper的自动重连
+			 *      4. 其他均为错误(未支持)状态, 主动关闭ZooKeeper, 发布会话Disconnected事件, 并指示session 关闭
 			 */
 			if (incomeState == null &&
 			   (currentState == null || currentState == SyncConnected)) {
 				return;
 			}
-			LOGGER.info("Processing income state: {}, session id: {}", incomeState, zooKeeperSessionId);
-			if (incomeState == SyncConnected) {
-				publisher = zooKeeperSessionId == zooKeeper.getSessionId() ? new Publisher() {
-					@Override
-					public void publish() throws InterruptedException {
-						multicaster.listeners.onReconnected();
+			LOGGER.info("Prepare to publish event, income state: {}, session id: 0x{}",
+					incomeState, Long.toHexString(zooKeeperSessionId));
+			publisher = new Publisher() {
+				@Override
+				public void publish() throws InterruptedException {
+					if (incomeState == SyncConnected) {
+						boolean newSession = zooKeeperSessionId != zooKeeper.getSessionId();
+						if (newSession) {
+							//更新协商后真正的超时时间
+							eventWaitTimeout = zooKeeper.getSessionTimeout();
+							//保存新会话id, 用于收到SyncConnected后判断是否为新会话
+							zooKeeperSessionId = zooKeeper.getSessionId();
+						}
+						multicaster.listeners.onConnected(newSession);
+					} else {
+						/*
+						 * 断连后只需要等待自动重连,
+						 * 如果下轮未收到事件(SyncConnected), 则在ZooKeeper Server端实际上已经会话超时了
+						 */
+						boolean sessionClosed = incomeState != Disconnected;
+						if (sessionClosed) {
+							closeZooKeeper();
+						}
+						multicaster.listeners.onDisconnected(sessionClosed);
 					}
-				} : new Publisher() {
-					@Override
-					public void publish() throws InterruptedException {
-						//更新协商后真正的超时时间
-						eventWaitTimeout = zooKeeper.getSessionTimeout();
-						//保存新会话id, 用于收到SyncConnected后判断是否为新会话
-						zooKeeperSessionId = zooKeeper.getSessionId();
-						multicaster.listeners.onConnected();
-					}
-				};
-			} else {
-				/*
-				 * 断连后只需要等待自动重连,
-				 * 如果下轮未收到事件(SyncConnected), 则在ZooKeeper Server端实际上已经会话超时了
-				 */
-				publisher = incomeState == Disconnected ? new Publisher() {
-					@Override
-					public void publish() throws InterruptedException {
-						multicaster.listeners.onSuspend();
-					}
-				} : new Publisher() {
-					@Override
-					public void publish() throws InterruptedException {
-						closeZooKeeper();
-						multicaster.listeners.onSessionClosed();
-					}
-				};
-			}
+				}
+			};
 		} finally {
 			serviceLock.unlock();
 		}

@@ -59,18 +59,15 @@ class NodeEventManager extends Service {
 	private class ConnectionListener extends ConnectionListenerAdapter {
 
 		@Override
-		public void onConnected() {
+		public void onConnected(boolean newSession) {
 			watchedEventBus.offer(START_EVENT);
 		}
 
 		@Override
-		public void onReconnected() {
-			watchedEventBus.offer(START_EVENT);
-		}
-
-		@Override
-		public void onSessionClosed() {
-			nodeEventTransfer.allResetWatch();
+		public void onDisconnected(boolean sessionClosed) {
+			if (sessionClosed) {
+				nodeEventTransfer.allResetWatch();
+			}
 		}
 	}
 

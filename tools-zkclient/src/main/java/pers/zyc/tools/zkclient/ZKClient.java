@@ -72,15 +72,11 @@ public class ZKClient extends Service implements IZookeeper {
 	}
 
 	private class SyncStartListener extends ConnectionListenerAdapter {
+
 		CountDownLatch latch = new CountDownLatch(1);
 
 		@Override
-		public void onConnected() {
-			latch.countDown();
-		}
-
-		@Override
-		public void onReconnected() {
+		public void onConnected(boolean newSession) {
 			latch.countDown();
 		}
 	}

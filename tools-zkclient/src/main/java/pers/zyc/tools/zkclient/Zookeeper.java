@@ -87,14 +87,12 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 	 * 连接事件监听器, 当连接或者重连成功时更新ZooKeeper并唤醒重试等待线程
 	 */
 	private class ConnectionListener extends ConnectionListenerAdapter {
-		@Override
-		public void onConnected() {
-			zooKeeper = zkClient.getZooKeeper();
-			onReconnected();
-		}
 
 		@Override
-		public void onReconnected() {
+		public void onConnected(boolean newSession) {
+			if (newSession) {
+				zooKeeper = zkClient.getZooKeeper();
+			}
 			synchronized (Zookeeper.this) {
 				//唤醒所有的重试等待线程
 				Zookeeper.this.notifyAll();

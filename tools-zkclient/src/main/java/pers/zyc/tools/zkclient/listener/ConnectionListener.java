@@ -6,23 +6,18 @@ import pers.zyc.tools.event.Listener;
  * @author zhangyancheng
  */
 public interface ConnectionListener extends Listener {
-    /**
-     * 连接成功, 新的ZooKeeper实例连接成功
-     */
-    void onConnected();
 
-    /**
-     * 重连成功(由suspend状态恢复)
-     */
-    void onReconnected();
+	/**
+	 * 当连接连通时回调
+	 *
+	 * @param newSession 是否为新会话, 区分是否为同一个ZooKeeper实例自动重连成功
+	 */
+	void onConnected(boolean newSession);
 
-    /**
-     * 断线, 相当于Disconnected
-     */
-    void onSuspend();
-
-    /**
-     * 会话超时被关闭
-     */
-    void onSessionClosed();
+	/**
+	 * 当连接断开时回调
+	 *
+	 * @param sessionClosed 会话是否关闭了(会话超时)
+	 */
+	void onDisconnected(boolean sessionClosed);
 }
