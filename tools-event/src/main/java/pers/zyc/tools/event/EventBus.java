@@ -34,18 +34,13 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	private long internalPollTimeout = 1000;
 
 	/**
-	 * 事件队列长度, 默认或者设置的值不大0, 将创建无界队列(Linked)否则为有界队列(Array)
-	 */
-	private int eventQueueCapacity;
-
-	/**
 	 * 上次事件事件, 用于计算是否空闲
 	 */
 	private long lastEventTime;
 	/**
-	 * 事件队列, 如果队列满则阻塞add线程
+	 * 事件队列
 	 */
-	private BlockingQueue<Ownership> eventQueue;
+	private BlockingQueue<Ownership> eventQueue = new LinkedBlockingDeque<>();
 	
 	/**
 	 * 保存onEvent的方法引用, 用于出错处理
@@ -74,11 +69,6 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 
 	@Override
 	protected void doStart() {
-		if (eventQueueCapacity > 0) {
-			eventQueue = new ArrayBlockingQueue<>(eventQueueCapacity);
-		} else {
-			eventQueue = new LinkedBlockingDeque<>();
-		}
 		lastEventTime = TimeMillis.get();
 		super.doStart();
 	}
@@ -244,7 +234,9 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	 * @param eventQueueCapacity 事件队列容量, 默认为无界队列
 	 */
 	public EventBus<E> eventQueueCapacity(int eventQueueCapacity) {
-		this.eventQueueCapacity = eventQueueCapacity;
+		if (eventQueueCapacity > 0) {
+			this.eventQueue = new ArrayBlockingQueue<>(eventQueueCapacity);
+		}
 		return this;
 	}
 
@@ -298,6 +290,7 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	 * 添加多个监听器
 	 * @param listeners 监听器
 	 */
+	@SuppressWarnings("unchecked")
 	public EventBus<E> addListeners(EventListener<E>... listeners) {
 		for (EventListener<E> listener : listeners) {
 			addListener(listener);
