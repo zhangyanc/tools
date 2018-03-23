@@ -1,21 +1,23 @@
 package pers.zyc.tools.zkclient;
 
+import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.event.EventListener;
+import pers.zyc.tools.event.Listenable;
 import pers.zyc.tools.event.Multicaster;
+import pers.zyc.tools.utils.Pair;
 import pers.zyc.tools.zkclient.listener.ChildrenListener;
+import pers.zyc.tools.zkclient.listener.DataEventListener;
 import pers.zyc.tools.zkclient.listener.ExistsEventListener;
-import pers.zyc.tools.zkclient.listener.NodeDataEventListener;
-import pers.zyc.tools.zkclient.listener.NodeListener;
+import pers.zyc.tools.zkclient.listener.NodeEventListener;
 
 import java.util.Arrays;
 import java.util.List;
-
-import static org.apache.zookeeper.Watcher.Event.EventType;
+import java.util.Objects;
 
 /**
  * @author zhangyancheng
@@ -29,6 +31,7 @@ class NodeEventTransfer implements EventListener<WatchedEvent> {
 	private final ExistsTransfer existsTransfer = new ExistsTransfer();
 	private final DataTransfer dataTransfer = new DataTransfer();
 	private final ChildrenTransfer childrenTransfer = new ChildrenTransfer();
+	private boolean nodeExists = false;
 
 	NodeEventTransfer(String path, ZKClient zkClient, Watcher watcher) {
 		this.path = path;
@@ -38,142 +41,185 @@ class NodeEventTransfer implements EventListener<WatchedEvent> {
 
 	@Override
 	public void onEvent(WatchedEvent event) {
-		if (event == NodeEventManager.START_EVENT) {
+		if (event == NodeEventManager.CHECK_WATCH_EVENT) {
 			allWatch();
 			return;
 		}
 
-		EventType eventType = event.getType();
-		switch (eventType) {
+		switch (event.getType()) {
 			case NodeCreated:
 			case NodeDeleted:
-				existsTransfer.watch(true);
+				allWatch();
 				break;
 			case NodeDataChanged:
+				dataTransfer.watch();
 				break;
 			case NodeChildrenChanged:
+				childrenTransfer.watch();
 				break;
 			default:
-				throw new RuntimeException("Unexpected type: " + eventType);
+				throw new Error("Error type!");
 		}
 	}
 
 	private void allWatch() {
-		if (!existsTransfer.watched) {
-			existsTransfer.watch(false);
-		}
-		if (!dataTransfer.watched) {
-			dataTransfer.watch(false);
-		}
-		if (!childrenTransfer.watched) {
-			childrenTransfer.watch(false);
-		}
+		existsTransfer.watch();
+		dataTransfer.watch();
+		childrenTransfer.watch();
 	}
 
-	void allResetWatch() {
-		existsTransfer.watched = false;
-		dataTransfer.watched = false;
-		childrenTransfer.watched = false;
-	}
-
-	private abstract class EventTransfer<D, L extends NodeListener> {
+	abstract class EventTransfer<D, L extends NodeEventListener> implements Listenable<L> {
 		D data;
-		boolean watched;
 		Multicaster<L> multicaster;
+		/**
+		 * 首次注册监听, 无法判断"变更"不发布事件
+		 */
+		boolean firstWatch = true;
 
 		EventTransfer(Multicaster<L> multicaster) {
 			this.multicaster = multicaster;
 			multicaster.setExceptionHandler(NodeEventManager.EXCEPTION_HANDLER);
 		}
 
-		void watch(boolean reWatch) {
+		void watch() {
 			try {
-				doWatch(reWatch);
-				watched = true;
+				doWatch();
+				if (firstWatch) {
+					firstWatch = false;
+				}
 			} catch (Exception e) {
-				watched = false;
 				LOGGER.error("Add watcher error, path: " + path, e);
+
 				if (e instanceof InterruptedException) {
 					Thread.currentThread().interrupt();
+					return;
+				}
+
+				if (e instanceof KeeperException.NoNodeException) {
+					nodeExists = false;
 				}
 			}
 		}
 
-		protected abstract void doWatch(boolean fromWatcher) throws Exception;
+		@Override
+		public void addListener(L listener) {
+			multicaster.addListener(listener);
+		}
+
+		@Override
+		public void removeListener(L listener) {
+			multicaster.removeListener(listener);
+		}
+
+		protected abstract void doWatch() throws Exception;
 	}
 
-	private class ExistsTransfer extends EventTransfer<Stat, ExistsEventListener> {
+	class ExistsTransfer extends EventTransfer<Stat, ExistsEventListener> {
 
 		ExistsTransfer() {
 			super(new Multicaster<ExistsEventListener>() {});
 		}
 
 		@Override
-		protected void doWatch(boolean reWatch) throws Exception {
+		protected void doWatch() throws Exception {
 			Stat oldStat = data;
 			data = zkClient.exists(path, watcher);
-			if (!reWatch) {
+			nodeExists = data != null;
+
+			if (firstWatch) {
 				return;
 			}
-			//比较数据变换后发布事件
 			if (data != null && oldStat == null) {
 				multicaster.listeners.onNodeCreated(path, data);
 			}
 			if (data == null && oldStat != null) {
-				multicaster.listeners.onNodeDeleted();
-			}
-			if (data != null && oldStat != null && !data.equals(oldStat)) {
-				dataTransfer.multicaster.listeners.onStatChanged(data);
+				multicaster.listeners.onNodeDeleted(path);
 			}
 		}
 	}
 
-	private class DataTransfer extends EventTransfer<byte[], NodeDataEventListener> {
+	class DataTransfer extends EventTransfer<DataTransfer.PathData, DataEventListener> {
 
 		DataTransfer() {
-			super(new Multicaster<NodeDataEventListener>() {});
+			super(new Multicaster<DataEventListener>() {});
 		}
 
 		@Override
-		protected void doWatch(boolean reWatch) throws Exception {
-			byte[] oldData = data;
-			data = zkClient.getData(path, watcher);
-			if (!reWatch) {
+		protected void doWatch() throws Exception {
+			if (!nodeExists) {
 				return;
 			}
 
-			if (!Arrays.equals(data, oldData)) {
-				System.arraycopy(data, 0, oldData, 0, data.length);
-				multicaster.listeners.onDataChanged(oldData);
+			PathData oldData = data;
+			Stat stat = new Stat();
+			byte[] pathData = zkClient.getData(path, watcher, stat);
+			data = new PathData(stat, pathData);
+
+			if (firstWatch) {
+				return;
+			}
+			if (!data.equals(oldData)) {
+				multicaster.listeners.onDataChanged(path, stat, pathData);
 			}
 		}
+
+
+		class PathData extends Pair<Stat, byte[]> {
+
+			PathData(Stat stat, byte[] data) {
+				key(Objects.requireNonNull(stat));
+				value(Objects.requireNonNull(data));
+			}
+
+			@Override
+			public boolean equals(Object obj) {
+				if (obj == this) {
+					return true;
+				}
+
+				if (!(obj instanceof PathData)) {
+					return false;
+				}
+
+				PathData pathData = (PathData) obj;
+				return key().equals(pathData.key()) && Arrays.equals(value(), pathData.value());
+			}
+		}
+
 	}
 
-	private class ChildrenTransfer extends EventTransfer<List<String>, ChildrenListener> {
+	class ChildrenTransfer extends EventTransfer<List<String>, ChildrenListener> {
 
 		ChildrenTransfer() {
 			super(new Multicaster<ChildrenListener>() {});
 		}
 
 		@Override
-		protected void doWatch(boolean reWatch) throws Exception {
+		protected void doWatch() throws Exception {
+			if (!nodeExists) {
+				return;
+			}
+			List<String> oldData = data;
+			data = zkClient.getChildren(path, watcher);
 
+			if (firstWatch) {
+				return;
+			}
+			if (!data.equals(oldData)) {
+				multicaster.listeners.onChildrenChanged(path, data);
+			}
 		}
 	}
 
-	public void addListener(ExistsEventListener existsEventListener) {
-		existsTransfer.multicaster.addListener(existsEventListener);
+	ExistsTransfer getExistsTransfer() {
+		return existsTransfer;
 	}
 
-	public void removeListener(ExistsEventListener existsEventListener) {
-		existsTransfer.multicaster.removeListener(existsEventListener);
+	DataTransfer getDataTransfer() {
+		return dataTransfer;
 	}
 
-	public void addListener(NodeDataEventListener nodeDataEventListener) {
-		dataTransfer.multicaster.addListener(nodeDataEventListener);
-	}
-
-	public void removeListener(NodeDataEventListener nodeDataEventListener) {
-		dataTransfer.multicaster.removeListener(nodeDataEventListener);
+	ChildrenTransfer getChildrenTransfer() {
+		return childrenTransfer;
 	}
 }

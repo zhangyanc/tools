@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * @author zhangyancheng
  */
-public interface ChildrenListener extends NodeListener {
+public interface ChildrenListener extends NodeEventListener {
 
 	void onChildrenChanged(String path, List<String> children);
 }

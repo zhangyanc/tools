@@ -3,9 +3,7 @@ package pers.zyc.tools.zkclient;
 import org.apache.zookeeper.*;
 import org.apache.zookeeper.data.Stat;
 import pers.zyc.tools.lifecycle.Service;
-import pers.zyc.tools.zkclient.listener.ConnectionListener;
-import pers.zyc.tools.zkclient.listener.ConnectionListenerAdapter;
-import pers.zyc.tools.zkclient.listener.ExistsEventListener;
+import pers.zyc.tools.zkclient.listener.*;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
@@ -21,11 +19,14 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 public class ZKClient extends Service implements IZookeeper {
 
+	static {
+		System.setProperty("zookeeper.disableAutoWatchReset", "true");
+	}
+
 	Lock readLock;
 	private IZookeeper delegate;
 	private ZKConnector connector;
 	private final ClientConfig config;
-	private final Zookeeper zookeeper = new Zookeeper(this);
 	private ConcurrentMap<String, NodeEventManager> nodeEventManagers = new ConcurrentHashMap<>();
 
 	public ZKClient(ClientConfig config) {
@@ -59,7 +60,7 @@ public class ZKClient extends Service implements IZookeeper {
 		}
 
 		delegate = (IZookeeper) Proxy.newProxyInstance(getClass().getClassLoader(),
-				new Class<?>[] {IZookeeper.class}, zookeeper);
+				new Class<?>[] {IZookeeper.class}, new Zookeeper(this));
 	}
 
 	@Override
@@ -93,7 +94,7 @@ public class ZKClient extends Service implements IZookeeper {
 		connector.addListener(connectionListener);
 	}
 
-	public void addListener(String path, ExistsEventListener existsEventListener) {
+	private NodeEventManager getNodeEventManager(String path) {
 		NodeEventManager nodeEventManager = nodeEventManagers.get(path);
 		if (nodeEventManager == null) {
 			nodeEventManager = new NodeEventManager(path, this);
@@ -105,26 +106,41 @@ public class ZKClient extends Service implements IZookeeper {
 				nodeEventManager.start();
 			}
 		}
-
-		nodeEventManager.getNodeEventTransfer().addListener(existsEventListener);
+		return nodeEventManager;
 	}
 
+	public void addListener(String path, ExistsEventListener existsEventListener) {
+		getNodeEventManager(path).getNodeEventTransfer().getExistsTransfer().addListener(existsEventListener);
+	}
 
+	public void addListener(String path, DataEventListener dataEventListener) {
+		getNodeEventManager(path).getNodeEventTransfer().getDataTransfer().addListener(dataEventListener);
+	}
 
+	public void addListener(String path, ChildrenListener childrenListener) {
+		getNodeEventManager(path).getNodeEventTransfer().getChildrenTransfer().addListener(childrenListener);
+	}
 
+	public void removeListener(String path, ExistsEventListener existsEventListener) {
+		NodeEventManager nodeEventManager = nodeEventManagers.get(path);
+		if (nodeEventManager != null) {
+			nodeEventManager.getNodeEventTransfer().getExistsTransfer().removeListener(existsEventListener);
+		}
+	}
 
+	public void removeListener(String path, DataEventListener dataEventListener) {
+		NodeEventManager nodeEventManager = nodeEventManagers.get(path);
+		if (nodeEventManager != null) {
+			nodeEventManager.getNodeEventTransfer().getDataTransfer().removeListener(dataEventListener);
+		}
+	}
 
-
-
-
-
-
-
-
-
-
-
-
+	public void removeListener(String path, ChildrenListener childrenListener) {
+		NodeEventManager nodeEventManager = nodeEventManagers.get(path);
+		if (nodeEventManager != null) {
+			nodeEventManager.getNodeEventTransfer().getChildrenTransfer().removeListener(childrenListener);
+		}
+	}
 
 	@Override
 	public String createPersistent(String path, byte[] data, boolean sequential) throws KeeperException, InterruptedException {

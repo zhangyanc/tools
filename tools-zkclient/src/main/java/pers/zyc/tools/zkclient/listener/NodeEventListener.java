@@ -5,5 +5,5 @@ import pers.zyc.tools.event.Listener;
 /**
  * @author zhangyancheng
  */
-public interface NodeListener extends Listener {
+public interface NodeEventListener extends Listener {
 }
