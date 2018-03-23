@@ -4,7 +4,7 @@ package pers.zyc.tools.zkclient;
  * @author zhangyancheng
  */
 public class ClientConfig {
-	private String connectStr;
+	private String connectStr = "localhost:2181";
 	private int sessionTimeout = 30000;
 	private boolean canByReadOnly;
 	private boolean syncStart;
