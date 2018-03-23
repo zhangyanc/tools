@@ -62,7 +62,7 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 
 				@Override
 				public Object call() throws Exception {
-					return method.invoke(this, args);
+					return method.invoke(Zookeeper.this, args);
 				}
 			}, retryPolicy);
 		} catch (InterruptedException interrupted) {
