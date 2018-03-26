@@ -29,10 +29,12 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 	 * 原生ZooKeeper实例, ZKClient所有的对ZooKeeper的操作都由此完成
 	 */
 	private ZooKeeper zooKeeper;
+
 	/**
 	 * 提供读写锁控制, 在操作ZooKeeper时禁止关闭客户端
 	 */
 	private final ZKClient zkClient;
+
 	/**
 	 * 重试策略
 	 */
@@ -154,14 +156,6 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 
 	@Override
 	public String createEphemeral(String path, byte[] data, boolean sequential) throws
-			KeeperException, InterruptedException {
-
-		return zooKeeper.create(path, Objects.requireNonNull(data),
-				ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.fromFlag(sequential ? 3 : 1));
-	}
-
-	@Override
-	public String createLive(String path, byte[] data, boolean sequential) throws
 			KeeperException, InterruptedException {
 
 		return zooKeeper.create(path, Objects.requireNonNull(data),

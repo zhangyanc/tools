@@ -26,8 +26,10 @@ public class ZKClient extends Service implements IZookeeper {
 	Lock readLock;
 	private IZookeeper delegate;
 	private ZKConnector connector;
+	private LiveNodeReCreator liveNodeReCreator;
+
 	private final ClientConfig config;
-	private ConcurrentMap<String, NodeEventManager> nodeEventManagers = new ConcurrentHashMap<>();
+	private final ConcurrentMap<String, NodeEventReactor> nodeEventManagers = new ConcurrentHashMap<>();
 
 	public ZKClient(ClientConfig config) {
 		this.config = config;
@@ -61,6 +63,8 @@ public class ZKClient extends Service implements IZookeeper {
 
 		delegate = (IZookeeper) Proxy.newProxyInstance(getClass().getClassLoader(),
 				new Class<?>[] {IZookeeper.class}, new Zookeeper(this));
+
+		liveNodeReCreator = new LiveNodeReCreator(this);
 	}
 
 	@Override
@@ -94,67 +98,89 @@ public class ZKClient extends Service implements IZookeeper {
 		connector.addListener(connectionListener);
 	}
 
-	private NodeEventManager getNodeEventManager(String path) {
-		NodeEventManager nodeEventManager = nodeEventManagers.get(path);
-		if (nodeEventManager == null) {
-			nodeEventManager = new NodeEventManager(path, this);
+	private NodeEventReactor getNodeEventManager(String path) {
+		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
+		if (nodeEventReactor == null) {
+			nodeEventReactor = new NodeEventReactor(path, this);
 
-			NodeEventManager prev = nodeEventManagers.putIfAbsent(path, nodeEventManager);
+			NodeEventReactor prev = nodeEventManagers.putIfAbsent(path, nodeEventReactor);
 			if (prev != null) {
-				nodeEventManager = prev;
+				nodeEventReactor = prev;
 			} else {
-				nodeEventManager.start();
+				nodeEventReactor.start();
 			}
 		}
-		return nodeEventManager;
+		return nodeEventReactor;
 	}
 
 	public void addListener(String path, ExistsEventListener existsEventListener) {
-		getNodeEventManager(path).getNodeEventTransfer().getExistsTransfer().addListener(existsEventListener);
+		getNodeEventManager(path).existsReWatcher.addListener(existsEventListener);
 	}
 
 	public void addListener(String path, DataEventListener dataEventListener) {
-		getNodeEventManager(path).getNodeEventTransfer().getDataTransfer().addListener(dataEventListener);
+		getNodeEventManager(path).dataReWatcher.addListener(dataEventListener);
 	}
 
 	public void addListener(String path, ChildrenListener childrenListener) {
-		getNodeEventManager(path).getNodeEventTransfer().getChildrenTransfer().addListener(childrenListener);
+		getNodeEventManager(path).childrenReWatcher.addListener(childrenListener);
 	}
 
 	public void removeListener(String path, ExistsEventListener existsEventListener) {
-		NodeEventManager nodeEventManager = nodeEventManagers.get(path);
-		if (nodeEventManager != null) {
-			nodeEventManager.getNodeEventTransfer().getExistsTransfer().removeListener(existsEventListener);
+		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
+		if (nodeEventReactor != null) {
+			nodeEventReactor.existsReWatcher.removeListener(existsEventListener);
 		}
 	}
 
 	public void removeListener(String path, DataEventListener dataEventListener) {
-		NodeEventManager nodeEventManager = nodeEventManagers.get(path);
-		if (nodeEventManager != null) {
-			nodeEventManager.getNodeEventTransfer().getDataTransfer().removeListener(dataEventListener);
+		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
+		if (nodeEventReactor != null) {
+			nodeEventReactor.dataReWatcher.removeListener(dataEventListener);
 		}
 	}
 
 	public void removeListener(String path, ChildrenListener childrenListener) {
-		NodeEventManager nodeEventManager = nodeEventManagers.get(path);
-		if (nodeEventManager != null) {
-			nodeEventManager.getNodeEventTransfer().getChildrenTransfer().removeListener(childrenListener);
+		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
+		if (nodeEventReactor != null) {
+			nodeEventReactor.childrenReWatcher.removeListener(childrenListener);
 		}
 	}
 
 	@Override
-	public String createPersistent(String path, byte[] data, boolean sequential) throws KeeperException, InterruptedException {
+	public String createPersistent(String path, byte[] data, boolean sequential) throws
+			KeeperException, InterruptedException {
+
 		return delegate.createPersistent(path, data, sequential);
 	}
 
 	@Override
-	public String createEphemeral(String path, byte[] data, boolean sequential) throws KeeperException, InterruptedException {
+	public String createEphemeral(String path, byte[] data, boolean sequential) throws
+			KeeperException, InterruptedException {
+
 		return delegate.createEphemeral(path, data, sequential);
 	}
 
-	@Override
-	public String createLive(String path, byte[] data, boolean sequential, RecreationListener recreationListener) throws KeeperException, InterruptedException {
-		return delegate.createEphemeral(path, data, sequential);
+	/**
+	 * 添加存活节点, 重建会话时重建此临时节点(节点被手动删除时不会重建)
+	 *
+	 * @param path 节点路径
+	 * @param data 节点数据
+	 * @param sequential 是否为顺序节点
+	 * @param recreateListener 重建监听器, 如果为null则不发布重建事件
+	 * @return actual path
+	 * @throws KeeperException ZooKeeper异常
+	 * @throws InterruptedException 线程中断
+	 */
+	public String createLive(String path, byte[] data, boolean sequential, RecreateListener recreateListener) throws
+			KeeperException, InterruptedException {
+
+		String retPath = delegate.createEphemeral(path, data, sequential);
+		liveNodeReCreator.add(path, data, sequential, recreateListener);
+		return retPath;
+	}
+
+	public void removeLive(String path) {
+		liveNodeReCreator.remove(path);
 	}
 
 	@Override
