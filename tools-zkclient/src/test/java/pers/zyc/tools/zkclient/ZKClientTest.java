@@ -95,11 +95,19 @@ public class ZKClientTest {
 		Assert.assertTrue(events.get() == 5);
 	}
 
+	/**
+	 * 测试存在监听器
+	 *
+	 *
+	 */
 	@Test
-	public void case_existsListener() throws InterruptedException {
-		createZKClient(new ClientConfig());
-		zkClient.start();
+	public void case_existsListener1() throws InterruptedException {
 		zkSwitch.open();
+		ClientConfig clientConfig = new ClientConfig();
+		clientConfig.setSyncStart(true);
+		createZKClient(clientConfig);
+		zkClient.start();
+
 
 		final CountDownLatch cdl = new CountDownLatch(4);
 
@@ -116,6 +124,8 @@ public class ZKClientTest {
 				cdl.countDown();
 			}
 		});
+
+
 
 		cdl.await();
 	}
