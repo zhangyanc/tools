@@ -8,10 +8,8 @@ import static org.apache.zookeeper.AsyncCallback.*;
 
 interface IZookeeper {
 	String createPersistent(String path, byte[] data, boolean sequential) throws KeeperException, InterruptedException;
-	String createEphemeral(String path, byte[] data, boolean sequential)
-			throws KeeperException, InterruptedException;
-	String createLive(String path, byte[] data, boolean sequential, RecreationListener recreationListener)
-			throws KeeperException, InterruptedException;
+	String createEphemeral(String path, byte[] data, boolean sequential) throws KeeperException, InterruptedException;
+	String createLive(String path, byte[] data, boolean sequential) throws KeeperException, InterruptedException;
 
 	void delete(String path) throws KeeperException, InterruptedException;
 	void delete(String path, int version) throws KeeperException, InterruptedException;

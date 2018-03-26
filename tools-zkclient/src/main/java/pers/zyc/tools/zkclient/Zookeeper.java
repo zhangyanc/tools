@@ -145,19 +145,25 @@ class Zookeeper implements IZookeeper, InvocationHandler {
 	}
 
 	@Override
-	public String createPersistent(String path, byte[] data, boolean sequential) throws KeeperException, InterruptedException {
+	public String createPersistent(String path, byte[] data, boolean sequential) throws
+			KeeperException, InterruptedException {
+
 		return zooKeeper.create(path, Objects.requireNonNull(data),
 				ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.fromFlag(sequential ? 2 : 0));
 	}
 
 	@Override
-	public String createEphemeral(String path, byte[] data, boolean sequential) throws KeeperException, InterruptedException {
+	public String createEphemeral(String path, byte[] data, boolean sequential) throws
+			KeeperException, InterruptedException {
+
 		return zooKeeper.create(path, Objects.requireNonNull(data),
 				ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.fromFlag(sequential ? 3 : 1));
 	}
 
 	@Override
-	public String createLive(String path, byte[] data, boolean sequential, RecreationListener recreationListener) throws KeeperException, InterruptedException {
+	public String createLive(String path, byte[] data, boolean sequential) throws
+			KeeperException, InterruptedException {
+
 		return zooKeeper.create(path, Objects.requireNonNull(data),
 				ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.fromFlag(sequential ? 3 : 1));
 	}
