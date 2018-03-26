@@ -70,6 +70,13 @@ public abstract class Multicaster<L extends Listener> implements Listenable<L> {
 	}
 
 	/**
+	 * @return 当前是否有监听器
+	 */
+	public boolean hasListeners() {
+		return eventListeners.size() > 0;
+	}
+
+	/**
 	 * 清空已添加的所有监听器
 	 */
 	public void removeAllListeners() {
