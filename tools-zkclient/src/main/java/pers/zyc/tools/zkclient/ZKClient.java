@@ -7,6 +7,7 @@ import pers.zyc.tools.zkclient.listener.*;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
@@ -23,16 +24,47 @@ public class ZKClient extends Service implements IZookeeper {
 		System.setProperty("zookeeper.disableAutoWatchReset", "true");
 	}
 
+	/**
+	 * 读锁, 所有
+	 */
 	Lock readLock;
-	private IZookeeper delegate;
-	private ZKConnector connector;
-	private LiveNodeReCreator liveNodeReCreator;
 
+	/**
+	 * 代理IZookeeper操作
+	 */
+	private final IZookeeper delegate;
+
+	/**
+	 * 连接器, 连接状态维护以及发布状态变更事件
+	 */
+	private final ZKConnector connector;
+
+	/**
+	 * 临时节点重建器
+	 */
+	private final EphemeralNodeReCreator ephemeralNodeReCreator;
+
+	/**
+	 * 节点事件发生器集合
+	 */
+	private final ConcurrentMap<String, NodeEventReactor> nodeEventManagers;
+
+	/**
+	 * 客户端配置
+	 */
 	private final ClientConfig config;
-	private final ConcurrentMap<String, NodeEventReactor> nodeEventManagers = new ConcurrentHashMap<>();
 
 	public ZKClient(ClientConfig config) {
 		this.config = config;
+
+		nodeEventManagers = new ConcurrentHashMap<>();
+
+		connector = new ZKConnector(config.getConnectStr(), config.getSessionTimeout());
+
+		delegate = (IZookeeper) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[] {IZookeeper.class},
+				config.isUseRetry() ? new RetryAbleZookeeper(this) : new DefaultZookeeper(this));
+
+		ephemeralNodeReCreator = new EphemeralNodeReCreator(this);
 	}
 
 	@Override
@@ -44,7 +76,6 @@ public class ZKClient extends Service implements IZookeeper {
 
 	@Override
 	protected void doStart() {
-		connector = new ZKConnector(config.getConnectStr(), config.getSessionTimeout());
 		connector.start();
 
 		if (config.isSyncStart()) {
@@ -52,26 +83,27 @@ public class ZKClient extends Service implements IZookeeper {
 			connector.addListener(syncStartListener);
 			try {
 				if (!connector.isConnected()) {
+					//阻塞直到连接到成功
 					syncStartListener.latch.await();
 				}
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
+				throw new ClientException("Interrupted", e);
 			} finally {
 				connector.removeListener(syncStartListener);
 			}
 		}
-
-		delegate = (IZookeeper) Proxy.newProxyInstance(getClass().getClassLoader(),
-				new Class<?>[] {IZookeeper.class}, new Zookeeper(this));
-
-		liveNodeReCreator = new LiveNodeReCreator(this);
 	}
 
 	@Override
 	protected void doStop() throws Exception {
 		connector.stop();
+		nodeEventManagers.clear();
 	}
 
+	/**
+	 * @return 配置信息
+	 */
 	public ClientConfig getConfig() {
 		return config;
 	}
@@ -86,23 +118,48 @@ public class ZKClient extends Service implements IZookeeper {
 		}
 	}
 
+	/**
+	 * @return ZooKeeper实例
+	 */
 	public ZooKeeper getZooKeeper() {
 		return connector.getZooKeeper();
 	}
 
+	/**
+	 * @return 当前是否连通到ZooKeeper Server
+	 */
 	public boolean isConnected() {
 		return connector.isConnected();
 	}
 
+	/**
+	 * 添加连接监听器, 连接状态变更后触发回调
+	 *
+	 * @param connectionListener 连接监听器
+	 */
 	public void addListener(ConnectionListener connectionListener) {
 		connector.addListener(connectionListener);
 	}
 
-	private NodeEventReactor getNodeEventManager(String path) {
+	/**
+	 * 移除连接监听器, 不再触发连接事件回调
+	 *
+	 * @param connectionListener 连接监听器
+	 */
+	public void removeListener(ConnectionListener connectionListener) {
+		connector.removeListener(connectionListener);
+	}
+
+	/**
+	 * 获取节点事件reactor, 如果首次获取则创建并启动reactor
+	 *
+	 * @param path 节点路径
+	 * @return 节点事件reactor
+	 */
+	private NodeEventReactor getNodeEventReactor(String path) {
 		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
 		if (nodeEventReactor == null) {
 			nodeEventReactor = new NodeEventReactor(path, this);
-
 			NodeEventReactor prev = nodeEventManagers.putIfAbsent(path, nodeEventReactor);
 			if (prev != null) {
 				nodeEventReactor = prev;
@@ -113,36 +170,72 @@ public class ZKClient extends Service implements IZookeeper {
 		return nodeEventReactor;
 	}
 
+	/**
+	 * 添加存在监听器, 节点存在状态变更后触发回调
+	 *
+	 * @param path 节点路径
+	 * @param existsEventListener 存在监听器
+	 */
 	public void addListener(String path, ExistsEventListener existsEventListener) {
-		getNodeEventManager(path).existsReWatcher.addListener(existsEventListener);
+		getNodeEventReactor(path).existsEventReactor.addListener(existsEventListener);
 	}
 
+	/**
+	 * 添加节点数据监听器, 节点数据变更后触发回调
+	 *
+	 * @param path 节点路径
+	 * @param dataEventListener 数据监听器
+	 */
 	public void addListener(String path, DataEventListener dataEventListener) {
-		getNodeEventManager(path).dataReWatcher.addListener(dataEventListener);
+		getNodeEventReactor(path).dataEventReactor.addListener(dataEventListener);
 	}
 
+	/**
+	 * 添加子节点监听器, 子节点变更后触发回调
+	 *
+	 * @param path 节点路径
+	 * @param childrenListener 子节点监听器
+	 */
 	public void addListener(String path, ChildrenListener childrenListener) {
-		getNodeEventManager(path).childrenReWatcher.addListener(childrenListener);
+		getNodeEventReactor(path).childrenEventReactor.addListener(childrenListener);
 	}
 
+	/**
+	 * 移除监听器, 不再触发事件回调
+	 *
+	 * @param path 节点路径
+	 * @param existsEventListener 存在监听器
+	 */
 	public void removeListener(String path, ExistsEventListener existsEventListener) {
 		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
 		if (nodeEventReactor != null) {
-			nodeEventReactor.existsReWatcher.removeListener(existsEventListener);
+			nodeEventReactor.existsEventReactor.removeListener(existsEventListener);
 		}
 	}
 
+	/**
+	 * 移除监听器, 不再触发事件回调
+	 *
+	 * @param path 节点路径
+	 * @param dataEventListener 数据监听器
+	 */
 	public void removeListener(String path, DataEventListener dataEventListener) {
 		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
 		if (nodeEventReactor != null) {
-			nodeEventReactor.dataReWatcher.removeListener(dataEventListener);
+			nodeEventReactor.dataEventReactor.removeListener(dataEventListener);
 		}
 	}
 
+	/**
+	 * 移除监听器, 不再触发事件回调
+	 *
+	 * @param path 节点路径
+	 * @param childrenListener 子节点监听器
+	 */
 	public void removeListener(String path, ChildrenListener childrenListener) {
 		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
 		if (nodeEventReactor != null) {
-			nodeEventReactor.childrenReWatcher.removeListener(childrenListener);
+			nodeEventReactor.childrenEventReactor.removeListener(childrenListener);
 		}
 	}
 
@@ -150,18 +243,18 @@ public class ZKClient extends Service implements IZookeeper {
 	public String createPersistent(String path, byte[] data, boolean sequential) throws
 			KeeperException, InterruptedException {
 
-		return delegate.createPersistent(path, data, sequential);
+		return delegate.createPersistent(path, Objects.requireNonNull(data), sequential);
 	}
 
 	@Override
 	public String createEphemeral(String path, byte[] data, boolean sequential) throws
 			KeeperException, InterruptedException {
 
-		return delegate.createEphemeral(path, data, sequential);
+		return delegate.createEphemeral(path, Objects.requireNonNull(data), sequential);
 	}
 
 	/**
-	 * 添加存活节点, 重建会话时重建此临时节点(节点被手动删除时不会重建)
+	 * 创建临时节点, 重建会话时重建此临时节点(节点被手动删除时不会重建)
 	 *
 	 * @param path 节点路径
 	 * @param data 节点数据
@@ -171,16 +264,31 @@ public class ZKClient extends Service implements IZookeeper {
 	 * @throws KeeperException ZooKeeper异常
 	 * @throws InterruptedException 线程中断
 	 */
-	public String createLive(String path, byte[] data, boolean sequential, RecreateListener recreateListener) throws
-			KeeperException, InterruptedException {
+	public String createEphemeral(String path, byte[] data, boolean sequential,
+								  RecreateListener recreateListener) throws KeeperException, InterruptedException {
 
-		String retPath = delegate.createEphemeral(path, data, sequential);
-		liveNodeReCreator.add(path, data, sequential, recreateListener);
+		String retPath = delegate.createEphemeral(path, Objects.requireNonNull(data), sequential);
+		ephemeralNodeReCreator.add(path, data, sequential, recreateListener);
 		return retPath;
 	}
 
-	public void removeLive(String path) {
-		liveNodeReCreator.remove(path);
+	/**
+	 * 更新重建节点的数据(不会立即更新zookeeper节点上的值, 重建节点时更新)
+	 *
+	 * @param path 节点路径
+	 * @param data 节点数据
+	 */
+	public void updateEphemeralData(String path, byte[] data) {
+		ephemeralNodeReCreator.updateData(path, Objects.requireNonNull(data));
+	}
+
+	/**
+	 * 移除临时节点重建(此方法不会删除临时节点, 只是从重建列表中删除, 后续新会话时不再重建此节点)
+	 *
+	 * @param path 临时节点路径
+	 */
+	public void removeEphemeral(String path) {
+		ephemeralNodeReCreator.remove(path);
 	}
 
 	@Override
@@ -235,12 +343,12 @@ public class ZKClient extends Service implements IZookeeper {
 
 	@Override
 	public Stat setData(String path, byte[] data, int version) throws KeeperException, InterruptedException {
-		return delegate.setData(path, data, version);
+		return delegate.setData(path, Objects.requireNonNull(data), version);
 	}
 
 	@Override
 	public void setData(String path, byte[] data, int version, AsyncCallback.StatCallback cb, Object ctx) {
-		delegate.setData(path, data, version, cb, ctx);
+		delegate.setData(path, Objects.requireNonNull(data), version, cb, ctx);
 	}
 
 	@Override

@@ -17,6 +17,8 @@ import java.util.Objects;
 import static org.apache.zookeeper.Watcher.Event.EventType.*;
 
 /**
+ * 节点事件反应器, 通过连续watcher方式实现事件持续监听
+ *
  * @author zhangyancheng
  */
 class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, EventListener<WatchedEvent> {
@@ -43,19 +45,19 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 	private final ZKClient zkClient;
 
 	/**
-	 * 节点存在状态re-watcher, 状态变更(节点新增、删除)后发布事件
+	 * 节点存在状态reactor, 状态变更(节点新增、删除)后发布事件
 	 */
-	final ExistsReWatcher existsReWatcher = new ExistsReWatcher();
+	final ExistsEventReactor existsEventReactor = new ExistsEventReactor();
 
 	/**
-	 * 节点data re-watcher, 数据变更后发布事件
+	 * 节点数据reactor, 数据变更后发布事件
 	 */
-	final DataReWatcher dataReWatcher = new DataReWatcher();
+	final DataEventReactor dataEventReactor = new DataEventReactor();
 
 	/**
-	 * 节点子节点re-watcher, 子节点变更后发布事件
+	 * 节点子节点reactor, 子节点变更后发布事件
 	 */
-	final ChildrenReWatcher childrenReWatcher = new ChildrenReWatcher();
+	final ChildrenEventReactor childrenEventReactor = new ChildrenEventReactor();
 
 	/**
 	 * 使ZooKeeper事件(所有节点watcher接受的WatchedEvent)处理异步化
@@ -65,15 +67,14 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 	NodeEventReactor(String path, ZKClient zkClient) {
 		this.path = path;
 		this.zkClient = zkClient;
+		//注册连接监听器, 重连成功后注册watcher
+		zkClient.addListener(this);
 	}
 
 	@Override
 	public void start() {
-		//注册连接监听器, 重连成功后注册watcher
-		zkClient.addListener(this);
-
 		//设置异步处理线程名、异常处理器、WatchedEvent 处理回调
-		watchedEventBus = new EventBus<WatchedEvent>().name("NodeEventReactor" + path.replace('/', '-'))
+		watchedEventBus = new EventBus<WatchedEvent>().name("NodeEventReactor - " + path)
 				.multicastExceptionHandler(EXCEPTION_HANDLER).addListeners(this);
 
 		if (zkClient.isConnected()) {
@@ -126,20 +127,20 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 			event.getType() == NodeCreated ||
 			event.getType() == NodeDeleted) {
 
-			if (existsReWatcher.reWatch() && existsReWatcher.nodeExists) {
-				dataReWatcher.reWatch();
-				childrenReWatcher.reWatch();
+			if (existsEventReactor.react() && existsEventReactor.nodeExists) {
+				dataEventReactor.react();
+				childrenEventReactor.react();
 			}
 		} else if (event.getType() == NodeDataChanged) {
-			dataReWatcher.reWatch();
+			dataEventReactor.react();
 		} else if (event.getType() == NodeChildrenChanged) {
-			childrenReWatcher.reWatch();
+			childrenEventReactor.react();
 		} else {
 			throw new Error("Invalid " + event);
 		}
 	}
 
-	private abstract class ReWatcher<D, L extends NodeEventListener> implements Listenable<L>, Watcher {
+	private abstract class EventReactor<D, L extends NodeEventListener> implements Listenable<L>, Watcher {
 		/**
 		 * 监听到的数据(用于判断变更然后发布事件)
 		 */
@@ -155,7 +156,7 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 		 */
 		Multicaster<L> multicaster;
 
-		ReWatcher(Multicaster<L> multicaster) {
+		EventReactor(Multicaster<L> multicaster) {
 			this.multicaster = multicaster;
 			//listener回调异常处理器, 所有回调异常都将被记录日志
 			multicaster.setExceptionHandler(EXCEPTION_HANDLER);
@@ -180,19 +181,19 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 		}
 
 		/**
-		 * 收到变更事件后re-watch, 判断变更后发布事件
+		 * 收到变更事件后re-doReact, 判断变更后发布事件
 		 *
 		 * @return 是否re-watch成功
 		 */
-		boolean reWatch() {
+		boolean react() {
 			try {
-				doWatch();
+				doReact();
 				if (firstWatch) {
 					firstWatch = false;
 				}
 				return true;
 			} catch (Exception e) {
-				LOGGER.error("Watch error, path" + path, e);
+				LOGGER.error("React error, path - " + path, e);
 
 				if (e instanceof InterruptedException) {
 					Thread.currentThread().interrupt();
@@ -207,12 +208,12 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 		 *
 		 * @throws Exception ZooKeeper调用异常
 		 */
-		protected abstract void doWatch() throws Exception;
+		protected abstract void doReact() throws Exception;
 	}
 
-	class ExistsReWatcher extends ReWatcher<Stat, ExistsEventListener> {
+	class ExistsEventReactor extends EventReactor<Stat, ExistsEventListener> {
 
-		ExistsReWatcher() {
+		ExistsEventReactor() {
 			super(new Multicaster<ExistsEventListener>() {});
 		}
 
@@ -222,7 +223,7 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 		boolean nodeExists = false;
 
 		@Override
-		protected void doWatch() throws Exception {
+		protected void doReact() throws Exception {
 			Stat oldStat = data;
 			data = zkClient.exists(path, this);
 			nodeExists = data != null;
@@ -239,7 +240,7 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 		}
 	}
 
-	class DataReWatcher extends ReWatcher<DataReWatcher.PathData, DataEventListener> {
+	class DataEventReactor extends EventReactor<DataEventReactor.PathData, DataEventListener> {
 
 		class PathData extends Pair<Stat, byte[]> {
 
@@ -263,12 +264,12 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 			}
 		}
 
-		DataReWatcher() {
+		DataEventReactor() {
 			super(new Multicaster<DataEventListener>() {});
 		}
 
 		@Override
-		protected void doWatch() throws Exception {
+		protected void doReact() throws Exception {
 			PathData oldData = data;
 			Stat stat = new Stat();
 			byte[] pathData = zkClient.getData(path, this);
@@ -283,14 +284,14 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 		}
 	}
 
-	class ChildrenReWatcher extends ReWatcher<List<String>, ChildrenListener> {
+	class ChildrenEventReactor extends EventReactor<List<String>, ChildrenListener> {
 
-		ChildrenReWatcher() {
+		ChildrenEventReactor() {
 			super(new Multicaster<ChildrenListener>() {});
 		}
 
 		@Override
-		protected void doWatch() throws Exception {
+		protected void doReact() throws Exception {
 			List<String> oldData = data;
 			data = zkClient.getChildren(path, this);
 			if (firstWatch) {
