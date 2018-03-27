@@ -11,7 +11,9 @@ import pers.zyc.tools.utils.TimeMillis;
 import pers.zyc.tools.zkclient.listener.ConnectionListener;
 import pers.zyc.tools.zkclient.listener.ExistsEventListener;
 
-import java.util.concurrent.CountDownLatch;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
@@ -20,8 +22,11 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class ZKClientTest {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(ZKClientTest.class);
+
 	private ZKSwitch zkSwitch;
 	private ZKClient zkClient;
+
+	private static final String CONNECT_STRING = "localhost:2181/test";
 
 	@Before
 	public void setUp() {
@@ -95,38 +100,70 @@ public class ZKClientTest {
 		Assert.assertTrue(events.get() == 5);
 	}
 
+	@Test
+	public void case_create() throws Exception {
+		zkSwitch.open();
+		ZKCli cli = new ZKCli("localhost:2181/test");
+
+		BufferedOutputStream bos = new BufferedOutputStream(new ByteArrayOutputStream());
+		System.setOut(new PrintStream(bos));
+		cli.executeLine("rmr /");
+
+		createZKClient(new ClientConfig());
+		zkClient.start();
+	}
+
 	/**
 	 * 测试存在监听器
-	 *
-	 *
 	 */
 	@Test
-	public void case_existsListener1() throws InterruptedException {
+	public void case_existsListener1() throws Exception {
 		zkSwitch.open();
+
 		ClientConfig clientConfig = new ClientConfig();
+		clientConfig.setConnectStr(CONNECT_STRING);
 		clientConfig.setSyncStart(true);
+
 		createZKClient(clientConfig);
+
 		zkClient.start();
 
+		final AtomicInteger eventTimes = new AtomicInteger();
 
-		final CountDownLatch cdl = new CountDownLatch(4);
-
-		zkClient.addListener("/zk-client/exists", new ExistsEventListener() {
+		zkClient.addListener("/zkclient/exists", new ExistsEventListener() {
 			@Override
 			public void onNodeCreated(String path, Stat nodeStat) {
 				LOGGER.info("{} created {}", path, nodeStat);
-				cdl.countDown();
+				eventTimes.getAndIncrement();
 			}
 
 			@Override
 			public void onNodeDeleted(String path) {
 				LOGGER.info("{} deleted", path);
-				cdl.countDown();
+				eventTimes.getAndIncrement();
 			}
 		});
 
+		final ZKCli cli = new ZKCli(CONNECT_STRING);
+		cli.executeLine("rmr /zkclient");//清空测试目录
+		cli.executeLine("create /zkclient a");
 
+		Thread t = new Thread() {
+			@Override
+			public void run() {
+				try {
+					cli.executeLine("create /zkclient/exists a");
+					//sleep(1000);
+					cli.executeLine("delete /zkclient/exists");
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		};
+		t.start();
+		t.join();
 
-		cdl.await();
+		Thread.sleep(2000);
+		Assert.assertTrue(eventTimes.get() == 2);
 	}
 }
