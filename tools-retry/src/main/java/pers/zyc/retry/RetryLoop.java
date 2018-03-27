@@ -29,6 +29,8 @@ public class RetryLoop {
 		while (true) {
 			try {
 				return retryAble.call();
+			} catch (InterruptedException Interrupted) {
+				throw Interrupted;
 			} catch (Throwable throwable) {
 				cause = throwable;
 				if (retryPolicy == null ||
