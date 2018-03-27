@@ -2,11 +2,9 @@ package pers.zyc.tools.zkclient;
 
 import org.apache.zookeeper.AsyncCallback.*;
 import org.apache.zookeeper.*;
-import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.retry.*;
 import pers.zyc.tools.zkclient.listener.ConnectionListenerAdapter;
 
 import java.lang.reflect.InvocationHandler;
@@ -14,135 +12,67 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.Callable;
-
-import static org.apache.zookeeper.KeeperException.*;
 
 /**
+ * IZooKeeper实现, 代理ZKClient的所有IZookeeper操作, 加锁、状态检查
+ *
  * @author zhangyancheng
  */
-class Zookeeper implements IZookeeper, InvocationHandler {
+class DefaultZookeeper extends ConnectionListenerAdapter implements IZookeeper, InvocationHandler {
 
-	private static final Logger LOGGER = LoggerFactory.getLogger(Zookeeper.class);
+	final Logger logger = LoggerFactory.getLogger(getClass());
+
+	final ZKClient zkClient;
 
 	/**
-	 * 原生ZooKeeper实例, ZKClient所有的对ZooKeeper的操作都由此完成
+	 * ZooKeeper实例
 	 */
 	private ZooKeeper zooKeeper;
 
-	/**
-	 * 提供读写锁控制, 在操作ZooKeeper时禁止关闭客户端
-	 */
-	private final ZKClient zkClient;
-
-	/**
-	 * 重试策略
-	 */
-	private BaseRetryPolicy retryPolicy;
-
-	Zookeeper(ZKClient zkClient) {
+	DefaultZookeeper(ZKClient zkClient) {
 		this.zkClient = zkClient;
-		//添加连接监听器, 用于连通时唤醒可能存在的重试等待线程
-		zkClient.addListener(new ConnectionListener());
 
-		ClientConfig config = zkClient.getConfig();
-		if (config.isUseRetry()) {
-			retryPolicy = new AwaitConnectedRetryPolicy(new ConnectedRetryCondition());
-			retryPolicy.setMaxRetryTimes(config.getRetryTimes());
-			retryPolicy.setRetryDelay(config.getRetryPerWaitTimeout());
+		//注册连接监听, 重建会话时更新的ZooKeeper
+		zkClient.addListener(this);
+	}
+
+	@Override
+	public void onConnected(boolean newSession) {
+		if (newSession) {
+			zooKeeper = zkClient.getZooKeeper();
 		}
 	}
 
 	@Override
-	public Object invoke(Object proxy, final Method method, final Object[] args) throws Throwable {
+	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
 		zkClient.readLock.lock();
 		try {
 			if (!zkClient.isConnected()) {
-				throw new ClientException("ZooKeeper server is not connected!");
+				//当前未连通无法操作zookeeper
+				throw new ClientException("ZooKeeper is not connected!");
 			}
-			return RetryLoop.execute(new Callable<Object>() {
-
-				@Override
-				public Object call() throws Exception {
-					return method.invoke(Zookeeper.this, args);
-				}
-			}, retryPolicy);
-		} catch (InterruptedException interrupted) {
-			throw interrupted;
-		} catch (RetryFailedException retryFailed) {
-			LOGGER.error("Retry failed, {}", retryFailed.getRetryStat());
-			Throwable relCause = retryFailed.getCause();
-			if (relCause instanceof InvocationTargetException) {
-				//抛出ZooKeeper实例调用异常
-				throw ((InvocationTargetException) relCause).getTargetException();
-			}
-			throw new ClientException(relCause);
-		} catch (Throwable cause) {
-			LOGGER.error("Unexpected error", cause);
-			throw new ClientException(cause);
+			return doInvoke(method, args);
 		} finally {
 			zkClient.readLock.unlock();
 		}
 	}
 
 	/**
-	 * 连接事件监听器, 当连接或者重连成功时更新ZooKeeper并唤醒重试等待线程
+	 * 反射调用到当前对象的具体方法(当前对象作为IZookeeper的实现再调用ZooKeeper执行远程操作)
+	 *
+	 * @param method 调用方法
+	 * @param args 调用参数
+	 * @return 执行结果
+	 * @throws Exception 反射调用异常
 	 */
-	private class ConnectionListener extends ConnectionListenerAdapter {
-
-		@Override
-		public void onConnected(boolean newSession) {
-			if (newSession) {
-				zooKeeper = zkClient.getZooKeeper();
-			}
-			synchronized (Zookeeper.this) {
-				//唤醒所有的重试等待线程
-				Zookeeper.this.notifyAll();
-			}
-		}
-	}
-
-	/**
-	 * 重试检查条件, 检查是否连接成功
-	 */
-	private class ConnectedRetryCondition implements RetryCondition {
-
-		@Override
-		public boolean check() {
-			return zkClient.isConnected();
-		}
-
-		@Override
-		public Object getMutex() {
-			return Zookeeper.this;
-		}
-	}
-
-	/**
-	 * 重试策略, 等待连接成功后重试
-	 */
-	private class AwaitConnectedRetryPolicy extends ConditionalRetryPolicy {
-
-		AwaitConnectedRetryPolicy(RetryCondition retryCondition) {
-			super(retryCondition);
-		}
-
-		@Override
-		public Boolean handleException(Throwable cause, Callable<?> callable) {
-			LOGGER.error("Call error!", cause);
-			/*
-			 * retry callable通过反射调用zookeeper, 需要判断zookeeper api调用异常.
-			 * 当且仅当发生了KeeperException且为连接异常才进行重试
-			 */
-			if (cause instanceof InvocationTargetException) {
-				Throwable throwable = ((InvocationTargetException) cause).getTargetException();
-				return throwable instanceof KeeperException &&
-							   (throwable instanceof ConnectionLossException ||
-								throwable instanceof OperationTimeoutException ||
-								throwable instanceof SessionExpiredException ||
-								throwable instanceof SessionMovedException);
-			}
-			return false;
+	protected Object doInvoke(Method method, Object[] args) throws Exception {
+		try {
+			return method.invoke(this, args);
+		} catch (InvocationTargetException e) {
+			//抛出ZooKeeper对象的调用异常(避免包装成UndeclaredThrowableException)
+			throw (Exception) e.getTargetException();
+		} catch (IllegalAccessException e) {
+			throw new ClientException(e);
 		}
 	}
 
