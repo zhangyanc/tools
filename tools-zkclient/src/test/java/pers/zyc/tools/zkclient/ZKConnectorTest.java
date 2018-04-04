@@ -60,7 +60,7 @@ public class ZKConnectorTest {
 	private TestConnectorConnectionListener testListener;
 
 	@Before
-	public void setUp() {
+	public void setUp() throws InterruptedException {
 		connector = new ZKConnector("localhost:2181", SESSION_TIMEOUT);
 		zkSwitch = new ZKSwitch("E:/Tools/zookeeper-3.4.6");
 		testListener = new TestConnectorConnectionListener();
