@@ -1,9 +1,9 @@
 package pers.zyc.tools.zkclient;
 
-import org.apache.zookeeper.KeeperException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.zkclient.listener.ConnectionListener;
+import pers.zyc.tools.zkclient.listener.RecreateListener;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -40,27 +40,26 @@ class EphemeralNodeReCreator implements ConnectionListener {
 			RecreateInfo info = iterator.next();
 			try {
 				String actualPath = zkClient.createEphemeral(info.path, info.data, info.sequential);
-				LOGGER.info("{} recreate success", info.path);
+				LOGGER.info("{} recreate success, actualPath: {}", info.path, actualPath);
+
 				iterator.remove();
 
 				if (info.listener != null) {
-					info.listener.onRecreateSuccess(info.path, actualPath);
+					info.listener.onRecreateSuccessful(info.path, actualPath);
 				}
 			} catch (InterruptedException e) {
 				Thread.currentThread().interrupt();
 				return;
 			} catch (Exception e) {
-				LOGGER.info("{} recreate failed", info.path);
+				LOGGER.warn("Recreate failed: {}", e.getMessage());
+
+				if (!zkClient.isConnected()) {
+					return;
+				}
+				iterator.remove();
 
 				if (info.listener != null) {
 					info.listener.onRecreateFailed(info.path, e);
-				}
-
-				if (e instanceof KeeperException.NodeExistsException) {
-					iterator.remove();
-				}
-				if (!zkClient.isConnected()) {
-					return;
 				}
 			}
 		}

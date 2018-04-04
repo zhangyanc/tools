@@ -21,7 +21,7 @@ import static org.apache.zookeeper.Watcher.Event.EventType.*;
  *
  * @author zhangyancheng
  */
-class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, EventListener<WatchedEvent> {
+class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, Watcher, EventListener<WatchedEvent> {
 	private static final Logger LOGGER = LoggerFactory.getLogger(NodeEventReactor.class);
 
 	/**
@@ -62,20 +62,25 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 	/**
 	 * 使ZooKeeper事件(所有节点watcher接受的WatchedEvent)处理异步化
 	 */
-	private EventBus<WatchedEvent> watchedEventBus;
+	private final EventBus<WatchedEvent> watchedEventBus;
+
+	/**
+	 * 每次exists后的节点存在状态
+	 */
+	private boolean nodeExists;
 
 	NodeEventReactor(String path, ZKClient zkClient) {
 		this.path = path;
 		this.zkClient = zkClient;
-		//注册连接监听器, 重连成功后注册watcher
-		zkClient.addListener(this);
+
+		watchedEventBus = new EventBus<WatchedEvent>().name("NodeEventReactor-" + path)
+				.multicastExceptionHandler(EXCEPTION_HANDLER).addListeners(this);
 	}
 
 	@Override
 	public void start() {
-		//设置异步处理线程名、异常处理器、WatchedEvent 处理回调
-		watchedEventBus = new EventBus<WatchedEvent>().name("NodeEventReactor - " + path)
-				.multicastExceptionHandler(EXCEPTION_HANDLER).addListeners(this);
+		//注册连接监听器, 重连成功后注册watcher
+		zkClient.addListener(this);
 
 		if (zkClient.isConnected()) {
 			//当前已经连接注册watcher
@@ -100,61 +105,79 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 		watchedEventBus.offer(CONNECTED_EVENT);
 	}
 
+	@Override
+	public void process(WatchedEvent event) {
+		if (event.getType() != None) {
+			LOGGER.debug("{}", event);
+			//WatchedEvent入队, 待异步处理
+			watchedEventBus.offer(event);
+		}
+	}
+
 	/**
-	 * WatchedEvent异步处理:
+	 * WatchedEvent处理及事件发布:
+	 *
 	 * <p>
-	 *     1.当为连接成功事件、节点创建和删除事件时, 当前节点是没有watcher的, 没有watcher则
-	 * 	 	 无法确定节点、数据、子节点的任何状态, 所以首先需要exists检查存在状态并注册exists watcher.
-	 * 	 	 如果检查节点存在再注册数据及子节点watcher
+	 *     1.当为连接成功事件、节点创建和删除事件时, 节点上没有watcher, 因此
+	 * 	 	 无法确定节点、数据、子节点的"当前"状态, 所以需要exists-react确认存在状态,
+	 * 	 	 如果存在则再进行data、children-react, 否则监听NodeCreated
 	 * <p>
-	 *     2.节点数据变更, 此时节点上仍有children watcher(可以收到NodeDeleted), 只需re-watch数据
-	 *       如果re-watch失败, 则表明已经发生了NodeDeleted(在队列中等待处理), 则忽略此次变更
+	 *     2.节点数据变更, 此时节点上仍有children watcher, 只需react数据变更
+	 *       如果react失败, 则表明已经发生了NodeDeleted(在队列中等待处理), 则忽略此次节点数据变更
 	 * <p>
-	 *     3.子节点变更, 此时节点上仍有data watcher(可以收到NodeDeleted), 只需re-watch子节点
-	 *       如果re-watch失败, 则表明已经发生了NodeDeleted(在队列中等待处理), 则忽略此次变更
+	 *     3.子节点变更, 此时节点上仍有data watcher, 只需react子节点变更
+	 *       如果react失败, 则表明已经发生了NodeDeleted(在队列中等待处理), 则忽略此次子节点变更
 	 * <p>
-	 *     以上情况处理完后, 保证watcher按照当前状态被正确的添加了.
+	 *     以上情况处理完后, 保证watcher按照当前状态被正确添加
 	 *     如果节点被创建一定收到NodeCreated
 	 *     如果节点被删除一定收到NodeDeleted
 	 *     如果节点数据及子节点变更则一定可以发布最终的变更
 	 *
+	 *     如果连接异常react失败, 则连接恢复后仍可根据最新状态发布变更(如果在断连期间有变更)
 	 *
 	 * @param event 监听到的节点状态变更事件或者CONNECTED_EVENT
 	 */
 	@Override
 	public void onEvent(WatchedEvent event) {
-		if (event == CONNECTED_EVENT ||
-			event.getType() == NodeCreated ||
-			event.getType() == NodeDeleted) {
+		try {
+			if (event == CONNECTED_EVENT ||
+				event.getType() == NodeCreated ||
+				event.getType() == NodeDeleted) {
 
-			if (existsEventReactor.react() && existsEventReactor.nodeExists) {
+				existsEventReactor.react();
 				dataEventReactor.react();
 				childrenEventReactor.react();
+			} else if (event.getType() == NodeDataChanged) {
+				dataEventReactor.react();
+			} else if (event.getType() == NodeChildrenChanged) {
+				childrenEventReactor.react();
 			}
-		} else if (event.getType() == NodeDataChanged) {
-			dataEventReactor.react();
-		} else if (event.getType() == NodeChildrenChanged) {
-			childrenEventReactor.react();
-		} else {
-			throw new Error("Invalid " + event);
+		} catch (Exception e) {
+			LOGGER.error("Process " + event + " failed!", e);
+
+			if (e instanceof InterruptedException) {
+				Thread.currentThread().interrupt();
+			}
 		}
+
 	}
 
-	private abstract class EventReactor<D, L extends NodeEventListener> implements Listenable<L>, Watcher {
-		/**
-		 * 监听到的数据(用于判断变更然后发布事件)
-		 */
-		D data;
+	private abstract class EventReactor<S, L extends NodeEventListener> implements Listenable<L> {
 
 		/**
-		 * 记录是否为第一次watch, 第一次watch无法判断"变更"无需发布事件
+		 * 共用同一个watcher可避免重复处理事件
 		 */
-		boolean firstWatch = true;
+		final Watcher watcher = NodeEventReactor.this;
+
+		/**
+		 * 监听到的状态数据(用于判断变更后发布事件)
+		 */
+		S state;
 
 		/**
 		 * 事件发布器
 		 */
-		Multicaster<L> multicaster;
+		final Multicaster<L> multicaster;
 
 		EventReactor(Multicaster<L> multicaster) {
 			this.multicaster = multicaster;
@@ -172,43 +195,47 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 			multicaster.removeListener(listener);
 		}
 
-		@Override
-		public void process(WatchedEvent event) {
-			if (event.getPath() != null) {
-				//WatchedEvent入队, 待异步处理
-				watchedEventBus.offer(event);
-			}
-		}
-
 		/**
-		 * 收到变更事件后re-doReact, 判断变更后发布事件
-		 *
-		 * @return 是否re-watch成功
-		 */
-		boolean react() {
-			try {
-				doReact();
-				if (firstWatch) {
-					firstWatch = false;
-				}
-				return true;
-			} catch (Exception e) {
-				LOGGER.error("React error, path - " + path, e);
-
-				if (e instanceof InterruptedException) {
-					Thread.currentThread().interrupt();
-				}
-
-				return false;
-			}
-		}
-
-		/**
-		 * 具体的watch以及事件发布逻辑(exists、getData、getChildren)
+		 * zk watch(exists、getData、getChildren)以及事件发布逻辑
 		 *
 		 * @throws Exception ZooKeeper调用异常
 		 */
-		protected abstract void doReact() throws Exception;
+		void react() throws Exception {
+			S oldState = state;
+
+			if (!nodeExists) {
+				if (oldState != null) {
+					publishNodeDeleted();
+				}
+				return;
+			}
+
+			state = reWatch();
+
+			if (oldState != null && !oldState.equals(state)) {
+				publishStateChanged();
+			}
+		}
+
+		/**
+		 * 注册ZooKeeper Watcher并获取数据
+		 *
+		 * @return 状态数据
+		 * @throws Exception ZooKeeper调用异常
+		 */
+		abstract S reWatch() throws Exception;
+
+		/**
+		 * 发布状态变更事件
+		 */
+		abstract void publishStateChanged();
+
+		/**
+		 * 发布节点删除事件
+		 */
+		void publishNodeDeleted() {
+			multicaster.listeners.onNodeDeleted(path);
+		}
 	}
 
 	class ExistsEventReactor extends EventReactor<Stat, ExistsEventListener> {
@@ -218,25 +245,37 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 		}
 
 		/**
-		 * 每次exists后的节点存在状态, 如果不存在则不添加data、children watcher
+		 * 第一次watch无法判断"变更"无需发布事件
 		 */
-		boolean nodeExists = false;
+		boolean firstWatch = true;
 
 		@Override
-		protected void doReact() throws Exception {
-			Stat oldStat = data;
-			data = zkClient.exists(path, this);
-			nodeExists = data != null;
+		void react() throws Exception {
+			Stat oldState = state;
+			state = reWatch();
+
+			nodeExists = state != null;
+
 			if (firstWatch) {
+				firstWatch = false;
 				return;
 			}
-			//exists只发布"存在变更"
-			if (oldStat == null && data != null) {
-				multicaster.listeners.onNodeCreated(path, data);
+
+			if (oldState == null && state != null) {
+				publishStateChanged();
+			} else if (oldState != null && state == null) {
+				publishNodeDeleted();
 			}
-			if (oldStat != null && data == null) {
-				multicaster.listeners.onNodeDeleted(path);
-			}
+		}
+
+		@Override
+		Stat reWatch() throws Exception {
+			return zkClient.exists(path, watcher);
+		}
+
+		@Override
+		void publishStateChanged() {
+			multicaster.listeners.onNodeCreated(path, state);
 		}
 	}
 
@@ -269,38 +308,32 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, E
 		}
 
 		@Override
-		protected void doReact() throws Exception {
-			PathData oldData = data;
+		PathData reWatch() throws Exception {
 			Stat stat = new Stat();
-			byte[] pathData = zkClient.getData(path, this);
-			data = new PathData(stat, pathData);
-			if (firstWatch) {
-				return;
-			}
-			//data只发布"数据变更"
-			if (!oldData.equals(data)) {
-				multicaster.listeners.onDataChanged(path, data.key(), data.value());
-			}
-		}
-	}
-
-	class ChildrenEventReactor extends EventReactor<List<String>, ChildrenListener> {
-
-		ChildrenEventReactor() {
-			super(new Multicaster<ChildrenListener>() {});
+			byte[] pathData = zkClient.getData(path, watcher, stat);
+			return new PathData(stat, pathData);
 		}
 
 		@Override
-		protected void doReact() throws Exception {
-			List<String> oldData = data;
-			data = zkClient.getChildren(path, this);
-			if (firstWatch) {
-				return;
-			}
-			//children只发布"子节点变更"
-			if (!oldData.equals(data)) {
-				multicaster.listeners.onChildrenChanged(path, data);
-			}
+		void publishStateChanged() {
+			multicaster.listeners.onDataChanged(path, state.key(), state.value());
+		}
+	}
+
+	class ChildrenEventReactor extends EventReactor<List<String>, ChildrenEventListener> {
+
+		ChildrenEventReactor() {
+			super(new Multicaster<ChildrenEventListener>() {});
+		}
+
+		@Override
+		List<String> reWatch() throws Exception {
+			return zkClient.getChildren(path, watcher);
+		}
+
+		@Override
+		void publishStateChanged() {
+			multicaster.listeners.onChildrenChanged(path, state);
 		}
 	}
 }

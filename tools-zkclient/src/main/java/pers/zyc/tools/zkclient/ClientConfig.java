@@ -7,9 +7,9 @@ public class ClientConfig {
 	private String connectStr = "localhost:2181";
 	private int sessionTimeout = 30000;
 	private boolean canByReadOnly;
-	private boolean syncStart;
+	private boolean syncStart = true;
 
-	private boolean useRetry = true;
+	private boolean useRetry = false;
 	private int retryTimes = 1;//重试次数
 	private int retryPerWaitTimeout = 1000;//重试等待超时
 

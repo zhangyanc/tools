@@ -1,6 +1,9 @@
-package pers.zyc.tools.zkclient;
+package pers.zyc.tools.zkclient.listener;
 
 /**
+ * 临时节点重建监听器
+ *
+ * @see pers.zyc.tools.zkclient.EphemeralNodeReCreator
  * @author zhangyancheng
  */
 public interface RecreateListener {
@@ -11,7 +14,7 @@ public interface RecreateListener {
 	 * @param path 节点路径
 	 * @param actualPath 实际路径
 	 */
-	void onRecreateSuccess(String path, String actualPath);
+	void onRecreateSuccessful(String path, String actualPath);
 
 	/**
 	 * 临时节点重建失败

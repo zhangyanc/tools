@@ -11,7 +11,6 @@ import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.List;
-import java.util.Objects;
 
 /**
  * IZooKeeper实现, 代理ZKClient的所有IZookeeper操作, 加锁、状态检查
@@ -80,16 +79,14 @@ class DefaultZookeeper extends ConnectionListenerAdapter implements IZookeeper, 
 	public String createPersistent(String path, byte[] data, boolean sequential) throws
 			KeeperException, InterruptedException {
 
-		return zooKeeper.create(path, Objects.requireNonNull(data),
-				ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.fromFlag(sequential ? 2 : 0));
+		return zooKeeper.create(path, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.fromFlag(sequential ? 2 : 0));
 	}
 
 	@Override
 	public String createEphemeral(String path, byte[] data, boolean sequential) throws
 			KeeperException, InterruptedException {
 
-		return zooKeeper.create(path, Objects.requireNonNull(data),
-				ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.fromFlag(sequential ? 3 : 1));
+		return zooKeeper.create(path, data, ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.fromFlag(sequential ? 3 : 1));
 	}
 
 	@Override
@@ -144,12 +141,12 @@ class DefaultZookeeper extends ConnectionListenerAdapter implements IZookeeper, 
 
 	@Override
 	public Stat setData(String path, byte[] data, int version) throws KeeperException, InterruptedException {
-		return zooKeeper.setData(path, Objects.requireNonNull(data), version);
+		return zooKeeper.setData(path, data, version);
 	}
 
 	@Override
 	public void setData(String path, byte[] data, int version, StatCallback cb, Object ctx) {
-		zooKeeper.setData(path, Objects.requireNonNull(data), version, cb, ctx);
+		zooKeeper.setData(path, data, version, cb, ctx);
 	}
 
 	@Override
