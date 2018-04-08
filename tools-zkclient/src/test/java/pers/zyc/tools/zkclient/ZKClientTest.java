@@ -10,10 +10,12 @@ import pers.zyc.tools.zkclient.listener.DataEventListener;
 import pers.zyc.tools.zkclient.listener.ExistsEventListener;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.CyclicBarrier;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -90,44 +92,42 @@ public class ZKClientTest extends BaseClientTest {
 
 	@Test
 	public void case_AddConnectionListener() throws Exception {
+		zkSwitch.open();
+
 		ClientConfig clientConfig = new ClientConfig();
-		clientConfig.setSyncStart(false);
+		clientConfig.setSyncStart(true);
 		createZKClient(clientConfig);
 		zkClient.start();
 
-		final CountDownLatch latch = new CountDownLatch(4);
+		final Semaphore semaphore = new Semaphore(0);
 
-		zkClient.addListener(new ConnectionListener() {
+		zkClient.addListener(new DebugConnectionListener(new ConnectionListener() {
 
-			boolean[][] bs = new boolean[2][2];
+			Set<Integer> set = new HashSet<>();
 
 			@Override
 			public void onConnected(boolean newSession) {
-				int i = newSession ? 0 : 1;
-				if (!bs[0][i]) {
-					latch.countDown();
-					bs[0][i] = true;
+				if (set.add(newSession ? 1 : 2)) {
+					semaphore.release();
 				}
 			}
 
 			@Override
 			public void onDisconnected(boolean sessionClosed) {
-				int i = sessionClosed ? 0 : 1;
-				if (!bs[1][i]) {
-					latch.countDown();
-					bs[1][i] = true;
+				if (set.add(sessionClosed ? 3 : 4)) {
+					semaphore.release();
 				}
 			}
-		});
+		}));
 
-		zkSwitch.open();
 		makeCurrentZkClientSessionExpire();
+		semaphore.acquire(3);
+
 		zkSwitch.close();
 		zkSwitch.open();
-		zkSwitch.close();
+		semaphore.acquire(1);
 
-		Thread.sleep(clientConfig.getSessionTimeout());
-		//Assert.assertTrue(events.get() == 5);
+		Assert.assertTrue(semaphore.drainPermits() == 0);
 	}
 
 	/**
