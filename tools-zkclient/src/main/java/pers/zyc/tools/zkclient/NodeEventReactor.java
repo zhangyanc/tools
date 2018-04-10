@@ -17,7 +17,7 @@ import java.util.Objects;
 import static org.apache.zookeeper.Watcher.Event.EventType.*;
 
 /**
- * 节点事件反应器, 通过连续watcher方式实现事件持续监听
+ * 节点事件反应器, 通过连续watcher实现事件持续监听
  *
  * @author zhangyancheng
  */
@@ -154,12 +154,7 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, W
 			}
 		} catch (Exception e) {
 			LOGGER.error("Process " + event + " failed!", e);
-
-			if (e instanceof InterruptedException) {
-				Thread.currentThread().interrupt();
-			}
 		}
-
 	}
 
 	private abstract class EventReactor<S, L extends NodeEventListener> implements Listenable<L> {
