@@ -19,10 +19,11 @@ import static org.apache.zookeeper.Watcher.Event.KeeperState.Disconnected;
 import static org.apache.zookeeper.Watcher.Event.KeeperState.SyncConnected;
 
 /**
- * 连接器实现
+ * ZooKeeper连接器(自动重连、事件发布)
+ *
  * @author zhangyancheng
  */
-final class ZKConnector extends PeriodicService implements Listenable<ConnectionListener> {
+final class ZKConnector extends PeriodicService implements Watcher, Listenable<ConnectionListener> {
 	private final static Logger LOGGER = LoggerFactory.getLogger(ZKConnector.class);
 
 	/**
@@ -63,19 +64,15 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 	private final int sessionTimeout;
 
 	/**
-	 * ZooKeeper Watcher, 接收连接变更事件并通知ZKConnector线程处理
-	 */
-	private final ConnectionWatcher connectionWatcher = new ConnectionWatcher();
-
-	/**
 	 * @param connectStr 连接地址
 	 * @param sessionTimeout 会话超时时间
 	 */
 	ZKConnector(String connectStr, int sessionTimeout) {
 		this.connectStr = connectStr;
 		this.sessionTimeout = sessionTimeout;
+		this.eventWaitTimeout = sessionTimeout;
 
-		multicaster = new Multicaster<ConnectionListener>(){};
+		multicaster = new Multicaster<ConnectionListener>() {};
 		multicaster.setExceptionHandler(EXCEPTION_HANDLER);
 	}
 
@@ -132,17 +129,19 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 
 	@Override
 	public void uncaughtException(Thread t, Throwable e) {
-		LOGGER.error("Connector error!", e);
+		LOGGER.error("Uncaught exception: ", e);
 		super.uncaughtException(t, e);
 	}
 
-	private class ConnectionWatcher implements Watcher {
-
-		@Override
-		public void process(WatchedEvent event) {
+	@Override
+	public void process(WatchedEvent event) {
+		//只处理连接事件
+		if (event.getPath() == null) {
 			serviceLock.lock();
 			try {
 				currentState = incomeState = event.getState();
+				LOGGER.debug("Watched connection event[{}]",  incomeState);
+
 				incomeEventCondition.signal();
 			} finally {
 				serviceLock.unlock();
@@ -152,19 +151,20 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 
 	@Override
 	protected void execute() throws InterruptedException {
-		serviceLock.lockInterruptibly();
 		Publisher publisher;
+
+		serviceLock.lockInterruptibly();
 		try {
 			if (!isRunning()) {
 				return;
 			}
+
 			//初始以及会话关闭后的下轮, 创建ZooKeeper
 			if (zooKeeper == null) {
 				try {
-					zooKeeper = new ZooKeeper(connectStr, sessionTimeout, connectionWatcher);
-					LOGGER.info("ZooKeeper instance created!");
+					zooKeeper = new ZooKeeper(connectStr, sessionTimeout, this);
 				} catch (IOException e) {
-					throw new RuntimeException("New ZooKeeper instance error!", e);
+					throw new RuntimeException("Creating ZooKeeper instance error!", e);
 				}
 			}
 
@@ -189,9 +189,11 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 			   (currentState == null || currentState == SyncConnected)) {
 				return;
 			}
-			LOGGER.info("Prepare to publish event, income state: {}, session id: 0x{}",
+			LOGGER.info("Publish incoming event[{}], session id: 0x{}",
 					incomeState, Long.toHexString(zooKeeperSessionId));
+
 			publisher = new Publisher() {
+
 				@Override
 				public void publish() throws InterruptedException {
 					if (incomeState == SyncConnected) {
@@ -219,6 +221,7 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 		} finally {
 			serviceLock.unlock();
 		}
+
 		//发布事件
 		publisher.publish();
 	}
@@ -237,8 +240,7 @@ final class ZKConnector extends PeriodicService implements Listenable<Connection
 				zooKeeper.close();
 			} catch (InterruptedException interrupted) {
 				throw interrupted;
-			} catch (Exception e) {
-				LOGGER.warn("Closing error", e);
+			} catch (Exception ignore) {
 			} finally {
 				zooKeeper = null;
 				zooKeeperSessionId = 0;
