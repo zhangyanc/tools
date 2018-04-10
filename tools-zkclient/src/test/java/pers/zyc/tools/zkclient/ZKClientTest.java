@@ -17,7 +17,6 @@ import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.SynchronousQueue;
-import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * @author zhangyancheng
@@ -219,7 +218,7 @@ public class ZKClientTest extends BaseClientTest {
 		//等待reactor内部线程启动
 		Thread.sleep(100);
 		cli.executeLine("create " + testPath + " F");
-		//等待reactor内部线程获取到初始值F后才能触发后续变更
+		//等待reactor内部线程获取到初始值后才能触发后续变更
 		Thread.sleep(100);
 
 		String[] datas = {"dataA", "dataB", "dataB"};
@@ -247,19 +246,34 @@ public class ZKClientTest extends BaseClientTest {
 		cli.executeLine("rmr /zkclient");//清空测试目录
 		cli.executeLine("create /zkclient a");
 
-		final AtomicReference<List<String>> listenedChildren = new AtomicReference<>();
-		zkClient.addListener("/zkclient/children", new ChildrenEventListener() {
+		final String testPath = "/zkclient/children";
+		final SynchronousQueue<List<String>> childrenEvents = new SynchronousQueue<>();
+
+		zkClient.addListener(testPath, new ChildrenEventListener() {
 
 			@Override
 			public void onChildrenChanged(String path, List<String> children) {
-				listenedChildren.set(children);
+				try {
+					childrenEvents.put(new ArrayList<>(children));
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
 			}
 
 			@Override
 			public void onNodeDeleted(String path) {
-
+				try {
+					childrenEvents.put(new ArrayList<String>());
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
 			}
 		});
+		//等待reactor内部线程启动
+		Thread.sleep(100);
+		cli.executeLine("create " + testPath + " a");
+		//等待reactor内部线程获取到初始值后才能触发后续变更
+		Thread.sleep(100);
 
 		final List<String> children = new ArrayList<String>() {
 			{
@@ -269,40 +283,48 @@ public class ZKClientTest extends BaseClientTest {
 			}
 		};
 
-		Thread t = new Thread() {
+		for (int i = 0; i < children.size(); i++) {
+			cli.executeLine("create " + testPath + "/" + children.get(i) + " a");
+			List<String> cn = childrenEvents.take();
+			cn.removeAll(children.subList(0, i + 1));
+			Assert.assertTrue(cn.isEmpty());
+		}
 
-			@Override
-			public void run() {
-				try {
-					sleep(1000);
-					cli.executeLine("create /zkclient/children a");
+		for (int i = children.size() - 1; i >= 0; i--) {
+			cli.executeLine("delete " + testPath + "/" + children.get(i));
+			List<String> cn = childrenEvents.take();
+			cn.removeAll(children.subList(0, i));
+			Assert.assertTrue(cn.isEmpty());
+		}
 
-					for (int i = 0; i < children.size() - 1; i++) {
-						cli.executeLine("create /zkclient/children/" + children.get(i) + " a");
-						sleep(1000);
-					}
-
-					zkSwitch.close();
-					sleep(1000);
-					zkSwitch.open();
-
-					cli.executeLine("create /zkclient/children/" + children.get(children.size() - 1) + " a");
-					sleep(1000);
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-			}
-		};
-		t.start();
-		t.join();
-
-		children.removeAll(listenedChildren.get());
-
-		Assert.assertTrue(children.isEmpty());
+		cli.executeLine("delete " + testPath);
+		Assert.assertTrue(childrenEvents.take().isEmpty());
 	}
 
+	/**
+	 * TODO: 待补充
+	 */
 	@Test
 	public void case_retry_unRetry() throws Exception {
-		//TODO
+		/*zkSwitch.open();
+
+		ClientConfig clientConfig = new ClientConfig();
+		clientConfig.setConnectStr(CONNECT_STRING);
+		clientConfig.setUseRetry(false);
+		clientConfig.setSyncStart(true);
+
+		createZKClient(clientConfig);
+		zkClient.start();
+
+		zkSwitch.close();*/
 	}
+
+	private class RetryTestableZKClient extends ZKClient {
+
+		public RetryTestableZKClient(ClientConfig config) {
+			super(config);
+		}
+
+	}
+
 }

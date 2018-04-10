@@ -1,15 +1,9 @@
 package pers.zyc.tools.zkclient;
 
 import org.apache.zookeeper.KeeperException;
-import org.apache.zookeeper.WatchedEvent;
-import org.apache.zookeeper.Watcher;
-import org.apache.zookeeper.ZooKeeper;
-import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import pers.zyc.tools.zkclient.listener.ConnectionListenerAdapter;
 import pers.zyc.tools.zkclient.listener.RecreateListener;
 
@@ -22,14 +16,7 @@ import java.util.concurrent.CountDownLatch;
 /**
  * @author zhangyancheng
  */
-public class ReCreatorTest {
-
-	private static final Logger LOGGER = LoggerFactory.getLogger(ReCreatorTest.class);
-
-	/**
-	 * 需要预先创建/test节点, 否则无法执行测试
-	 */
-	private static final String CONNECT_STRING = "localhost:2181/test";
+public class ReCreatorTest extends BaseClientTest {
 
 	class TestRecreateListener implements RecreateListener {
 
@@ -58,52 +45,22 @@ public class ReCreatorTest {
 		}
 	}
 
-	private ZKSwitch zkSwitch;
-	private ZKClient zkClient;
-	private ZKCli cli;
-
 	@Before
 	public void setUp() throws Exception {
-		zkSwitch = new ZKSwitch("E:/Tools/zookeeper-3.4.10");
+		super.setUp();
 
 		ClientConfig clientConfig = new ClientConfig();
 		clientConfig.setSyncStart(true);
 		clientConfig.setConnectStr(CONNECT_STRING);
 		clientConfig.setSessionTimeout(30000);
 
-		zkClient = new ZKClient(clientConfig);
+		createZKClient(clientConfig);
 
 		zkSwitch.open();
 		zkClient.start();
 
-		cli = new ZKCli(CONNECT_STRING);
 		cli.executeLine("rmr /zkclient");
 		cli.executeLine("create /zkclient a");
-	}
-
-	@After
-	public void tearDown() {
-		zkClient.stop();
-		zkSwitch.close();
-	}
-
-	private void makeZkClientSessionExpired() throws Exception {
-
-		long sessionId = zkClient.getZooKeeper().getSessionId();
-		byte[] sessionPwd = zkClient.getZooKeeper().getSessionPasswd();
-
-		final CountDownLatch connectedLatch = new CountDownLatch(1);
-		ZooKeeper zooKeeper = new ZooKeeper(CONNECT_STRING, 30000, new Watcher() {
-			@Override
-			public void process(WatchedEvent event) {
-				if (event.getState() == Event.KeeperState.SyncConnected) {
-					connectedLatch.countDown();
-				}
-			}
-		}, sessionId, sessionPwd);
-
-		connectedLatch.await();
-		zooKeeper.close();
 	}
 
 	@Test
@@ -113,7 +70,7 @@ public class ReCreatorTest {
 		TestRecreateListener testRecreateListener = new TestRecreateListener();
 		zkClient.createEphemeral(testPath, new byte[0], false, testRecreateListener);
 
-		makeZkClientSessionExpired();
+		makeCurrentZkClientSessionExpire();
 
 		testRecreateListener.latch.await();
 		Assert.assertEquals(testPath, testRecreateListener.recreatePathQueue.element());
@@ -125,16 +82,16 @@ public class ReCreatorTest {
 
 		TestRecreateListener testRecreateListener = new TestRecreateListener();
 		String actualPath = zkClient.createEphemeral(testPath, new byte[0], true, testRecreateListener);
-		LOGGER.info(actualPath + " created!");
+		logger.info(actualPath + " created!");
 
 		int seq = Integer.parseInt(actualPath.substring(testPath.length()));
 
-		makeZkClientSessionExpired();
+		makeCurrentZkClientSessionExpire();
 
 		testRecreateListener.latch.await();
 
 		String recreatePath = testRecreateListener.recreatePathQueue.element();
-		LOGGER.info(recreatePath + " recreated!");
+		logger.info(recreatePath + " recreated!");
 
 		int recreateSeq = Integer.parseInt(recreatePath.substring(testPath.length()));
 
@@ -151,7 +108,7 @@ public class ReCreatorTest {
 		byte[] newData = new byte[]{1};
 		zkClient.updateEphemeralData(testPath, newData);
 
-		makeZkClientSessionExpired();
+		makeCurrentZkClientSessionExpire();
 
 		testRecreateListener.latch.await();
 
@@ -204,7 +161,7 @@ public class ReCreatorTest {
 
 		cli.executeLine("rmr /zkclient");
 
-		makeZkClientSessionExpired();
+		makeCurrentZkClientSessionExpire();
 
 		testRecreateListener.latch.await();
 		Assert.assertTrue(testRecreateListener.exception instanceof KeeperException.NoNodeException);
@@ -230,7 +187,7 @@ public class ReCreatorTest {
 		zkClient.createEphemeral(testPaths.get(1), new byte[0], false, testRecreateListener);
 		zkClient.createEphemeral(testPaths.get(2), new byte[0], false, testRecreateListener);
 
-		makeZkClientSessionExpired();
+		makeCurrentZkClientSessionExpire();
 
 		zkClient.addListener(new ConnectionListenerAdapter() {
 

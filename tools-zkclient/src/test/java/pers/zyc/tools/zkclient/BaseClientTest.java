@@ -10,7 +10,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.zkclient.listener.ConnectionListener;
 
-import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -69,7 +68,7 @@ public class BaseClientTest {
 	ZKCli cli;
 
 	@Before
-	public void setUp() throws IOException {
+	public void setUp() throws Exception {
 		zkSwitch = new ZKSwitch("E:/Tools/zookeeper-3.4.10");
 		cli = new ZKCli(CONNECT_STRING);
 	}
