@@ -6,8 +6,7 @@ import org.junit.Before;
 import org.junit.Test;
 import pers.zyc.tools.zkclient.listener.ConnectionListener;
 
-import java.util.LinkedList;
-import java.util.concurrent.Semaphore;
+import java.util.concurrent.SynchronousQueue;
 
 /**
  * @author zhangyancheng
@@ -21,37 +20,28 @@ public class ZKConnectorTest {
 
 	private static class TestConnectorConnectionListener implements ConnectionListener {
 
-		Semaphore eventSemaphore = new Semaphore(0);
-		LinkedList<ConnectionEvent> events = new LinkedList<>();
-
+		SynchronousQueue<ConnectionEvent> events = new SynchronousQueue<>();
 
 		@Override
 		public void onConnected(boolean newSession) {
-			events.add(ConnectionEvent.CONNECTED);
-			if (newSession) {
-			    events.add(ConnectionEvent.CONNECTED);
-            } else {
-                events.add(ConnectionEvent.RECONNECTED);
-            }
-			eventSemaphore.release();
+			try {
+				events.put(newSession ? ConnectionEvent.CONNECTED : ConnectionEvent.RECONNECTED);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
 		}
 
 		@Override
 		public void onDisconnected(boolean sessionClosed) {
-			if (sessionClosed) {
-                events.add(ConnectionEvent.SESSION_CLOSED);
-            } else {
-                events.add(ConnectionEvent.SUSPEND);
-            }
-			eventSemaphore.release();
+			try {
+				events.put(sessionClosed ? ConnectionEvent.SESSION_CLOSED : ConnectionEvent.SUSPEND);
+			} catch (InterruptedException e) {
+				e.printStackTrace();
+			}
 		}
 
-		boolean unReceivedEvent() {
-			return events.isEmpty();
-		}
-
-		ConnectionEvent lastEvent() {
-			return events.getLast();
+		ConnectionEvent acquireEvent() throws InterruptedException {
+			return events.take();
 		}
 	}
 
@@ -62,7 +52,7 @@ public class ZKConnectorTest {
 	@Before
 	public void setUp() throws InterruptedException {
 		connector = new ZKConnector("localhost:2181", SESSION_TIMEOUT);
-		zkSwitch = new ZKSwitch("E:/Tools/zookeeper-3.4.6");
+		zkSwitch = new ZKSwitch("E:/Tools/zookeeper-3.4.10");
 		testListener = new TestConnectorConnectionListener();
 		zkSwitch.open();
 	}
@@ -98,38 +88,31 @@ public class ZKConnectorTest {
 	 */
 	@Test
 	public void case_mainFlow() throws Exception {
-		connector.addListener(testListener);
-		Assert.assertTrue(testListener.unReceivedEvent());
+		connector.addListener(new BaseClientTest.DebugConnectionListener(testListener));
 
 		connector.start();
-		testListener.eventSemaphore.acquire();
-		Assert.assertEquals(ConnectionEvent.CONNECTED, testListener.lastEvent());
+		Assert.assertEquals(ConnectionEvent.CONNECTED, testListener.acquireEvent());
 		Assert.assertTrue(connector.isConnected());
 
 		zkSwitch.close();
-		testListener.eventSemaphore.acquire();
-		Assert.assertEquals(ConnectionEvent.SUSPEND, testListener.lastEvent());
+		Assert.assertEquals(ConnectionEvent.SUSPEND, testListener.acquireEvent());
 		Assert.assertFalse(connector.isConnected());
 
 		Thread.sleep(Math.abs((long) (Math.random() * SESSION_TIMEOUT) - 1000));
 		zkSwitch.open();
-		testListener.eventSemaphore.acquire();
-		Assert.assertEquals(ConnectionEvent.RECONNECTED, testListener.lastEvent());
+		Assert.assertEquals(ConnectionEvent.RECONNECTED, testListener.acquireEvent());
 		Assert.assertTrue(connector.isConnected());
 
 		zkSwitch.close();
-		testListener.eventSemaphore.acquire();
-		Assert.assertEquals(ConnectionEvent.SUSPEND, testListener.lastEvent());
+		Assert.assertEquals(ConnectionEvent.SUSPEND, testListener.acquireEvent());
 		Assert.assertFalse(connector.isConnected());
 
 
-		testListener.eventSemaphore.acquire();
-		Assert.assertEquals(ConnectionEvent.SESSION_CLOSED, testListener.lastEvent());
+		Assert.assertEquals(ConnectionEvent.SESSION_CLOSED, testListener.acquireEvent());
 		Assert.assertFalse(connector.isConnected());
 
 		zkSwitch.open();
-		testListener.eventSemaphore.acquire();
-		Assert.assertEquals(ConnectionEvent.CONNECTED, testListener.lastEvent());
+		Assert.assertEquals(ConnectionEvent.CONNECTED, testListener.acquireEvent());
 		Assert.assertTrue(connector.isConnected());
 
 		connector.stop();

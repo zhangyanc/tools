@@ -16,7 +16,7 @@ import java.util.Set;
 import java.util.concurrent.BrokenBarrierException;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.Semaphore;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -99,7 +99,7 @@ public class ZKClientTest extends BaseClientTest {
 		createZKClient(clientConfig);
 		zkClient.start();
 
-		final Semaphore semaphore = new Semaphore(0);
+		final Semaphore events = new Semaphore(0);
 
 		zkClient.addListener(new DebugConnectionListener(new ConnectionListener() {
 
@@ -108,26 +108,27 @@ public class ZKClientTest extends BaseClientTest {
 			@Override
 			public void onConnected(boolean newSession) {
 				if (set.add(newSession ? 1 : 2)) {
-					semaphore.release();
+					events.release();
 				}
 			}
 
 			@Override
 			public void onDisconnected(boolean sessionClosed) {
 				if (set.add(sessionClosed ? 3 : 4)) {
-					semaphore.release();
+					events.release();
 				}
 			}
 		}));
 
 		makeCurrentZkClientSessionExpire();
-		semaphore.acquire(3);
+		events.acquire(3);
+		Assert.assertTrue(events.drainPermits() == 0);
 
 		zkSwitch.close();
 		zkSwitch.open();
-		semaphore.acquire(1);
+		events.acquire(1);
 
-		Assert.assertTrue(semaphore.drainPermits() == 0);
+		Assert.assertTrue(events.availablePermits() == 0);
 	}
 
 	/**
@@ -147,36 +148,34 @@ public class ZKClientTest extends BaseClientTest {
 		cli.executeLine("rmr /zkclient");//清空测试目录
 		cli.executeLine("create /zkclient a");
 
-		final AtomicInteger events = new AtomicInteger();
+		final Semaphore events = new Semaphore(0);
 		zkClient.addListener("/zkclient/exists", new ExistsEventListener() {
 			@Override
 			public void onNodeCreated(String path, Stat stat) {
-				events.getAndIncrement();
+				events.release();
 			}
 
 			@Override
 			public void onNodeDeleted(String path) {
-				events.getAndIncrement();
+				events.release();
 			}
 		});
 
-		Thread t = new Thread() {
-			@Override
-			public void run() {
-				try {
-					sleep(1000);
-					cli.executeLine("create /zkclient/exists a");
-					sleep(1000);
-					cli.executeLine("delete /zkclient/exists");
-					sleep(1000);
-				} catch (Exception e) {
-					e.printStackTrace();
-				}
-			}
+		//等待reactor内部线程启动
+		Thread.sleep(100);
+
+		String[] opts = {
+				"create /zkclient/exists a",
+				"delete /zkclient/exists",
+				"create /zkclient/exists a"
 		};
-		t.start();
-		t.join();
-		Assert.assertTrue(events.get() == 2);
+
+		for (String opt : opts) {
+			cli.executeLine(opt);
+			events.acquire();
+		}
+
+		Assert.assertTrue(events.availablePermits() == 0);
 	}
 
 	@Test
@@ -190,56 +189,48 @@ public class ZKClientTest extends BaseClientTest {
 		createZKClient(clientConfig);
 		zkClient.start();
 
-		final ZKCli cli = new ZKCli(CONNECT_STRING);
 		cli.executeLine("rmr /zkclient");//清空测试目录
 		cli.executeLine("create /zkclient a");
 
-		final List<String> dataList = new ArrayList<String>() {
-			{
-				add("dataA");
-				add("dataB");
-				add("dataB");
-			}
-		};
+		final SynchronousQueue<String> events = new SynchronousQueue<>();
+		final String testPath = "/zkclient/data";
 
-		final List<String> received = new ArrayList<>();
-
-		zkClient.addListener("/zkclient/data", new DataEventListener() {
+		zkClient.addListener(testPath, new DataEventListener() {
 
 			@Override
 			public void onDataChanged(String path, Stat stat, byte[] data) {
-				received.add(new String(data));
+				try {
+					events.put(new String(data));
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
 			}
 
 			@Override
 			public void onNodeDeleted(String path) {
-
-			}
-		});
-
-		Thread t = new Thread() {
-			@Override
-			public void run() {
 				try {
-					sleep(1000);
-					cli.executeLine("create /zkclient/data F");
-					sleep(1000);
-
-					for (String data : dataList) {
-						cli.executeLine("set /zkclient/data " + data);
-						sleep(1000);
-					}
-
-					cli.executeLine("delete /zkclient/data");
-					sleep(1000);
-				} catch (Exception e) {
+					events.put(path);
+				} catch (InterruptedException e) {
 					e.printStackTrace();
 				}
 			}
-		};
-		t.start();
-		t.join();
-		Assert.assertEquals(dataList, received);
+		});
+
+		//等待reactor内部线程启动
+		Thread.sleep(100);
+		cli.executeLine("create " + testPath + " F");
+		//等待reactor内部线程获取到初始值F后才能触发后续变更
+		Thread.sleep(100);
+
+		String[] datas = {"dataA", "dataB", "dataB"};
+
+		for (String data : datas) {
+			cli.executeLine("set " + testPath + " " + data);
+			Assert.assertEquals(data, events.take());
+		}
+
+		cli.executeLine("delete " + testPath);
+		Assert.assertEquals(testPath, events.take());
 	}
 
 	@Test
@@ -253,12 +244,12 @@ public class ZKClientTest extends BaseClientTest {
 		createZKClient(clientConfig);
 		zkClient.start();
 
-		final ZKCli cli = new ZKCli(CONNECT_STRING);
 		cli.executeLine("rmr /zkclient");//清空测试目录
 		cli.executeLine("create /zkclient a");
 
 		final AtomicReference<List<String>> listenedChildren = new AtomicReference<>();
 		zkClient.addListener("/zkclient/children", new ChildrenEventListener() {
+
 			@Override
 			public void onChildrenChanged(String path, List<String> children) {
 				listenedChildren.set(children);
