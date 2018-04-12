@@ -21,7 +21,7 @@ import static org.apache.zookeeper.Watcher.Event.EventType.*;
  *
  * @author zhangyancheng
  */
-class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, Watcher, EventListener<WatchedEvent> {
+class NodeEventReactor extends BaseReactor implements Lifecycle, Watcher, EventListener<WatchedEvent> {
 	private static final Logger LOGGER = LoggerFactory.getLogger(NodeEventReactor.class);
 
 	/**
@@ -40,11 +40,6 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, W
 	private final String path;
 
 	/**
-	 * 监听连接变更、执行zookeeper exists、getData、getChildren
-	 */
-	private final ZKClient zkClient;
-
-	/**
 	 * 节点存在状态reactor, 状态变更(节点新增、删除)后发布事件
 	 */
 	final ExistsEventReactor existsEventReactor = new ExistsEventReactor();
@@ -60,58 +55,18 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, W
 	final ChildrenEventReactor childrenEventReactor = new ChildrenEventReactor();
 
 	/**
-	 * 使ZooKeeper事件(所有节点watcher接受的WatchedEvent)处理异步化
-	 */
-	private final EventBus<WatchedEvent> watchedEventBus;
-
-	/**
 	 * 每次exists后的节点存在状态
 	 */
 	private boolean nodeExists;
 
 	NodeEventReactor(String path, ZKClient zkClient) {
+		super(zkClient);
 		this.path = path;
-		this.zkClient = zkClient;
-
-		watchedEventBus = new EventBus<WatchedEvent>().name("NodeEventReactor-" + path)
-				.multicastExceptionHandler(EXCEPTION_HANDLER).addListeners(this);
 	}
 
 	@Override
-	public void start() {
-		//注册连接监听器, 重连成功后注册watcher
-		zkClient.addListener(this);
-
-		if (zkClient.isConnected()) {
-			//当前已经连接注册watcher
-			watchedEventBus.offer(CONNECTED_EVENT);
-		}
-		watchedEventBus.start();
-	}
-
-	@Override
-	public void stop() {
-		watchedEventBus.stop();
-	}
-
-	@Override
-	public boolean isRunning() {
-		return watchedEventBus.isRunning();
-	}
-
-	@Override
-	public void onConnected(boolean newSession) {
-		//重连成功注册watcher
-		watchedEventBus.offer(CONNECTED_EVENT);
-	}
-
-	@Override
-	public void process(WatchedEvent event) {
-		if (event.getType() != None) {
-			LOGGER.debug("{}", event);
-			//WatchedEvent入队, 待异步处理
-			watchedEventBus.offer(event);
-		}
+	public String getName() {
+		return "NodeEventReactor-" + path;
 	}
 
 	/**
@@ -138,11 +93,11 @@ class NodeEventReactor extends ConnectionListenerAdapter implements Lifecycle, W
 	 * @param event 监听到的节点状态变更事件或者CONNECTED_EVENT
 	 */
 	@Override
-	public void onEvent(WatchedEvent event) {
+	protected void react(WatchedEvent event) {
 		try {
 			if (event == CONNECTED_EVENT ||
-				event.getType() == NodeCreated ||
-				event.getType() == NodeDeleted) {
+					event.getType() == NodeCreated ||
+					event.getType() == NodeDeleted) {
 
 				existsEventReactor.react();
 				dataEventReactor.react();
