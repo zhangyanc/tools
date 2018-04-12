@@ -3,6 +3,10 @@ package pers.zyc.tools.zkclient;
 import org.apache.zookeeper.*;
 import org.apache.zookeeper.data.Stat;
 import pers.zyc.tools.lifecycle.Service;
+import pers.zyc.tools.zkclient.election.ElectInfo;
+import pers.zyc.tools.zkclient.election.ElectMode;
+import pers.zyc.tools.zkclient.election.LeaderElection;
+import pers.zyc.tools.zkclient.election.ElectionReactor;
 import pers.zyc.tools.zkclient.listener.*;
 
 import java.lang.reflect.Proxy;
@@ -47,7 +51,9 @@ public class ZKClient extends Service implements IZookeeper {
 	/**
 	 * 节点事件发生器集合
 	 */
-	private final ConcurrentMap<String, NodeEventReactor> nodeEventManagers;
+	private final ConcurrentMap<String, NodeEventReactor> nodeEventManagerMap = new ConcurrentHashMap<>();
+
+	private final ConcurrentMap<String, LeaderElection> leaderElectionMap = new ConcurrentHashMap<>();
 
 	/**
 	 * 客户端配置
@@ -56,8 +62,6 @@ public class ZKClient extends Service implements IZookeeper {
 
 	public ZKClient(ClientConfig config) {
 		this.config = config;
-
-		nodeEventManagers = new ConcurrentHashMap<>();
 
 		connector = new ZKConnector(config.getConnectStr(), config.getSessionTimeout());
 
@@ -98,7 +102,7 @@ public class ZKClient extends Service implements IZookeeper {
 	@Override
 	protected void doStop() throws Exception {
 		connector.stop();
-		nodeEventManagers.clear();
+		nodeEventManagerMap.clear();
 	}
 
 	/**
@@ -157,10 +161,10 @@ public class ZKClient extends Service implements IZookeeper {
 	 * @return 节点事件reactor
 	 */
 	private NodeEventReactor getNodeEventReactor(String path) {
-		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
+		NodeEventReactor nodeEventReactor = nodeEventManagerMap.get(path);
 		if (nodeEventReactor == null) {
 			nodeEventReactor = new NodeEventReactor(path, this);
-			NodeEventReactor prev = nodeEventManagers.putIfAbsent(path, nodeEventReactor);
+			NodeEventReactor prev = nodeEventManagerMap.putIfAbsent(path, nodeEventReactor);
 			if (prev != null) {
 				nodeEventReactor = prev;
 			} else {
@@ -207,7 +211,7 @@ public class ZKClient extends Service implements IZookeeper {
 	 * @param existsEventListener 存在监听器
 	 */
 	public void removeListener(String path, ExistsEventListener existsEventListener) {
-		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
+		NodeEventReactor nodeEventReactor = nodeEventManagerMap.get(path);
 		if (nodeEventReactor != null) {
 			nodeEventReactor.existsEventReactor.removeListener(existsEventListener);
 		}
@@ -220,7 +224,7 @@ public class ZKClient extends Service implements IZookeeper {
 	 * @param dataEventListener 数据监听器
 	 */
 	public void removeListener(String path, DataEventListener dataEventListener) {
-		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
+		NodeEventReactor nodeEventReactor = nodeEventManagerMap.get(path);
 		if (nodeEventReactor != null) {
 			nodeEventReactor.dataEventReactor.removeListener(dataEventListener);
 		}
@@ -233,10 +237,35 @@ public class ZKClient extends Service implements IZookeeper {
 	 * @param childrenEventListener 子节点监听器
 	 */
 	public void removeListener(String path, ChildrenEventListener childrenEventListener) {
-		NodeEventReactor nodeEventReactor = nodeEventManagers.get(path);
+		NodeEventReactor nodeEventReactor = nodeEventManagerMap.get(path);
 		if (nodeEventReactor != null) {
 			nodeEventReactor.childrenEventReactor.removeListener(childrenEventListener);
 		}
+	}
+
+	public void addListener(String path, LeaderEventListener leaderEventListener) {
+		createElection(path, new byte[0], ElectMode.MEMBER).addListener(leaderEventListener);
+	}
+
+	public void removeListener(String path, LeaderEventListener leaderEventListener) {
+		LeaderElection leaderElection = leaderElectionMap.get(path);
+		if (leaderElection != null) {
+			leaderElection.removeListener(leaderEventListener);
+		}
+	}
+
+	public LeaderElection createElection(String path, byte[] data, ElectMode electMode) {
+		LeaderElection election = leaderElectionMap.get(path);
+		if (election == null) {
+			election = new ElectionReactor(this, new ElectInfo(path, Objects.requireNonNull(data), electMode));
+			LeaderElection prev = leaderElectionMap.put(path, election);
+			if (prev != null) {
+				election = prev;
+			} else {
+				election.start();
+			}
+		}
+		return election;
 	}
 
 	@Override
