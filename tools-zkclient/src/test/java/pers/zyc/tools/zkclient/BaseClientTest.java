@@ -75,11 +75,11 @@ public class BaseClientTest {
 
 	@After
 	public void tearDown() {
-		zkSwitch.close();
-		cli.close();
 		if (zkClient != null && zkClient.isRunning()) {
 			zkClient.stop();
 		}
+		cli.close();
+		zkSwitch.close();
 	}
 
 	void createZKClient(ClientConfig config) {
