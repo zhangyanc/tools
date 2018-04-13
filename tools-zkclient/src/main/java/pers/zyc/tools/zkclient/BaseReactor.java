@@ -10,6 +10,8 @@ import pers.zyc.tools.zkclient.listener.ConnectionListener;
 import static org.apache.zookeeper.Watcher.Event.EventType.None;
 
 /**
+ * ZooKeeper事件反应器(异步、连接状态监听)
+ *
  * @author zhangyancheng
  */
 public abstract class BaseReactor extends Service implements ConnectionListener, Watcher, EventListener<WatchedEvent> {
@@ -27,12 +29,10 @@ public abstract class BaseReactor extends Service implements ConnectionListener,
 	/**
 	 * 使ZooKeeper事件(所有节点watcher接受的WatchedEvent)处理异步化
 	 */
-	private final EventBus<WatchedEvent> watchedEventBus;
+	private final EventBus<WatchedEvent> watchedEventBus = new EventBus<>();
 
 	protected BaseReactor(ZKClient zkClient) {
 		this.zkClient = zkClient;
-
-		watchedEventBus = new EventBus<WatchedEvent>().name(getName()).addListeners(this);
 	}
 
 	@Override
@@ -44,7 +44,8 @@ public abstract class BaseReactor extends Service implements ConnectionListener,
 			//当前已经连接注册watcher
 			watchedEventBus.offer(CONNECTED_EVENT);
 		}
-		watchedEventBus.start();
+
+		watchedEventBus.name(getName()).addListeners(this).start();
 	}
 
 	@Override

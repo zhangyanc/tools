@@ -5,10 +5,14 @@ import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.event.*;
-import pers.zyc.tools.lifecycle.Lifecycle;
+import pers.zyc.tools.event.Listenable;
+import pers.zyc.tools.event.MulticastExceptionHandler;
+import pers.zyc.tools.event.Multicaster;
 import pers.zyc.tools.utils.Pair;
-import pers.zyc.tools.zkclient.listener.*;
+import pers.zyc.tools.zkclient.listener.ChildrenEventListener;
+import pers.zyc.tools.zkclient.listener.DataEventListener;
+import pers.zyc.tools.zkclient.listener.ExistsEventListener;
+import pers.zyc.tools.zkclient.listener.NodeEventListener;
 
 import java.util.Arrays;
 import java.util.List;
@@ -17,22 +21,17 @@ import java.util.Objects;
 import static org.apache.zookeeper.Watcher.Event.EventType.*;
 
 /**
- * 节点事件反应器, 通过连续watcher实现事件持续监听
+ * 节点事件反应器, 通过连续watcher实现事件持续发布
  *
  * @author zhangyancheng
  */
-class NodeEventReactor extends BaseReactor implements Lifecycle, Watcher, EventListener<WatchedEvent> {
+class NodeEventReactor extends BaseReactor {
 	private static final Logger LOGGER = LoggerFactory.getLogger(NodeEventReactor.class);
 
 	/**
 	 * 异常处理器, 所有事件发布异常都将记录日志
 	 */
 	private static final MulticastExceptionHandler EXCEPTION_HANDLER = new LogMulticastExceptionHandler(LOGGER);
-
-	/**
-	 * 连接成功(包括启动时已连接、自动重连成功、session切换)后的watcher注册事件
-	 */
-	private static final WatchedEvent CONNECTED_EVENT = new WatchedEvent(null, null, null);
 
 	/**
 	 * 节点路径
@@ -108,11 +107,11 @@ class NodeEventReactor extends BaseReactor implements Lifecycle, Watcher, EventL
 				childrenEventReactor.react();
 			}
 		} catch (Exception e) {
-			LOGGER.error("Process " + event + " failed!", e);
+			LOGGER.error("Node event react error, " + event, e);
 		}
 	}
 
-	private abstract class EventReactor<S, L extends NodeEventListener> implements Listenable<L> {
+	private abstract class EventReactor<D, L extends NodeEventListener> implements Listenable<L> {
 
 		/**
 		 * 共用同一个watcher可避免重复处理事件
@@ -120,9 +119,9 @@ class NodeEventReactor extends BaseReactor implements Lifecycle, Watcher, EventL
 		final Watcher watcher = NodeEventReactor.this;
 
 		/**
-		 * 监听到的状态数据(用于判断变更后发布事件)
+		 * 监听到的数据(用于判断变更后发布事件)
 		 */
-		S state;
+		D data;
 
 		/**
 		 * 事件发布器
@@ -151,20 +150,18 @@ class NodeEventReactor extends BaseReactor implements Lifecycle, Watcher, EventL
 		 * @throws Exception ZooKeeper调用异常
 		 */
 		void react() throws Exception {
-			S oldState = state;
+			D oldData = data;
 
 			if (!nodeExists) {
-				if (oldState != null) {
+				if (oldData != null) {
 					publishNodeDeleted();
 				}
 				return;
 			}
 
-			state = reWatch();
+			data = reWatch();
 
-			if (oldState != null && !oldState.equals(state)) {
-				publishStateChanged();
-			}
+			publishIfDataChanged(oldData);
 		}
 
 		/**
@@ -173,12 +170,12 @@ class NodeEventReactor extends BaseReactor implements Lifecycle, Watcher, EventL
 		 * @return 状态数据
 		 * @throws Exception ZooKeeper调用异常
 		 */
-		abstract S reWatch() throws Exception;
+		abstract D reWatch() throws Exception;
 
 		/**
-		 * 发布状态变更事件
+		 * 判断数据变化后发布事件
 		 */
-		abstract void publishStateChanged();
+		abstract void publishIfDataChanged(D oldData);
 
 		/**
 		 * 发布节点删除事件
@@ -201,21 +198,17 @@ class NodeEventReactor extends BaseReactor implements Lifecycle, Watcher, EventL
 
 		@Override
 		void react() throws Exception {
-			Stat oldState = state;
-			state = reWatch();
+			Stat oldData = data;
+			data = reWatch();
 
-			nodeExists = state != null;
+			nodeExists = data != null;
 
 			if (firstWatch) {
 				firstWatch = false;
 				return;
 			}
 
-			if (oldState == null && state != null) {
-				publishStateChanged();
-			} else if (oldState != null && state == null) {
-				publishNodeDeleted();
-			}
+			publishIfDataChanged(oldData);
 		}
 
 		@Override
@@ -224,8 +217,12 @@ class NodeEventReactor extends BaseReactor implements Lifecycle, Watcher, EventL
 		}
 
 		@Override
-		void publishStateChanged() {
-			multicaster.listeners.onNodeCreated(path, state);
+		void publishIfDataChanged(Stat oldData) {
+			if (oldData == null && data != null) {
+				multicaster.listeners.onNodeCreated(path, data);
+			} else if (oldData != null && data == null) {
+				publishNodeDeleted();
+			}
 		}
 	}
 
@@ -265,8 +262,10 @@ class NodeEventReactor extends BaseReactor implements Lifecycle, Watcher, EventL
 		}
 
 		@Override
-		void publishStateChanged() {
-			multicaster.listeners.onDataChanged(path, state.key(), state.value());
+		void publishIfDataChanged(PathData oldData) {
+			if (oldData != null && !oldData.equals(data)) {
+				multicaster.listeners.onDataChanged(path, data.key(), data.value());
+			}
 		}
 	}
 
@@ -282,8 +281,17 @@ class NodeEventReactor extends BaseReactor implements Lifecycle, Watcher, EventL
 		}
 
 		@Override
-		void publishStateChanged() {
-			multicaster.listeners.onChildrenChanged(path, state);
+		void publishIfDataChanged(List<String> oldData) {
+			if (oldData != null) {
+				boolean changed = oldData.size() != data.size();
+				if (!changed) {
+					oldData.removeAll(data);
+					changed = !oldData.isEmpty();
+				}
+				if (changed) {
+					multicaster.listeners.onChildrenChanged(path, data);
+				}
+			}
 		}
 	}
 }
