@@ -3,10 +3,6 @@ package pers.zyc.tools.zkclient;
 import org.apache.zookeeper.*;
 import org.apache.zookeeper.data.Stat;
 import pers.zyc.tools.lifecycle.Service;
-import pers.zyc.tools.zkclient.election.ElectInfo;
-import pers.zyc.tools.zkclient.election.ElectMode;
-import pers.zyc.tools.zkclient.election.LeaderElection;
-import pers.zyc.tools.zkclient.election.ElectionReactor;
 import pers.zyc.tools.zkclient.listener.*;
 
 import java.lang.reflect.Proxy;
@@ -243,29 +239,13 @@ public class ZKClient extends Service implements IZookeeper {
 		}
 	}
 
-	public void addListener(String path, LeaderEventListener leaderEventListener) {
-		createElection(path, new byte[0], ElectMode.MEMBER).addListener(leaderEventListener);
-	}
-
-	public void removeListener(String path, LeaderEventListener leaderEventListener) {
-		LeaderElection leaderElection = leaderElectionMap.get(path);
-		if (leaderElection != null) {
-			leaderElection.removeListener(leaderEventListener);
-		}
-	}
-
-	public LeaderElection createElection(String path, byte[] data, ElectMode electMode) {
-		LeaderElection election = leaderElectionMap.get(path);
-		if (election == null) {
-			election = new ElectionReactor(this, new ElectInfo(path, Objects.requireNonNull(data), electMode));
-			LeaderElection prev = leaderElectionMap.put(path, election);
-			if (prev != null) {
-				election = prev;
-			} else {
-				election.start();
-			}
-		}
-		return election;
+	/**
+	 * 创建选举
+	 *
+	 * @return 选举
+	 */
+	public LeaderElection createElection() {
+		return new ElectionReactor(this);
 	}
 
 	@Override

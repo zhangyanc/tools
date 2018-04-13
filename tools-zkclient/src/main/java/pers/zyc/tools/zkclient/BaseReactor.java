@@ -19,7 +19,7 @@ public abstract class BaseReactor extends Service implements ConnectionListener,
 	/**
 	 * 连接成功(包括启动时已连接、自动重连成功、session切换)后的watcher注册事件
 	 */
-	static final WatchedEvent CONNECTED_EVENT = new WatchedEvent(null, null, null);
+	protected static final WatchedEvent CONNECTED_EVENT = new WatchedEvent(null, null, null);
 
 	/**
 	 * 监听连接变更、执行zookeeper exists、getData、getChildren
@@ -36,27 +36,27 @@ public abstract class BaseReactor extends Service implements ConnectionListener,
 	}
 
 	@Override
-	public void doStart() {
+	protected void doStart() {
 		//注册连接监听器, 重连成功后注册watcher
 		zkClient.addListener(this);
 
 		if (zkClient.isConnected()) {
 			//当前已经连接注册watcher
-			watchedEventBus.offer(CONNECTED_EVENT);
+			enqueueEvent(CONNECTED_EVENT);
 		}
 
 		watchedEventBus.name(getName()).addListeners(this).start();
 	}
 
 	@Override
-	public void doStop() {
+	protected void doStop() {
 		watchedEventBus.stop();
 	}
 
 	@Override
 	public void onConnected(boolean newSession) {
 		//重连成功注册watcher
-		watchedEventBus.offer(CONNECTED_EVENT);
+		enqueueEvent(CONNECTED_EVENT);
 	}
 
 	@Override
@@ -66,14 +66,22 @@ public abstract class BaseReactor extends Service implements ConnectionListener,
 	@Override
 	public void process(WatchedEvent event) {
 		if (event.getType() != None) {
-			//WatchedEvent入队, 待异步处理
-			watchedEventBus.offer(event);
+			enqueueEvent(event);
 		}
 	}
 
 	@Override
 	public void onEvent(WatchedEvent event) {
 		react(event);
+	}
+
+	/**
+	 * 事件入队, 待异步处理
+	 *
+	 * @param event 事件
+	 */
+	protected void enqueueEvent(WatchedEvent event) {
+		watchedEventBus.offer(event);
 	}
 
 	/**

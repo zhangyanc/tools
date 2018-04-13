@@ -1,27 +1,24 @@
-package pers.zyc.tools.zkclient.election;
+package pers.zyc.tools.zkclient;
 
-import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.common.PathUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.event.MulticastExceptionHandler;
 import pers.zyc.tools.event.Multicaster;
-import pers.zyc.tools.zkclient.BaseReactor;
-import pers.zyc.tools.zkclient.LogMulticastExceptionHandler;
-import pers.zyc.tools.zkclient.ZKClient;
-import pers.zyc.tools.zkclient.listener.RecreateListener;
 
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * 选主实现
  *
  * @author zhangyancheng
  */
-public class ElectionReactor extends BaseReactor implements RecreateListener, LeaderElection {
+class ElectionReactor extends BaseReactor implements LeaderElection {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(ElectionReactor.class);
 
@@ -29,6 +26,8 @@ public class ElectionReactor extends BaseReactor implements RecreateListener, Le
 	 * 异常处理器, 所有事件发布异常都将记录日志
 	 */
 	private static final MulticastExceptionHandler EXCEPTION_HANDLER = new LogMulticastExceptionHandler(LOGGER);
+
+	private static final WatchedEvent LEADER_RELEASED_EVENT = CONNECTED_EVENT;
 
 	/**
 	 * 选主节点名
@@ -41,77 +40,72 @@ public class ElectionReactor extends BaseReactor implements RecreateListener, Le
 	private String leader;
 
 	/**
+	 * 当前是否已选为主
+	 */
+	private boolean isLeader;
+
+	private String electionPath;
+
+	/**
 	 * 选主信息
 	 */
-	private final ElectInfo electInfo;
+	private Elector elector;
 
 	/**
 	 * 选主事件发布器
 	 */
-	private Multicaster<EventListener<LeaderEvent>> multicaster = new Multicaster<EventListener<LeaderEvent>>() {};
+	private Multicaster<EventListener<ElectionEvent>> multicaster = new Multicaster<EventListener<ElectionEvent>>() {};
 
-	public ElectionReactor(ZKClient zkClient, ElectInfo electInfo) {
+	ElectionReactor(ZKClient zkClient) {
 		super(zkClient);
-		this.electInfo = electInfo;
 
 		multicaster.setExceptionHandler(EXCEPTION_HANDLER);
 	}
 
 	@Override
-	public void addListener(EventListener<LeaderEvent> listener) {
+	public void addListener(EventListener<ElectionEvent> listener) {
 		multicaster.addListener(listener);
 	}
 
 	@Override
-	public void removeListener(EventListener<LeaderEvent> listener) {
+	public void removeListener(EventListener<ElectionEvent> listener) {
 		multicaster.removeListener(listener);
 	}
 
 	@Override
-	public void doStop() {
+	protected void doStop() {
 		super.doStop();
-		//关闭election时需要放开leader
 		releaseLeader(true);
 	}
 
 	@Override
 	public void onDisconnected(boolean sessionClosed) {
 		if (sessionClosed) {
-			//会话超时需要放开leader
 			releaseLeader(true);
 		}
 	}
 
 	@Override
-	public void onRecreateSuccessful(String path, String actualPath) {
-		serviceLock.lock();
-		try {
-			member = actualPath;
-			LOGGER.info("{} join election", member, path);
-		} finally {
-			serviceLock.unlock();
+	public void onConnected(boolean newSession) {
+		if (isLeader && (newSession || (leader == null && deleteSelf()))) {
+			//新会话或者release没能删除节点重连成功删除后重置isLeaser标志
+			isLeader = false;
 		}
+		super.onConnected(newSession);
 	}
 
-	@Override
-	public void onRecreateFailed(String path, Exception exception) {
-		LOGGER.error("Ephemeral node recreate failed, leader path: " + path, exception);
-	}
-
-	private void publish(LeaderEvent event) {
+	private void publish(ElectionEvent event) {
 		multicaster.listeners.onEvent(event);
 	}
 
 	@Override
 	protected void react(WatchedEvent event) {
-		LeaderEvent leaderEvent = null;
+		ElectionEvent electionEvent = null;
 		serviceLock.lock();
 		try {
 			if (!isRunning()) {
 				return;
 			}
-
-			String electPath = electInfo.getElectPath();
 
 			/*
 			 * 初始以及成功放开主角色后member为null
@@ -119,19 +113,18 @@ public class ElectionReactor extends BaseReactor implements RecreateListener, Le
 			 * 创建member需保证electPath存在
 			 */
 			if (member == null) {
-				String node = electPath + "/" + electInfo.getElectMode().prefix();
+				String node = electionPath + "/" + elector.getElectionMode().prefix();
 
-				//创建临时节点并加入自动重建
-				member = zkClient.createEphemeral(node, electInfo.getMemberNodeData(), true, this);
-				LOGGER.info("{} join election {}", member, electPath);
+				member = zkClient.createEphemeral(node, elector.getMemberData(), true);
+				LOGGER.info("{} join election {}", member, electionPath);
 			}
 
-			List<String> memberList = zkClient.getChildren(electPath, this);
+			List<String> memberList = zkClient.getChildren(electionPath, this);
 			if (!memberList.contains(member)) {
 				throw new IllegalStateException(member + " not in children list!");
 			}
 
-			if (isLeader()) {
+			if (isLeader) {
 				//当前已经是主节点则忽略所有子节点变更
 				return;
 			}
@@ -141,25 +134,45 @@ public class ElectionReactor extends BaseReactor implements RecreateListener, Le
 			if (isObserver(leastSeqNode)) {
 				if (leader != null) {
 					leader = null;
-					leaderEvent = LeaderEvent.CHANGED;
+					electionEvent = ElectionEvent.LEADER_CHANGED;
 				}
 				//只剩下observer节点
 				LOGGER.warn("All member quit, now no leader online!");
 			} else {
 				//由最小序列号节点take leader, 如果是当前节点则发布TAKE事件
 				leader = leastSeqNode;
-				leaderEvent = isLeader() ? LeaderEvent.TAKE : LeaderEvent.CHANGED;
+				isLeader = member.equals(leader);
+				electionEvent = isLeader ? ElectionEvent.TAKE : ElectionEvent.LEADER_CHANGED;
 			}
 		} catch (Exception e) {
-			LOGGER.error("Leader react error, " + event, e);
+			LOGGER.error("Election react error, " + event, e);
 		} finally {
 			serviceLock.unlock();
 		}
 
-		if (leaderEvent != null) {
+		if (electionEvent != null) {
 			//在锁外发布事件
-			publish(leaderEvent);
+			publish(electionEvent);
 		}
+	}
+
+	@Override
+	public void elect(String electionPath, Elector elector) {
+		Objects.requireNonNull(elector);
+		if (isRunning()) {
+			return;
+		}
+
+		this.elector = elector;
+		PathUtils.validatePath(electionPath);
+		this.electionPath = electionPath;
+
+		start();
+	}
+
+	@Override
+	public void quit() {
+		stop();
 	}
 
 	@Override
@@ -183,16 +196,6 @@ public class ElectionReactor extends BaseReactor implements RecreateListener, Le
 	}
 
 	@Override
-	public boolean isLeader() {
-		serviceLock.lock();
-		try {
-			return member != null && member.equals(leader);
-		} finally {
-			serviceLock.unlock();
-		}
-	}
-
-	@Override
 	public boolean releaseLeader() {
 		return releaseLeader(false);
 	}
@@ -210,34 +213,49 @@ public class ElectionReactor extends BaseReactor implements RecreateListener, Le
 		boolean released = false;
 		serviceLock.lock();
 		try {
-			if (isLeader()) {
+			if (isLeader) {
 				boolean connected = zkClient.isConnected();
 				if (force || connected) {
-					if (connected) {
-						zkClient.delete(electInfo.getElectPath() + "/" + member);
+					if (connected && deleteSelf()) {
+						//成功删除才重置isLeader标志, 否则将在重连成功时再删除
+						isLeader = false;
 					}
-					leader = member = null;
+					leader = null;
 					released = true;
 				}
 			}
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		} catch (KeeperException e) {
-			LOGGER.error("Release leader failed, node[{}], error: {}", member, e.getMessage());
 		} finally {
 			serviceLock.unlock();
 		}
 
 		if (released) {
 			//在锁外发布事件
-			publish(LeaderEvent.LOST);
+			publish(ElectionEvent.LOST);
+			if (!force) {
+				enqueueEvent(LEADER_RELEASED_EVENT);
+			}
 		}
 		return released;
 	}
 
-	@Override
-	public ElectInfo getElectInfo() {
-		return electInfo;
+	/**
+	 * 只在releaseLeader时才会调用删除自身节点
+	 *
+	 * <p>
+	 *     如果删除异常表示删除失败, 这里认为异常即连接异常,
+	 *     不考虑节点或者父节点已被删除的情况
+	 *
+	 * @return 是否成功删除
+	 */
+	private boolean deleteSelf() {
+		try {
+			zkClient.delete(electionPath + "/" + member);
+			member = null;
+			return true;
+		} catch (Exception e) {
+			LOGGER.error("Delete self error: {} for member: {}", e.getMessage(), member);
+		}
+		return false;
 	}
 
 	/**
@@ -258,7 +276,7 @@ public class ElectionReactor extends BaseReactor implements RecreateListener, Le
 	 * @param node 节点名
 	 */
 	private static boolean isObserver(String node) {
-		return ElectMode.match(node) == ElectMode.OBSERVER;
+		return ElectionMode.match(node) == ElectionMode.OBSERVER;
 	}
 
 	/**
@@ -277,8 +295,8 @@ public class ElectionReactor extends BaseReactor implements RecreateListener, Le
 			} else if (isObserver(m2)) {
 				return -1;
 			} else {
-				return Integer.parseInt(m1.substring(ElectMode.MEMBER.prefix().length())) -
-						Integer.parseInt(m2.substring(ElectMode.MEMBER.prefix().length()));
+				return Integer.parseInt(m1.substring(ElectionMode.MEMBER.prefix().length())) -
+						Integer.parseInt(m2.substring(ElectionMode.MEMBER.prefix().length()));
 			}
 		}
 	};
