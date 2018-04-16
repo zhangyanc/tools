@@ -50,7 +50,7 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	/**
 	 * 事件广播器
 	 */
-	private final Multicaster<EventListener> multicaster = new Multicaster<EventListener>(){};
+	private final Multicaster<EventListener<E>> multicaster = new Multicaster<EventListener<E>>() {};
 
 	@Override
 	public String getName() {
@@ -86,7 +86,6 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	}
 
 	@Override
-	@SuppressWarnings("unchecked")
 	protected void execute() throws InterruptedException {
 		if (mergeInterval > 0) {
 			/*

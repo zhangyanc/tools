@@ -50,9 +50,15 @@ public abstract class Multicaster<L extends Listener> implements Listenable<L> {
 
 	@SuppressWarnings("unchecked")
 	protected Multicaster() {
-		//子类继承后需声明listener接口类型, 如果为null或者泛型不是接口Multicaster无法工作, 抛出异常
-		listenerInterfaceClass = Objects.requireNonNull((Class<L>) ((ParameterizedType)
+		//子类继承后需声明listener接口类型, 如果为null或者泛型不是接口则抛出异常
+		Type genericType = Objects.requireNonNull(((ParameterizedType)
 				getClass().getGenericSuperclass()).getActualTypeArguments()[0]);
+		if (genericType instanceof ParameterizedType) {
+			//如果是带泛型接口则获取接口类型
+			genericType = ((ParameterizedType) genericType).getRawType();
+		}
+
+		listenerInterfaceClass = (Class<L>) genericType;
 		if (!listenerInterfaceClass.isInterface()) {
 			throw new IllegalArgumentException(listenerInterfaceClass + " is not Interface!");
 		}
