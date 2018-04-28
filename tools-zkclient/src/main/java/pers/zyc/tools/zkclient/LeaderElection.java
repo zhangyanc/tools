@@ -18,13 +18,13 @@ public interface LeaderElection extends EventSource<ElectionEvent> {
 	 *
 	 * @param electionPath 选举节点
 	 *                     1. 节点必须符合zookeeper path格式,且不能是临时节点
-	 *                     2. 选举节点必须存在, 且不能被删除
+	 *                     2. 选举节点必须存在, 且不能被删除, 否则选举将发生错误
 	 * @param elector 选举人
 	 */
 	void elect(String electionPath, Elector elector);
 
 	/**
-	 * 退出选举
+	 * 退出选举(如果是主则会release)
 	 */
 	void quit();
 
@@ -42,11 +42,8 @@ public interface LeaderElection extends EventSource<ElectionEvent> {
 	 * 放开主角色
 	 *
 	 * <p>
-	 *     1. 如果当前不是主节点忽略此次操作
-	 *     2. 如果当前是主但zookeeper未连通则release失败, 且不会改变内部状态,
+	 *     如果是主节则放开主并发布LOST事件, 否则忽略此次操作
 	 *
-	 *
-	 * @return 当且仅当为主节点且成功释放返回true
 	 */
-	boolean releaseLeader();
+	void releaseLeader();
 }

@@ -12,6 +12,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.locks.Condition;
 
 /**
  * 选主实现
@@ -27,7 +28,7 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 	 */
 	private static final MulticastExceptionHandler EXCEPTION_HANDLER = new LogMulticastExceptionHandler(LOGGER);
 
-	private static final WatchedEvent LEADER_RELEASED_EVENT = CONNECTED_EVENT;
+	private static final WatchedEvent RE_ELECT_EVENT = CONNECTED_EVENT;
 
 	/**
 	 * 选主节点名
@@ -44,12 +45,21 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 	 */
 	private boolean isLeader;
 
+	/**
+	 *选举路径
+	 */
 	private String electionPath;
 
 	/**
-	 * 选主信息
+	 * 选举人
 	 */
 	private Elector elector;
+
+	private boolean releasing;
+
+	private Condition quitCondition = serviceLock.newCondition();
+
+	private volatile long disconnectedTime;
 
 	/**
 	 * 选主事件发布器
@@ -74,24 +84,51 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 
 	@Override
 	protected void doStop() {
+		while (member != null && !deleteSelf()) {
+			long sessionTimeoutRemain = zkClient.getZooKeeper().getSessionTimeout() -
+					(System.currentTimeMillis() - disconnectedTime);
+			//quitCondition.await(sessionTimeoutRemain, TimeUnit.MILLISECONDS);
+		}
 		super.doStop();
-		releaseLeader(true);
 	}
 
 	@Override
 	public void onDisconnected(boolean sessionClosed) {
 		if (sessionClosed) {
-			releaseLeader(true);
+			serviceLock.lock();
+			try {
+				if (releasing) {
+					released();
+				}
+			} finally {
+				serviceLock.unlock();
+			}
+		} else {
+			disconnectedTime = System.currentTimeMillis();
 		}
 	}
 
 	@Override
 	public void onConnected(boolean newSession) {
-		if (isLeader && (newSession || (leader == null && deleteSelf()))) {
-			//新会话或者release没能删除节点重连成功删除后重置isLeaser标志
-			isLeader = false;
+		serviceLock.lock();
+		try {
+			if (releasing && deleteSelf()) {
+				released();
+			}
+			super.onConnected(newSession);
+		} finally {
+			serviceLock.unlock();
 		}
-		super.onConnected(newSession);
+	}
+
+	private void released() {
+		member = null;
+		releasing = false;
+
+		if (isLeader) {
+			isLeader = false;
+			publish(ElectionEvent.LOST);
+		}
 	}
 
 	private void publish(ElectionEvent event) {
@@ -100,50 +137,69 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 
 	@Override
 	protected void react(WatchedEvent event) {
+		/*
+		 * 选举节点被删除, 无法创建子节点也无法获取子节点列表, 继而无法选举,
+		 * 甚至连被删除事件本身都不是一定能被监听的到, 所以这里的提前终止(if分支里的return)
+		 * 并不总能阻止报错, 也就没有了实际的防范意义.
+		 *
+		 * 总之,需要"外部"保证electionPath不被删除 且能读写子节点
+		 */
+		if (event.getType() == Event.EventType.NodeDeleted) {
+			LOGGER.error("Election path deleted!");
+			return;
+		}
+
 		ElectionEvent electionEvent = null;
 		serviceLock.lock();
 		try {
-			if (!isRunning()) {
+			if (!zkClient.isConnected()) {
 				return;
 			}
 
+			List<String> memberList = null;
+
+			//确定member是否仍然在选举列表
+			if (member != null) {
+				memberList = zkClient.getChildren(electionPath, this);
+
+				if (!memberList.contains(member)) {
+					member = null;
+
+					if (isLeader) {
+						isLeader = false;
+						leader = null;
+						publish(ElectionEvent.LOST);
+					}
+				} else if (isLeader) {
+					//当前已经是主则忽略所有子节点变更
+					return;
+				}
+			}
+
 			/*
-			 * 初始以及成功放开主角色后member为null
-			 *
-			 * 创建member需保证electPath存在
+			 * 初始以及放开主角色后创建选举节点(不处理electPath不存在的错误情况)
 			 */
 			if (member == null) {
 				String node = electionPath + "/" + elector.getElectionMode().prefix();
 
 				member = zkClient.createEphemeral(node, elector.getMemberData(), true);
 				LOGGER.info("{} join election {}", member, electionPath);
-			}
 
-			List<String> memberList = zkClient.getChildren(electionPath, this);
-			if (!memberList.contains(member)) {
-				throw new IllegalStateException(member + " not in children list!");
-			}
-
-			if (isLeader) {
-				//当前已经是主节点则忽略所有子节点变更
-				return;
+				memberList = zkClient.getChildren(electionPath, this);
 			}
 
 			String leastSeqNode = getLeastSeqNode(memberList);
 
 			if (isObserver(leastSeqNode)) {
-				if (leader != null) {
-					leader = null;
-					electionEvent = ElectionEvent.LEADER_CHANGED;
-				}
 				//只剩下observer节点
-				LOGGER.warn("All member quit, now no leader online!");
-			} else {
-				//由最小序列号节点take leader, 如果是当前节点则发布TAKE事件
-				leader = leastSeqNode;
-				isLeader = member.equals(leader);
-				electionEvent = isLeader ? ElectionEvent.TAKE : ElectionEvent.LEADER_CHANGED;
+				LOGGER.warn("All member is observer, no leader will be elected!");
+				return;
 			}
+
+			//由最小序列号节点take leader, 如果是当前节点则发布TAKE事件
+			leader = leastSeqNode;
+			isLeader = member.equals(leader);
+			electionEvent = isLeader ? ElectionEvent.TAKE : ElectionEvent.LEADER_CHANGED;
 		} catch (Exception e) {
 			LOGGER.error("Election react error, " + event, e);
 		} finally {
@@ -159,15 +215,21 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 	@Override
 	public void elect(String electionPath, Elector elector) {
 		Objects.requireNonNull(elector);
-		if (isRunning()) {
-			return;
-		}
-
-		this.elector = elector;
 		PathUtils.validatePath(electionPath);
-		this.electionPath = electionPath;
+		serviceLock.lock();
+		try {
+			if (isRunning()) {
+				//elect只能启动一次或者只能发生在quit之后
+				return;
+			}
 
-		start();
+			this.elector = elector;
+			this.electionPath = electionPath;
+
+			start();
+		} finally {
+			serviceLock.unlock();
+		}
 	}
 
 	@Override
@@ -196,46 +258,30 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 	}
 
 	@Override
-	public boolean releaseLeader() {
-		return releaseLeader(false);
-	}
-
-	/**
-	 * 放开主角色
-	 *
-	 * <p>
-	 *     1. 当前是主节点时才放开主
-	 *     2. 如果非强制release需要当前zookeeper必需连通且成功删除了节点
-	 *
-	 * @param force 是否强制, 会话超时或者关闭election时属强制release
-	 */
-	private boolean releaseLeader(boolean force) {
-		boolean released = false;
+	public void releaseLeader() {
 		serviceLock.lock();
 		try {
-			if (isLeader) {
-				boolean connected = zkClient.isConnected();
-				if (force || connected) {
-					if (connected && deleteSelf()) {
-						//成功删除才重置isLeader标志, 否则将在重连成功时再删除
-						isLeader = false;
-					}
-					leader = null;
-					released = true;
+			if (isLeader && leader != null) {
+				leader = null;
+
+				if (release()) {
+					isLeader = false;
+					enqueueEvent(RE_ELECT_EVENT);
 				}
 			}
 		} finally {
 			serviceLock.unlock();
 		}
+	}
 
-		if (released) {
-			//在锁外发布事件
-			publish(ElectionEvent.LOST);
-			if (!force) {
-				enqueueEvent(LEADER_RELEASED_EVENT);
-			}
+	private boolean release() {
+		if (member == null || releasing) {
+			return false;
 		}
-		return released;
+
+		releasing = !deleteSelf();
+
+		return releasing;
 	}
 
 	/**
@@ -249,11 +295,12 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 	 */
 	private boolean deleteSelf() {
 		try {
-			zkClient.delete(electionPath + "/" + member);
-			member = null;
+			if (zkClient.isConnected()) {
+				zkClient.delete(electionPath + "/" + member);
+			}
 			return true;
 		} catch (Exception e) {
-			LOGGER.error("Delete self error: {} for member: {}", e.getMessage(), member);
+			LOGGER.error("Delete member[{}] error: {}", member, e.getMessage());
 		}
 		return false;
 	}

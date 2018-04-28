@@ -14,24 +14,24 @@ import static org.apache.zookeeper.Watcher.Event.EventType.None;
  *
  * @author zhangyancheng
  */
-public abstract class BaseReactor extends Service implements ConnectionListener, Watcher, EventListener<WatchedEvent> {
+abstract class BaseReactor extends Service implements ConnectionListener, Watcher {
 
 	/**
 	 * 连接成功(包括启动时已连接、自动重连成功、session切换)后的watcher注册事件
 	 */
-	protected static final WatchedEvent CONNECTED_EVENT = new WatchedEvent(null, null, null);
+	static final WatchedEvent CONNECTED_EVENT = new WatchedEvent(null, null, null);
 
 	/**
 	 * 监听连接变更、执行zookeeper exists、getData、getChildren
 	 */
-	protected final ZKClient zkClient;
+	final ZKClient zkClient;
 
 	/**
 	 * 使ZooKeeper事件(所有节点watcher接受的WatchedEvent)处理异步化
 	 */
 	private final EventBus<WatchedEvent> watchedEventBus = new EventBus<>();
 
-	protected BaseReactor(ZKClient zkClient) {
+	BaseReactor(ZKClient zkClient) {
 		this.zkClient = zkClient;
 	}
 
@@ -45,11 +45,12 @@ public abstract class BaseReactor extends Service implements ConnectionListener,
 			enqueueEvent(CONNECTED_EVENT);
 		}
 
-		watchedEventBus.name(getName()).addListeners(this).start();
+		watchedEventBus.name(getName()).addListeners(new WatchedEventListener()).start();
 	}
 
 	@Override
 	protected void doStop() {
+		zkClient.removeListener(this);
 		watchedEventBus.stop();
 	}
 
@@ -70,18 +71,21 @@ public abstract class BaseReactor extends Service implements ConnectionListener,
 		}
 	}
 
-	@Override
-	public void onEvent(WatchedEvent event) {
-		react(event);
-	}
-
 	/**
 	 * 事件入队, 待异步处理
 	 *
 	 * @param event 事件
 	 */
-	protected void enqueueEvent(WatchedEvent event) {
+	void enqueueEvent(WatchedEvent event) {
 		watchedEventBus.offer(event);
+	}
+
+	private class WatchedEventListener implements EventListener<WatchedEvent> {
+
+		@Override
+		public void onEvent(WatchedEvent event) {
+			react(event);
+		}
 	}
 
 	/**
