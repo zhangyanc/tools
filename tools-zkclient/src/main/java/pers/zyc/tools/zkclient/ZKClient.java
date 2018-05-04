@@ -21,7 +21,7 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
 public class ZKClient extends Service implements IZookeeper {
 
 	static {
-		System.setProperty("zookeeper.disableAutoWatchReset", "true");
+		ClientCnxn.setDisableAutoResetWatch(false);
 	}
 
 	/**
@@ -240,12 +240,15 @@ public class ZKClient extends Service implements IZookeeper {
 	}
 
 	/**
-	 * 创建选举
+	 * 创建一个在给定节点上的选举器
 	 *
-	 * @return 选举
+	 * @param electionPath 选举节点
+	 *                     1. 节点必须符合zookeeper path格式,且不能是临时节点
+	 *                     2. 选举节点必须存在, 且不能被删除, 否则选举将发生错误
+	 * @return 选举器
 	 */
-	public LeaderElection createElection() {
-		return new ElectionReactor(this);
+	public LeaderElection createElection(String electionPath) {
+		return new ElectionReactor(electionPath, this);
 	}
 
 	@Override
