@@ -22,6 +22,11 @@ abstract class BaseReactor extends Service implements ConnectionListener, Watche
 	static final WatchedEvent CONNECTED_EVENT = new WatchedEvent(null, null, null);
 
 	/**
+	 * 节点路径
+	 */
+	final String path;
+
+	/**
 	 * 监听连接变更、执行zookeeper exists、getData、getChildren
 	 */
 	final ZKClient zkClient;
@@ -31,7 +36,8 @@ abstract class BaseReactor extends Service implements ConnectionListener, Watche
 	 */
 	private final EventBus<WatchedEvent> watchedEventBus = new EventBus<>();
 
-	BaseReactor(ZKClient zkClient) {
+	BaseReactor(String path, ZKClient zkClient) {
+		this.path = path;
 		this.zkClient = zkClient;
 	}
 

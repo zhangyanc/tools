@@ -34,11 +34,6 @@ class NodeEventReactor extends BaseReactor {
 	private static final MulticastExceptionHandler EXCEPTION_HANDLER = new LogMulticastExceptionHandler(LOGGER);
 
 	/**
-	 * 节点路径
-	 */
-	private final String path;
-
-	/**
 	 * 节点存在状态reactor, 状态变更(节点新增、删除)后发布事件
 	 */
 	final ExistsEventReactor existsEventReactor = new ExistsEventReactor();
@@ -59,8 +54,7 @@ class NodeEventReactor extends BaseReactor {
 	private boolean nodeExists;
 
 	NodeEventReactor(String path, ZKClient zkClient) {
-		super(zkClient);
-		this.path = path;
+		super(path, zkClient);
 	}
 
 	@Override
