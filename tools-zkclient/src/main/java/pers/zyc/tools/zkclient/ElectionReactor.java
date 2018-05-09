@@ -29,7 +29,7 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 	 */
 	private static final MulticastExceptionHandler EXCEPTION_HANDLER = new LogMulticastExceptionHandler(LOGGER);
 
-	private static final WatchedEvent QUITED_EVENT = new WatchedEvent(null, null, null);
+	private static final WatchedEvent SESSION_CLOSED_EVENT = new WatchedEvent(null, null, null);
 
 	/**
 	 * 选主节点名
@@ -81,20 +81,24 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 
 	@Override
 	protected void doStop() {
-		while (member != null && !deleteSelf()) {
+		while (member != null) {
+			deleteSelf();
 			quitCondition.awaitUninterruptibly();
 		}
-		enqueueEvent(QUITED_EVENT);
 		super.doStop();
 	}
 
 	@Override
-	public void onDisconnected(boolean sessionClosed) {
+	public void onConnected(boolean newSession) {
+		if (newSession) {
+			enqueueEvent(CONNECTED_EVENT);
+			return;
+		}
+
 		serviceLock.lock();
 		try {
-			if (sessionClosed && isQuitting()) {
-				member = leader = null;
-				quitCondition.notify();
+			if (isQuitting()) {
+				quitCondition.signal();
 			}
 		} finally {
 			serviceLock.unlock();
@@ -102,17 +106,8 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 	}
 
 	@Override
-	public void onConnected(boolean newSession) {
-		serviceLock.lock();
-		try {
-			if (isQuitting()) {
-				quitCondition.notify();
-			} else {
-				super.onConnected(newSession);
-			}
-		} finally {
-			serviceLock.unlock();
-		}
+	public void onDisconnected(boolean sessionClosed) {
+		enqueueEvent(SESSION_CLOSED_EVENT);
 	}
 
 	@Override
@@ -120,15 +115,21 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 		ElectionEvent electionEvent = null;
 		serviceLock.lock();
 		try {
-			if (event == QUITED_EVENT && isLeader) {
-				isLeader = false;
-				electionEvent = ElectionEvent.LOST;
+			if (isQuitting()) {
+				member = leader = null;
+				quitCondition.signal();
+
+				if (isLeader) {
+					isLeader = false;
+					electionEvent = ElectionEvent.LOST;
+				}
 			} else {
 				if (member == null) {
 					String node = path + "/" + elector.getElectionMode().prefix();
 
-					member = zkClient.createEphemeral(node, elector.getMemberData(), true);
-					LOGGER.info("{} join election {}", member, path);
+					member = zkClient.createEphemeral(node, elector.getMemberData(), true).substring(path.length() + 1);
+
+					LOGGER.info("{} joined election {}", member, path);
 				}
 
 				electionEvent = elect();
@@ -150,8 +151,7 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 
 		//发生了
 		if (!children.contains(member)) {
-			member = null;
-			return isLeader ? ElectionEvent.LOST : ElectionEvent.LEADER_CHANGED;
+			throw new IllegalStateException(member + " not in children list!");
 		}
 
 		String leastSeqNode = getLeastSeqNode(children);
@@ -159,6 +159,10 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 		if (isObserver(leastSeqNode)) {
 			//全部是observer节点
 			LOGGER.warn("All member is observer, no leader elected!");
+
+			if (leader != null) {
+				leader = null;
+			}
 			return null;
 		}
 

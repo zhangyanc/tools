@@ -97,8 +97,17 @@ public class ZKClient extends Service implements IZookeeper {
 
 	@Override
 	protected void doStop() throws Exception {
-		connector.stop();
+		for (BaseReactor eventReactor : nodeEventManagerMap.values()) {
+			eventReactor.stop();
+		}
 		nodeEventManagerMap.clear();
+
+		for (LeaderElection leaderElection : leaderElectionMap.values()) {
+			leaderElection.quit();
+		}
+		leaderElectionMap.clear();
+
+		connector.stop();
 	}
 
 	/**
@@ -240,15 +249,23 @@ public class ZKClient extends Service implements IZookeeper {
 	}
 
 	/**
-	 * 创建一个在给定节点上的选举器
+	 * 获取给定节点上的选举器, 如果不存在则新建
 	 *
 	 * @param electionPath 选举节点
 	 *                     1. 节点必须符合zookeeper path格式,且不能是临时节点
 	 *                     2. 选举节点必须存在, 且不能被删除, 否则选举将发生错误
 	 * @return 选举器
 	 */
-	public LeaderElection createElection(String electionPath) {
-		return new ElectionReactor(electionPath, this);
+	public LeaderElection getElection(String electionPath) {
+		LeaderElection leaderElection = leaderElectionMap.get(electionPath);
+		if (leaderElection == null) {
+			leaderElection = new ElectionReactor(electionPath, this);
+			LeaderElection prev = leaderElectionMap.putIfAbsent(electionPath, leaderElection);
+			if (prev != null) {
+				leaderElection = prev;
+			}
+		}
+		return leaderElection;
 	}
 
 	@Override
