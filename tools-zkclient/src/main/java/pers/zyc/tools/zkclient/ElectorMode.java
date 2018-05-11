@@ -3,11 +3,11 @@ package pers.zyc.tools.zkclient;
 /**
  * @author zhangyancheng
  */
-public enum ElectionMode {
+public enum ElectorMode {
 	/**
 	 * 候选者
 	 */
-	MEMBER("member-"),
+	FOLLOWER("follower-"),
 
 	/**
 	 * 观察者(不参与选主)
@@ -19,7 +19,7 @@ public enum ElectionMode {
 	 */
 	private String prefix;
 
-	ElectionMode(String prefix) {
+	ElectorMode(String prefix) {
 		this.prefix = prefix;
 	}
 
@@ -27,8 +27,8 @@ public enum ElectionMode {
 		return prefix;
 	}
 
-	public static ElectionMode match(String node) {
-		for (ElectionMode mode : values()) {
+	public static ElectorMode match(String node) {
+		for (ElectorMode mode : values()) {
 			if (node.startsWith(mode.prefix)) {
 				return mode;
 			}

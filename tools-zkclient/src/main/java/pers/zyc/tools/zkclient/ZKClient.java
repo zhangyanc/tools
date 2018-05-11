@@ -25,7 +25,7 @@ public class ZKClient extends Service implements IZookeeper {
 	}
 
 	/**
-	 * 读锁, 所有
+	 * 读锁
 	 */
 	Lock readLock;
 

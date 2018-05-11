@@ -13,5 +13,5 @@ public interface Elector {
 	/**
 	 * @return 选主模式
 	 */
-	ElectionMode getElectionMode();
+	ElectorMode getElectorMode();
 }

@@ -7,15 +7,15 @@ import java.util.Objects;
  */
 public class DefaultElector implements Elector {
 	private byte[] memberData;
-	private ElectionMode electionMode;
+	private ElectorMode electorMode;
 
 	public DefaultElector() {
-		this(new byte[0], ElectionMode.MEMBER);
+		this(new byte[0], ElectorMode.FOLLOWER);
 	}
 
-	public DefaultElector(byte[] memberData, ElectionMode electionMode) {
+	public DefaultElector(byte[] memberData, ElectorMode electorMode) {
 		this.memberData = Objects.requireNonNull(memberData);
-		this.electionMode = electionMode;
+		this.electorMode = electorMode;
 	}
 
 	@Override
@@ -23,7 +23,7 @@ public class DefaultElector implements Elector {
 		return memberData;
 	}
 
-	public ElectionMode getElectionMode() {
-		return electionMode;
+	public ElectorMode getElectorMode() {
+		return electorMode;
 	}
 }

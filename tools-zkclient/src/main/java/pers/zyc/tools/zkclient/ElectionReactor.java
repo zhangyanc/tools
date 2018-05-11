@@ -125,10 +125,8 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 				}
 			} else {
 				if (member == null) {
-					String node = path + "/" + elector.getElectionMode().prefix();
-
-					member = zkClient.createEphemeral(node, elector.getMemberData(), true).substring(path.length() + 1);
-
+					member = zkClient.createEphemeral(path + "/" + elector.getElectorMode().prefix(),
+							elector.getMemberData(), true).substring(path.length() + 1);
 					LOGGER.info("{} joined election {}", member, path);
 				}
 
@@ -149,9 +147,13 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 	private ElectionEvent elect() throws KeeperException, InterruptedException {
 		List<String> children = zkClient.getChildren(path, this);
 
-		//发生了
 		if (!children.contains(member)) {
 			throw new IllegalStateException(member + " not in children list!");
+		}
+
+		if (isLeader) {
+			//已经是主节点则无需再处理是否变更
+			return null;
 		}
 
 		String leastSeqNode = getLeastSeqNode(children);
@@ -170,7 +172,8 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 		//由最小序列号节点获取主角色, 如果是当前节点则发布TAKE事件
 		leader = leastSeqNode;
 		isLeader = member.equals(leader);
-		boolean leaderChanged = !leader.equals(lastLeader);
+		//当前不是leader判断是否leader变更, 否则无需发布事件
+		boolean leaderChanged = !isLeader && !leader.equals(lastLeader);
 
 		return isLeader ? ElectionEvent.TAKE : leaderChanged ? ElectionEvent.LEADER_CHANGED : null;
 	}
@@ -272,7 +275,7 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 	 * @param node 节点名
 	 */
 	private static boolean isObserver(String node) {
-		return ElectionMode.match(node) == ElectionMode.OBSERVER;
+		return ElectorMode.match(node) == ElectorMode.OBSERVER;
 	}
 
 	/**
@@ -291,8 +294,8 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 			} else if (isObserver(m2)) {
 				return -1;
 			} else {
-				return Integer.parseInt(m1.substring(ElectionMode.MEMBER.prefix().length())) -
-						Integer.parseInt(m2.substring(ElectionMode.MEMBER.prefix().length()));
+				return Integer.parseInt(m1.substring(ElectorMode.FOLLOWER.prefix().length())) -
+						Integer.parseInt(m2.substring(ElectorMode.FOLLOWER.prefix().length()));
 			}
 		}
 	};
