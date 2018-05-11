@@ -26,7 +26,7 @@ class DefaultZookeeper extends ConnectionListenerAdapter implements IZookeeper, 
 	/**
 	 * ZooKeeper实例
 	 */
-	private ZooKeeper zooKeeper;
+	private volatile ZooKeeper zooKeeper;
 
 	DefaultZookeeper(ZKClient zkClient) {
 		this.zkClient = zkClient;
@@ -46,7 +46,7 @@ class DefaultZookeeper extends ConnectionListenerAdapter implements IZookeeper, 
 	public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
 		zkClient.readLock.lock();
 		try {
-			if (!zkClient.isConnected()) {
+			if (!zkClient.isRunning() || zooKeeper == null || !zooKeeper.getState().isConnected()) {
 				//当前未连通无法操作zookeeper
 				throw new ClientException("ZooKeeper is not connected!");
 			}

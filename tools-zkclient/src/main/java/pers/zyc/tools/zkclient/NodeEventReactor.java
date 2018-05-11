@@ -58,8 +58,10 @@ class NodeEventReactor extends BaseReactor {
 	}
 
 	@Override
-	public String getName() {
-		return "NodeEventReactor-" + path;
+	public void onConnected(boolean newSession) {
+		if (newSession) {
+			enqueueEvent(CONNECTED_EVENT);
+		}
 	}
 
 	/**
@@ -101,7 +103,7 @@ class NodeEventReactor extends BaseReactor {
 				childrenEventReactor.react();
 			}
 		} catch (Exception e) {
-			LOGGER.error("Node event react error, " + event, e);
+			LOGGER.warn("Node event[{}] react error: {}", event, e.getMessage());
 		}
 	}
 

@@ -161,7 +161,7 @@ public class ZKClientTest extends BaseClientTest {
 		});
 
 		//等待reactor内部线程启动
-		Thread.sleep(100);
+		Thread.sleep(1000);
 
 		String[] opts = {
 				"create /zkclient/exists a",

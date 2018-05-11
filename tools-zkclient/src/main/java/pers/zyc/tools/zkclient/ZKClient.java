@@ -20,10 +20,6 @@ import java.util.concurrent.locks.ReentrantReadWriteLock;
  */
 public class ZKClient extends Service implements IZookeeper {
 
-	static {
-		ClientCnxn.setDisableAutoResetWatch(false);
-	}
-
 	/**
 	 * 读锁
 	 */

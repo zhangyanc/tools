@@ -61,9 +61,12 @@ abstract class BaseReactor extends Service implements ConnectionListener, Watche
 	}
 
 	@Override
+	public String getName() {
+		return super.getName() + "-" + path;
+	}
+
+	@Override
 	public void onConnected(boolean newSession) {
-		//重连成功注册watcher
-		enqueueEvent(CONNECTED_EVENT);
 	}
 
 	@Override
