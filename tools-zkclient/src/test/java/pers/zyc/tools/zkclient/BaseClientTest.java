@@ -86,22 +86,22 @@ public class BaseClientTest {
 		zkClient = new ZKClient(config);
 	}
 
-	void makeCurrentZkClientSessionExpire() throws Exception {
-		long sessionId = zkClient.getZooKeeper().getSessionId();
-		byte[] sessionPwd = zkClient.getZooKeeper().getSessionPasswd();
-
+	static void makeZooKeeperSessionExpire(ZooKeeper zooKeeper) throws Exception {
 		final CountDownLatch connectedLatch = new CountDownLatch(1);
-		ZooKeeper zooKeeper = new ZooKeeper(CONNECT_STRING, 30000, new Watcher() {
+		ZooKeeper zk = new ZooKeeper(CONNECT_STRING, 30000, new Watcher() {
 			@Override
 			public void process(WatchedEvent event) {
 				if (event.getState() == Event.KeeperState.SyncConnected) {
 					connectedLatch.countDown();
 				}
 			}
-		}, sessionId, sessionPwd);
-
+		}, zooKeeper.getSessionId(), zooKeeper.getSessionPasswd());
 		connectedLatch.await();
-		zooKeeper.close();
+		zk.close();
+	}
+
+	void makeCurrentZkClientSessionExpire() throws Exception {
+		makeZooKeeperSessionExpire(zkClient.getZooKeeper());
 	}
 
 	@Test
