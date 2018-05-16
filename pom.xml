@@ -25,5 +25,7 @@
         <module>tools-utils</module>
         <module>tools-zkclient</module>
         <module>tools-spi-plugin</module>
+        <module>tools-jmxclient</module>
+        <module>tools-cacheclient</module>
     </modules>
 </project>
