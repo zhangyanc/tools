@@ -23,7 +23,7 @@ public class ShardedJedisProxyFactoryBean extends AbstractJedisProxyFactoryBean<
 	}
 
 	@Override
-	protected void afterInvoke(ShardedJedis jedis, Method method, Object[] args) {
+	protected void afterPerInvoke(ShardedJedis jedis, Method method, Object[] args) {
 		jedis.close();
 	}
 

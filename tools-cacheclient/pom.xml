@@ -21,5 +21,9 @@
             <groupId>org.springframework</groupId>
             <artifactId>spring-beans</artifactId>
         </dependency>
+        <dependency>
+            <groupId>pers.zyc.tools</groupId>
+            <artifactId>tools-retry</artifactId>
+        </dependency>
     </dependencies>
 </project>

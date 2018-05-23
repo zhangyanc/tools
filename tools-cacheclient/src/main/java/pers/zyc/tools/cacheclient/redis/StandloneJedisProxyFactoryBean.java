@@ -23,7 +23,7 @@ public class StandloneJedisProxyFactoryBean extends AbstractJedisProxyFactoryBea
 	}
 
 	@Override
-	protected void afterInvoke(Jedis jedis, Method method, Object[] args) {
+	protected void afterPerInvoke(Jedis jedis, Method method, Object[] args) {
 		jedis.close();
 	}
 
