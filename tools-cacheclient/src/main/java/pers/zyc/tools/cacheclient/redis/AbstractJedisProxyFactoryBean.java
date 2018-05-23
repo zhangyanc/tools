@@ -7,8 +7,10 @@ import pers.zyc.retry.BaseRetryPolicy;
 import pers.zyc.retry.RetryFailedException;
 import pers.zyc.retry.RetryLoop;
 import redis.clients.jedis.JedisCommands;
+import redis.clients.jedis.exceptions.JedisConnectionException;
 
 import java.lang.reflect.InvocationHandler;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.Objects;
@@ -106,7 +108,8 @@ public abstract class AbstractJedisProxyFactoryBean<J extends JedisCommands>
 	 * @return 是否继续重试
 	 */
 	protected boolean handlePerRetryException(Throwable cause) {
-		return true;
+		//只有连接异常才进行重试
+		return cause instanceof JedisConnectionException;
 	}
 
 	/**
@@ -132,13 +135,16 @@ public abstract class AbstractJedisProxyFactoryBean<J extends JedisCommands>
 						J jedis = Objects.requireNonNull(getJedis());
 						try {
 							return method.invoke(jedis, args);
+						} catch (InvocationTargetException e) {
+							//抛出jedis对象的调用异常
+							throw (Exception) e.getTargetException();
 						} finally {
 							afterPerInvoke(jedis, method, args);
 						}
 					}
 				}, retryPolicy);
 			} catch (RetryFailedException e) {
-				//抛出重试操作的原始异常
+				//抛出重试操作的原始异常(避免包装成UndeclaredThrowableException)
 				throw e.getCause();
 			}
 		}
