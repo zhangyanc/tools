@@ -15,7 +15,7 @@ import java.util.Set;
 public interface RedisCacheClient extends JedisCommands {
 
 	/**
-	 * 将字符串value设置到key, 如果key已存在则覆盖就值, 且无视类型
+	 * 将字符串值设置到键, 如果键已存在则覆盖就值, 且无视类型
 	 *
 	 * @param key key
 	 * @param value value(不能超过一个GB)
@@ -25,13 +25,13 @@ public interface RedisCacheClient extends JedisCommands {
 	String set(String key, String value);
 
 	/**
-	 * 将字符串value设置到key, 并且设置过期时间,
+	 * 将字符串值设置到键, 并且设置过期时间
 	 *
-	 * @param key key
-	 * @param value value(不能超过一个GB)
+	 * @param key 键
+	 * @param value 字符串值(不能超过一个GB)
 	 * @param nxxx 可选值为"NX"或者XX
-	 *             NX -- 当且仅当key不存在才设置
-	 *             XX -- 当前仅当key存在才设置
+	 *             NX -- 当且仅当键不存在才设置
+	 *             XX -- 当前仅当键存在才设置
 	 * @param expx 过期时间单位,可选值为"EX"或者"PX"
 	 *             EX -- 秒
 	 *             PX --毫秒
@@ -42,68 +42,117 @@ public interface RedisCacheClient extends JedisCommands {
 	String set(String key, String value, String nxxx, String expx, long time);
 
 	/**
-	 * 将字符串value设置到key
+	 * 将字符串值设置到键
 	 *
-	 * @param key key
-	 * @param value value(不能超过一个GB)
+	 * @param key 键
+	 * @param value 字符串值(不能超过一个GB)
 	 * @param nxxx 可选值为"NX"或者XX
-	 *             NX -- 当且仅当key不存在才设置
-	 *             XX -- 当前仅当key存在才设置
+	 *             NX -- 当且仅当键不存在才设置
+	 *             XX -- 当前仅当键存在才设置
 	 * @return 响应状态码
 	 */
 	@Override
 	String set(String key, String value, String nxxx);
 
 	/**
-	 * 获取key设置的的字符串值
+	 * 获取键设置的的字符串值
 	 *
-	 * @param key key
-	 * @return 如果key不存在返回null, 如果key设置的非字符串类型将返回一个错误
+	 * @param key 键
+	 * @return 如果键不存在返回null, 如果键设置的值非字符串类型将返回一个错误
 	 */
 	@Override
 	String get(String key);
 
 	/**
-	 * 检查key是否存在
+	 * 检查键是否存在
 	 *
-	 * @param key key
-	 * @return key是否存在
+	 * @param key 键
+	 * @return 键是否存在
 	 */
 	@Override
 	Boolean exists(String key);
 
 	/**
-	 * 取消{@link #expire(String, int) expire}设置在key上的超时时间
+	 * 取消{@link #expire(String, int) expire}设置在键上的超时时间
 	 *
-	 * @param key key
-	 * @return 如果key设置了过期时间返回1, 如果不存在或者未设置过期时间返回0
+	 * @param key 键
+	 * @return 键不存在返回0, 否者返回1
 	 */
 	@Override
 	Long persist(String key);
 
 	/**
+	 * 返回键存储的值类型, 如果键不存在返回特殊字符串"none"
 	 *
-	 * @param key key
-	 * @return
+	 * @param key 键
+	 * @return "none" -- 键不存在
+	 * 		   "string" -- 字符串类型
+	 * 		   "list" -- list类型
+	 * 		   "set" -- set类型
+	 * 		   "zset" -- 排序set
+	 * 		   "hash" -- 哈希表
 	 */
 	@Override
 	String type(String key);
 
+	/**
+	 * 在键上设置一个过期时间, 过期后键将在服务端被自动删除
+	 *
+	 * @param key 键
+	 * @param seconds 过期秒数
+	 * @return 状态码, 1 -- 成功设置了过期时间, 0 -- 键不存在.(键已有过期时间时, Redis 2.1.3之后的版本
+	 * 		   会更新时间并返回1, 之前的版本不更新时间返回0)
+	 */
 	@Override
 	Long expire(String key, int seconds);
 
+	/**
+	 * 和{@link #expire(String, int) expire}一样, 不过过期时间为一个毫秒数
+	 *
+	 * @param key 键
+	 * @param milliseconds 过期毫秒数
+	 * @return 响应码, 同expire.
+	 */
 	@Override
 	Long pexpire(String key, long milliseconds);
 
+	/**
+	 * 和{@link #expire(String, int) expire}一样, 不过过期时间是一个用秒数表示的绝对unix时间点
+	 *
+	 * @param key 键
+	 * @param unixTime 过期时间点
+	 * @return 响应码, 同expire
+	 */
 	@Override
 	Long expireAt(String key, long unixTime);
 
+	/**
+	 * 和{@link #expireAt(String, long) expire}一样, 不过过期时间是一个用毫秒数表示的绝对unix时间点
+	 *
+	 * @param key 键
+	 * @param millisecondsTimestamp 过期时间点
+	 * @return 响应码, 同expire
+	 */
 	@Override
 	Long pexpireAt(String key, long millisecondsTimestamp);
 
+	/**
+	 * 检查键的剩余过期时间秒数
+	 *
+	 * @param key 键
+	 * @return 键剩余过期秒数, 在Redis 2.6及之前版本, 如果键不存在或者未设置过期时间都将返回-1,
+	 * 		   但在2.8及之后的版本, 如果键不存在返回-2, 键未设置过期时间返回-1
+	 *
+	 */
 	@Override
 	Long ttl(String key);
 
+	/**
+	 * 和{@link #ttl(String) ttl}一样, 不过返回的是毫秒数
+	 *
+	 * @param key 键
+	 * @return 同ttl
+	 */
 	@Override
 	Long pttl(String key);
 
@@ -122,14 +171,21 @@ public interface RedisCacheClient extends JedisCommands {
 	@Override
 	String getrange(String key, long startOffset, long endOffset);
 
+	/**
+	 * 将字符串值设置到键, 并返回键原先的值
+	 *
+	 * @param key 键
+	 * @param value 字符串值
+	 * @return 键原先的值, 如果键不存在返回null, 键存在但不是字符串值将返回一个错误
+	 */
 	@Override
 	String getSet(String key, String value);
 
 	/**
-	 * 将字符串value设置到key, 当且仅当key不存在才设置成功
+	 * 将字符串值设置到键, 当且仅当key不存在才设置成功
 	 *
-	 * @param key key
-	 * @param value value(不能超过一个GB)
+	 * @param key 键
+	 * @param value 字符串值(不能超过一个GB)
 	 * @return 1 -- 设置成功, 0 -- 设置未成功
 	 */
 	@Override
