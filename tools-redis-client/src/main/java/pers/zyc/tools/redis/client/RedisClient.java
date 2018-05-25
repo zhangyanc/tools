@@ -1,4 +1,4 @@
-package pers.zyc.tools.cacheclient.redis;
+package pers.zyc.tools.redis.client;
 
 import redis.clients.jedis.*;
 import redis.clients.jedis.params.geo.GeoRadiusParam;
@@ -12,14 +12,14 @@ import java.util.Set;
 /**
  * @author zhangyancheng
  */
-public interface RedisCacheClient extends JedisCommands {
+public interface RedisClient extends JedisCommands {
 
 	/**
 	 * 将字符串值设置到键, 如果键已存在则覆盖就值, 且无视类型
 	 *
 	 * @param key key
-	 * @param value value(不能超过一个GB)
-	 * @return 响应状态码
+	 * @param value value
+	 * @return 响应码
 	 */
 	@Override
 	String set(String key, String value);
@@ -28,7 +28,7 @@ public interface RedisCacheClient extends JedisCommands {
 	 * 将字符串值设置到键, 并且设置过期时间
 	 *
 	 * @param key 键
-	 * @param value 字符串值(不能超过一个GB)
+	 * @param value 字符串值
 	 * @param nxxx 可选值为"NX"或者XX
 	 *             NX -- 当且仅当键不存在才设置
 	 *             XX -- 当前仅当键存在才设置
@@ -36,7 +36,7 @@ public interface RedisCacheClient extends JedisCommands {
 	 *             EX -- 秒
 	 *             PX --毫秒
 	 * @param time 过期时间
-	 * @return 响应状态码
+	 * @return 响应码
 	 */
 	@Override
 	String set(String key, String value, String nxxx, String expx, long time);
@@ -45,11 +45,11 @@ public interface RedisCacheClient extends JedisCommands {
 	 * 将字符串值设置到键
 	 *
 	 * @param key 键
-	 * @param value 字符串值(不能超过一个GB)
+	 * @param value 字符串值
 	 * @param nxxx 可选值为"NX"或者XX
 	 *             NX -- 当且仅当键不存在才设置
 	 *             XX -- 当前仅当键存在才设置
-	 * @return 响应状态码
+	 * @return 响应码
 	 */
 	@Override
 	String set(String key, String value, String nxxx);
@@ -58,7 +58,7 @@ public interface RedisCacheClient extends JedisCommands {
 	 * 获取键设置的的字符串值
 	 *
 	 * @param key 键
-	 * @return 如果键不存在返回null, 如果键设置的值非字符串类型将返回一个错误
+	 * @return 如果键不存在返回null
 	 */
 	@Override
 	String get(String key);
@@ -100,7 +100,7 @@ public interface RedisCacheClient extends JedisCommands {
 	 *
 	 * @param key 键
 	 * @param seconds 过期秒数
-	 * @return 状态码, 1 -- 成功设置了过期时间, 0 -- 键不存在.(键已有过期时间时, Redis 2.1.3之后的版本
+	 * @return 1 -- 成功设置了过期时间, 0 -- 键不存在.(键已有过期时间时, Redis 2.1.3之后的版本
 	 * 		   会更新时间并返回1, 之前的版本不更新时间返回0)
 	 */
 	@Override
@@ -176,84 +176,250 @@ public interface RedisCacheClient extends JedisCommands {
 	 *
 	 * @param key 键
 	 * @param value 字符串值
-	 * @return 键原先的值, 如果键不存在返回null, 键存在但不是字符串值将返回一个错误
+	 * @return 键原先的值, 如果键不存在返回null
 	 */
 	@Override
 	String getSet(String key, String value);
 
 	/**
-	 * 将字符串值设置到键, 当且仅当key不存在才设置成功
+	 * 将字符串值设置到键, 当且仅当键不存在才设置成功
 	 *
 	 * @param key 键
-	 * @param value 字符串值(不能超过一个GB)
+	 * @param value 字符串值
 	 * @return 1 -- 设置成功, 0 -- 设置未成功
 	 */
 	@Override
 	Long setnx(String key, String value);
 
+	/**
+	 * 将字符串值设置到键, 同时设置过期时间
+	 *
+	 * @param key 键
+	 * @param seconds 过期时间秒数
+	 * @param value 字符串值
+	 * @return 响应码
+	 */
 	@Override
 	String setex(String key, int seconds, String value);
 
+	/**
+	 * 将字符串值设置到键, 同时设置过期时间
+	 *
+	 * @param key 键
+	 * @param milliseconds 过期时间毫秒数
+	 * @param value 字符串值
+	 * @return 响应吗
+	 */
 	@Override
 	String psetex(String key, long milliseconds, String value);
 
+	/**
+	 * 将键设置的数值减去减数并返回结果值
+	 *
+	 * @param key 键
+	 * @param integer 减数
+	 * @return 减后的值
+	 */
 	@Override
 	Long decrBy(String key, long integer);
 
+	/**
+	 * 将键设置的数值减1并返回结果值
+	 *
+	 * @param key 键
+	 * @return 减后的值
+	 */
 	@Override
 	Long decr(String key);
 
+	/**
+	 * 将键设置的数值加上加数并返回结果值
+	 *
+	 * @param key 键
+	 * @param integer 加数
+	 * @return 加后的值
+	 */
 	@Override
 	Long incrBy(String key, long integer);
 
+	/**
+	 * 将键设置的数值加上加数并返回结果值
+	 *
+	 * @param key 键
+	 * @param value 加数(浮点数)
+	 * @return 加后的值
+	 */
 	@Override
 	Double incrByFloat(String key, double value);
 
+	/**
+	 * 将键设置的数值加1并返回结果值
+	 *
+	 * <p>
+	 * 		如果key不存在将以0为起始数进行操作,
+	 * 		Redis没有专有的整数类型, 所有的加、减操作都发生在string类型的10进制64位数字值上,
+	 * 		返回值也是将string转换为数字返回
+	 *
+	 *
+	 * @param key 键
+	 * @return 加后的值
+	 */
 	@Override
 	Long incr(String key);
 
+	/**
+	 * 将给定的字符串追加到键已设置的值, 如果键不存在则等同于set操作
+	 *
+	 * @param key 键
+	 * @param value 字符串值
+	 * @return 追加后的字符串长度
+	 */
 	@Override
 	Long append(String key, String value);
 
+	/**
+	 * 返回键上设置的字符串值的子串, 其中起始、结束位置都会被包含
+	 *
+	 * <p>
+	 *     负数下标表示从字符串的末尾开始计算(-1表示最后一个, -2表示倒数第二个...依次类推)
+	 *
+	 *     substr不会反馈越界异常, 而是按照字符串实际长度返回
+	 *
+	 * @param key 键
+	 * @param start 开始位置
+	 * @param end 结束位置
+	 * @return 子串
+	 */
 	@Override
 	String substr(String key, int start, int end);
 
+	/**
+	 * 在键对应的HASH上设置一对"字段-值", 如果键不存在则新增后再设置, 字段已存在则更新值
+	 *
+	 * @param key 键
+	 * @param field 字段
+	 * @param value 值
+	 * @return 字段已存在时更新值并返回0, 否则返回1
+	 */
 	@Override
 	Long hset(String key, String field, String value);
 
+	/**
+	 * 返回键对应HASH上字段设置的值, 如果键不存在或者字段不存在返回null
+	 *
+	 * @param key 键
+	 * @param field 字段
+	 * @return 字段值或者null
+	 */
 	@Override
 	String hget(String key, String field);
 
+	/**
+	 * 在键对应的HASH上设置一对"字段-值", 当且仅当字段不存在时才设置
+	 *
+	 * @param key 键
+	 * @param field 字段
+	 * @param value 值
+	 * @return 如果字段已存在返回0, 否则返回1
+	 */
 	@Override
 	Long hsetnx(String key, String field, String value);
 
+	/**
+	 * 在键对应的HASH上设置多对"字段-值", 如果键不存在则新增后再设置, 字段已存在则更新值
+	 *
+	 * @param key 键
+	 * @param hash "字段-值"Map集合
+	 * @return 响应码
+	 */
 	@Override
 	String hmset(String key, Map<String, String> hash);
 
+	/**
+	 * 返回键对应HASH上多个字段设置的值, 如果键不存在或者字段不存在返回null
+	 *
+	 * @param key 键
+	 * @param fields 字段
+	 * @return 多个字段值
+	 */
 	@Override
 	List<String> hmget(String key, String... fields);
 
+	/**
+	 * 将键对应HASH上字段的数值加上加数, 如果键不存在则新建, 字段不存在则按照0计算
+	 *
+	 * @param key 键
+	 * @param field 字段
+	 * @param value 加数
+	 * @return 加后的值
+	 */
 	@Override
 	Long hincrBy(String key, String field, long value);
 
+	/**
+	 * 将键对应HASH上字段的数值加上加数, 如果键不存在则新建, 字段不存在则按照0计算
+	 *
+	 * @param key 键
+	 * @param field 字段
+	 * @param value 加数(浮点数)
+	 * @return 加后的值
+	 */
 	@Override
 	Double hincrByFloat(String key, String field, double value);
 
+	/**
+	 * 检查键对应HASH上字段是否存在
+	 *
+	 * @param key 键
+	 * @param field 值
+	 * @return 字段是否存在
+	 */
 	@Override
 	Boolean hexists(String key, String field);
 
+	/**
+	 * 删除键对应HASH上"字段-值"对
+	 *
+	 * @param key 键
+	 * @param field 字段
+	 * @return 字段存在被删除后返回1, 否则返回0
+	 */
 	@Override
 	Long hdel(String key, String... field);
 
+	/**
+	 * 返回键对应HASH上"字段-值"的对数
+	 *
+	 * @param key 键
+	 * @return "字段-值"的对数
+	 */
 	@Override
 	Long hlen(String key);
 
+	/**
+	 * 返回键对应HASH上所有"字段-值"对的字段集合
+	 *
+	 * @param key 键
+	 * @return 字段集合
+	 */
 	@Override
 	Set<String> hkeys(String key);
 
+	/**
+	 * 返回键对应HASH上所有"字段-值"对的值集合
+	 *
+	 * @param key 键
+	 * @return 值集合
+	 */
 	@Override
 	List<String> hvals(String key);
 
+	/**
+	 * 返回键对应HASH上所有"字段-值"对
+	 *
+	 * @param key 键
+	 * @return "字段-值"对Map
+	 */
 	@Override
 	Map<String, String> hgetAll(String key);
 

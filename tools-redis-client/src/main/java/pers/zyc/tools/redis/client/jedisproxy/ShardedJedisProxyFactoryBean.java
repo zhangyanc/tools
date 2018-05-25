@@ -1,4 +1,4 @@
-package pers.zyc.tools.cacheclient.redis;
+package pers.zyc.tools.redis.client.jedisproxy;
 
 import redis.clients.jedis.ShardedJedis;
 import redis.clients.jedis.ShardedJedisPool;

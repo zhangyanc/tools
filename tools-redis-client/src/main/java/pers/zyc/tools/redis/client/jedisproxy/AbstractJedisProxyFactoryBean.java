@@ -1,4 +1,4 @@
-package pers.zyc.tools.cacheclient.redis;
+package pers.zyc.tools.redis.client.jedisproxy;
 
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.FactoryBean;
@@ -6,6 +6,7 @@ import org.springframework.beans.factory.InitializingBean;
 import pers.zyc.retry.BaseRetryPolicy;
 import pers.zyc.retry.RetryFailedException;
 import pers.zyc.retry.RetryLoop;
+import pers.zyc.tools.redis.client.RedisClient;
 import redis.clients.jedis.JedisCommands;
 import redis.clients.jedis.exceptions.JedisConnectionException;
 
@@ -24,7 +25,7 @@ import java.util.concurrent.Callable;
  * @author zhangyancheng
  */
 public abstract class AbstractJedisProxyFactoryBean<J extends JedisCommands>
-		implements FactoryBean<RedisCacheClient>, InitializingBean, DisposableBean {
+		implements FactoryBean<RedisClient>, InitializingBean, DisposableBean {
 
 	/**
 	 * 重试间隔
@@ -69,20 +70,20 @@ public abstract class AbstractJedisProxyFactoryBean<J extends JedisCommands>
 	}
 
 	@Override
-	public RedisCacheClient getObject() throws Exception {
+	public RedisClient getObject() throws Exception {
 		//返回动态代理实例, 所有方法调用都由InvocationHandler代理执行
 		return getObjectType().cast(
 				Proxy.newProxyInstance(
 					getClass().getClassLoader(),
-					new Class<?>[] { RedisCacheClient.class },
+					new Class<?>[] { RedisClient.class },
 					newJedisInvocationHandler()
 				)
 		);
 	}
 
 	@Override
-	public Class<RedisCacheClient> getObjectType() {
-		return RedisCacheClient.class;
+	public Class<RedisClient> getObjectType() {
+		return RedisClient.class;
 	}
 
 	@Override
