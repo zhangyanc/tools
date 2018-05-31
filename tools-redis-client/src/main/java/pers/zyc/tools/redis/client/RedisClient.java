@@ -1,18 +1,16 @@
 package pers.zyc.tools.redis.client;
 
-import redis.clients.jedis.*;
-import redis.clients.jedis.params.geo.GeoRadiusParam;
-import redis.clients.jedis.params.sortedset.ZAddParams;
-import redis.clients.jedis.params.sortedset.ZIncrByParams;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
+ * 方法声明与JedisCommands完全相同(不从JedisCommands继承是因为提供了完整的实现, 可不依赖jedis lib)
+ *
  * @author zhangyancheng
  */
-public interface RedisClient extends JedisCommands {
+public interface RedisClient {
 
 	/**
 	 * 将字符串值设置到键, 如果键已存在则覆盖就值, 且无视类型
@@ -21,7 +19,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param value value
 	 * @return 响应码
 	 */
-	@Override
 	String set(String key, String value);
 
 	/**
@@ -38,7 +35,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param time 过期时间
 	 * @return 响应码
 	 */
-	@Override
 	String set(String key, String value, String nxxx, String expx, long time);
 
 	/**
@@ -51,7 +47,6 @@ public interface RedisClient extends JedisCommands {
 	 *             XX -- 当前仅当键存在才设置
 	 * @return 响应码
 	 */
-	@Override
 	String set(String key, String value, String nxxx);
 
 	/**
@@ -60,7 +55,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param key 键
 	 * @return 如果键不存在返回null
 	 */
-	@Override
 	String get(String key);
 
 	/**
@@ -69,7 +63,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param key 键
 	 * @return 键是否存在
 	 */
-	@Override
 	Boolean exists(String key);
 
 	/**
@@ -78,7 +71,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param key 键
 	 * @return 键不存在返回0, 否者返回1
 	 */
-	@Override
 	Long persist(String key);
 
 	/**
@@ -92,7 +84,6 @@ public interface RedisClient extends JedisCommands {
 	 * 		   "zset" -- 排序set
 	 * 		   "hash" -- 哈希表
 	 */
-	@Override
 	String type(String key);
 
 	/**
@@ -103,7 +94,6 @@ public interface RedisClient extends JedisCommands {
 	 * @return 1 -- 成功设置了过期时间, 0 -- 键不存在.(键已有过期时间时, Redis 2.1.3之后的版本
 	 * 		   会更新时间并返回1, 之前的版本不更新时间返回0)
 	 */
-	@Override
 	Long expire(String key, int seconds);
 
 	/**
@@ -113,7 +103,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param milliseconds 过期毫秒数
 	 * @return 响应码, 同expire.
 	 */
-	@Override
 	Long pexpire(String key, long milliseconds);
 
 	/**
@@ -123,7 +112,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param unixTime 过期时间点
 	 * @return 响应码, 同expire
 	 */
-	@Override
 	Long expireAt(String key, long unixTime);
 
 	/**
@@ -133,7 +121,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param millisecondsTimestamp 过期时间点
 	 * @return 响应码, 同expire
 	 */
-	@Override
 	Long pexpireAt(String key, long millisecondsTimestamp);
 
 	/**
@@ -144,7 +131,6 @@ public interface RedisClient extends JedisCommands {
 	 * 		   但在2.8及之后的版本, 如果键不存在返回-2, 键未设置过期时间返回-1
 	 *
 	 */
-	@Override
 	Long ttl(String key);
 
 	/**
@@ -153,22 +139,16 @@ public interface RedisClient extends JedisCommands {
 	 * @param key 键
 	 * @return 同ttl
 	 */
-	@Override
 	Long pttl(String key);
 
-	@Override
 	Boolean setbit(String key, long offset, boolean value);
 
-	@Override
 	Boolean setbit(String key, long offset, String value);
 
-	@Override
 	Boolean getbit(String key, long offset);
 
-	@Override
 	Long setrange(String key, long offset, String value);
 
-	@Override
 	String getrange(String key, long startOffset, long endOffset);
 
 	/**
@@ -178,7 +158,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param value 字符串值
 	 * @return 键原先的值, 如果键不存在返回null
 	 */
-	@Override
 	String getSet(String key, String value);
 
 	/**
@@ -188,7 +167,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param value 字符串值
 	 * @return 1 -- 设置成功, 0 -- 设置未成功
 	 */
-	@Override
 	Long setnx(String key, String value);
 
 	/**
@@ -199,7 +177,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param value 字符串值
 	 * @return 响应码
 	 */
-	@Override
 	String setex(String key, int seconds, String value);
 
 	/**
@@ -210,7 +187,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param value 字符串值
 	 * @return 响应吗
 	 */
-	@Override
 	String psetex(String key, long milliseconds, String value);
 
 	/**
@@ -220,7 +196,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param integer 减数
 	 * @return 减后的值
 	 */
-	@Override
 	Long decrBy(String key, long integer);
 
 	/**
@@ -229,7 +204,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param key 键
 	 * @return 减后的值
 	 */
-	@Override
 	Long decr(String key);
 
 	/**
@@ -239,7 +213,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param integer 加数
 	 * @return 加后的值
 	 */
-	@Override
 	Long incrBy(String key, long integer);
 
 	/**
@@ -249,7 +222,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param value 加数(浮点数)
 	 * @return 加后的值
 	 */
-	@Override
 	Double incrByFloat(String key, double value);
 
 	/**
@@ -264,7 +236,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param key 键
 	 * @return 加后的值
 	 */
-	@Override
 	Long incr(String key);
 
 	/**
@@ -274,7 +245,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param value 字符串值
 	 * @return 追加后的字符串长度
 	 */
-	@Override
 	Long append(String key, String value);
 
 	/**
@@ -290,7 +260,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param end 结束位置
 	 * @return 子串
 	 */
-	@Override
 	String substr(String key, int start, int end);
 
 	/**
@@ -301,7 +270,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param value 值
 	 * @return 字段已存在时更新值并返回0, 否则返回1
 	 */
-	@Override
 	Long hset(String key, String field, String value);
 
 	/**
@@ -311,7 +279,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param field 字段
 	 * @return 字段值或者null
 	 */
-	@Override
 	String hget(String key, String field);
 
 	/**
@@ -322,7 +289,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param value 值
 	 * @return 如果字段已存在返回0, 否则返回1
 	 */
-	@Override
 	Long hsetnx(String key, String field, String value);
 
 	/**
@@ -332,7 +298,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param hash "字段-值"Map集合
 	 * @return 响应码
 	 */
-	@Override
 	String hmset(String key, Map<String, String> hash);
 
 	/**
@@ -342,7 +307,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param fields 字段
 	 * @return 多个字段值
 	 */
-	@Override
 	List<String> hmget(String key, String... fields);
 
 	/**
@@ -353,7 +317,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param value 加数
 	 * @return 加后的值
 	 */
-	@Override
 	Long hincrBy(String key, String field, long value);
 
 	/**
@@ -364,7 +327,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param value 加数(浮点数)
 	 * @return 加后的值
 	 */
-	@Override
 	Double hincrByFloat(String key, String field, double value);
 
 	/**
@@ -374,7 +336,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param field 值
 	 * @return 字段是否存在
 	 */
-	@Override
 	Boolean hexists(String key, String field);
 
 	/**
@@ -384,7 +345,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param field 字段
 	 * @return 字段存在被删除后返回1, 否则返回0
 	 */
-	@Override
 	Long hdel(String key, String... field);
 
 	/**
@@ -393,7 +353,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param key 键
 	 * @return "字段-值"的对数
 	 */
-	@Override
 	Long hlen(String key);
 
 	/**
@@ -402,7 +361,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param key 键
 	 * @return 字段集合
 	 */
-	@Override
 	Set<String> hkeys(String key);
 
 	/**
@@ -411,7 +369,6 @@ public interface RedisClient extends JedisCommands {
 	 * @param key 键
 	 * @return 值集合
 	 */
-	@Override
 	List<String> hvals(String key);
 
 	/**
@@ -420,306 +377,305 @@ public interface RedisClient extends JedisCommands {
 	 * @param key 键
 	 * @return "字段-值"对Map
 	 */
-	@Override
 	Map<String, String> hgetAll(String key);
 
-	@Override
+	
 	Long rpush(String key, String... string);
 
-	@Override
+	
 	Long lpush(String key, String... string);
 
-	@Override
+	
 	Long llen(String key);
 
-	@Override
+	
 	List<String> lrange(String key, long start, long end);
 
-	@Override
+	
 	String ltrim(String key, long start, long end);
 
-	@Override
+	
 	String lindex(String key, long index);
 
-	@Override
+	
 	String lset(String key, long index, String value);
 
-	@Override
+	
 	Long lrem(String key, long count, String value);
 
-	@Override
+	
 	String lpop(String key);
 
-	@Override
+	
 	String rpop(String key);
 
-	@Override
+	
 	Long sadd(String key, String... member);
 
-	@Override
+	
 	Set<String> smembers(String key);
 
-	@Override
+	
 	Long srem(String key, String... member);
 
-	@Override
+	
 	String spop(String key);
 
-	@Override
+	
 	Set<String> spop(String key, long count);
 
-	@Override
+	
 	Long scard(String key);
 
-	@Override
+	
 	Boolean sismember(String key, String member);
 
-	@Override
+	
 	String srandmember(String key);
 
-	@Override
+	
 	List<String> srandmember(String key, int count);
 
-	@Override
+	
 	Long strlen(String key);
 
-	@Override
+	
 	Long zadd(String key, double score, String member);
 
-	@Override
-	Long zadd(String key, double score, String member, ZAddParams params);
+	
+	//Long zadd(String key, double score, String member, ZAddParams params);
 
-	@Override
+	
 	Long zadd(String key, Map<String, Double> scoreMembers);
 
-	@Override
-	Long zadd(String key, Map<String, Double> scoreMembers, ZAddParams params);
+	
+	//Long zadd(String key, Map<String, Double> scoreMembers, ZAddParams params);
 
-	@Override
+	
 	Set<String> zrange(String key, long start, long end);
 
-	@Override
+	
 	Long zrem(String key, String... member);
 
-	@Override
+	
 	Double zincrby(String key, double score, String member);
 
-	@Override
-	Double zincrby(String key, double score, String member, ZIncrByParams params);
+	
+	//Double zincrby(String key, double score, String member, ZIncrByParams params);
 
-	@Override
+	
 	Long zrank(String key, String member);
 
-	@Override
+	
 	Long zrevrank(String key, String member);
 
-	@Override
+	
 	Set<String> zrevrange(String key, long start, long end);
 
-	@Override
-	Set<Tuple> zrangeWithScores(String key, long start, long end);
+	
+	//Set<Tuple> zrangeWithScores(String key, long start, long end);
 
-	@Override
-	Set<Tuple> zrevrangeWithScores(String key, long start, long end);
+	
+	//Set<Tuple> zrevrangeWithScores(String key, long start, long end);
 
-	@Override
+	
 	Long zcard(String key);
 
-	@Override
+	
 	Double zscore(String key, String member);
 
-	@Override
+	
 	List<String> sort(String key);
 
-	@Override
-	List<String> sort(String key, SortingParams sortingParameters);
+	
+	//List<String> sort(String key, SortingParams sortingParameters);
 
-	@Override
+	
 	Long zcount(String key, double min, double max);
 
-	@Override
+	
 	Long zcount(String key, String min, String max);
 
-	@Override
+	
 	Set<String> zrangeByScore(String key, double min, double max);
 
-	@Override
+	
 	Set<String> zrangeByScore(String key, String min, String max);
 
-	@Override
+	
 	Set<String> zrevrangeByScore(String key, double max, double min);
 
-	@Override
+	
 	Set<String> zrangeByScore(String key, double min, double max, int offset, int count);
 
-	@Override
+	
 	Set<String> zrevrangeByScore(String key, String max, String min);
 
-	@Override
+	
 	Set<String> zrangeByScore(String key, String min, String max, int offset, int count);
 
-	@Override
+	
 	Set<String> zrevrangeByScore(String key, double max, double min, int offset, int count);
 
-	@Override
-	Set<Tuple> zrangeByScoreWithScores(String key, double min, double max);
+	
+	//Set<Tuple> zrangeByScoreWithScores(String key, double min, double max);
 
-	@Override
-	Set<Tuple> zrevrangeByScoreWithScores(String key, double max, double min);
+	
+	//Set<Tuple> zrevrangeByScoreWithScores(String key, double max, double min);
 
-	@Override
-	Set<Tuple> zrangeByScoreWithScores(String key, double min, double max, int offset, int count);
+	
+	//Set<Tuple> zrangeByScoreWithScores(String key, double min, double max, int offset, int count);
 
-	@Override
+	
 	Set<String> zrevrangeByScore(String key, String max, String min, int offset, int count);
 
-	@Override
-	Set<Tuple> zrangeByScoreWithScores(String key, String min, String max);
+	
+	//Set<Tuple> zrangeByScoreWithScores(String key, String min, String max);
 
-	@Override
-	Set<Tuple> zrevrangeByScoreWithScores(String key, String max, String min);
+	
+	//Set<Tuple> zrevrangeByScoreWithScores(String key, String max, String min);
 
-	@Override
-	Set<Tuple> zrangeByScoreWithScores(String key, String min, String max, int offset, int count);
+	
+	//Set<Tuple> zrangeByScoreWithScores(String key, String min, String max, int offset, int count);
 
-	@Override
-	Set<Tuple> zrevrangeByScoreWithScores(String key, double max, double min, int offset, int count);
+	
+	//Set<Tuple> zrevrangeByScoreWithScores(String key, double max, double min, int offset, int count);
 
-	@Override
-	Set<Tuple> zrevrangeByScoreWithScores(String key, String max, String min, int offset, int count);
+	
+	//Set<Tuple> zrevrangeByScoreWithScores(String key, String max, String min, int offset, int count);
 
-	@Override
+	
 	Long zremrangeByRank(String key, long start, long end);
 
-	@Override
+	
 	Long zremrangeByScore(String key, double start, double end);
 
-	@Override
+	
 	Long zremrangeByScore(String key, String start, String end);
 
-	@Override
+	
 	Long zlexcount(String key, String min, String max);
 
-	@Override
+	
 	Set<String> zrangeByLex(String key, String min, String max);
 
-	@Override
+	
 	Set<String> zrangeByLex(String key, String min, String max, int offset, int count);
 
-	@Override
+	
 	Set<String> zrevrangeByLex(String key, String max, String min);
 
-	@Override
+	
 	Set<String> zrevrangeByLex(String key, String max, String min, int offset, int count);
 
-	@Override
+	
 	Long zremrangeByLex(String key, String min, String max);
 
-	@Override
-	Long linsert(String key, BinaryClient.LIST_POSITION where, String pivot, String value);
+	
+	//Long linsert(String key, BinaryClient.LIST_POSITION where, String pivot, String value);
 
-	@Override
+	
 	Long lpushx(String key, String... string);
 
-	@Override
+	
 	Long rpushx(String key, String... string);
 
-	@Override
+	
 	List<String> blpop(String arg);
 
-	@Override
+	
 	List<String> blpop(int timeout, String key);
 
-	@Override
+	
 	List<String> brpop(String arg);
 
-	@Override
+	
 	List<String> brpop(int timeout, String key);
 
-	@Override
+	
 	Long del(String key);
 
-	@Override
+	
 	String echo(String string);
 
-	@Override
+	
 	Long move(String key, int dbIndex);
 
-	@Override
+	
 	Long bitcount(String key);
 
-	@Override
+	
 	Long bitcount(String key, long start, long end);
 
-	@Override
+	
 	Long bitpos(String key, boolean value);
 
-	@Override
-	Long bitpos(String key, boolean value, BitPosParams params);
+	
+	//Long bitpos(String key, boolean value, BitPosParams params);
 
-	@Override
-	ScanResult<Map.Entry<String, String>> hscan(String key, int cursor);
+	
+	//ScanResult<Map.Entry<String, String>> hscan(String key, int cursor);
 
-	@Override
-	ScanResult<String> sscan(String key, int cursor);
+	
+	//ScanResult<String> sscan(String key, int cursor);
 
-	@Override
-	ScanResult<Tuple> zscan(String key, int cursor);
+	
+	//ScanResult<Tuple> zscan(String key, int cursor);
 
-	@Override
-	ScanResult<Map.Entry<String, String>> hscan(String key, String cursor);
+	
+	//ScanResult<Map.Entry<String, String>> hscan(String key, String cursor);
 
-	@Override
-	ScanResult<Map.Entry<String, String>> hscan(String key, String cursor, ScanParams params);
+	
+	//ScanResult<Map.Entry<String, String>> hscan(String key, String cursor, ScanParams params);
 
-	@Override
-	ScanResult<String> sscan(String key, String cursor);
+	
+	//ScanResult<String> sscan(String key, String cursor);
 
-	@Override
-	ScanResult<String> sscan(String key, String cursor, ScanParams params);
+	
+	//ScanResult<String> sscan(String key, String cursor, ScanParams params);
 
-	@Override
-	ScanResult<Tuple> zscan(String key, String cursor);
+	
+	//ScanResult<Tuple> zscan(String key, String cursor);
 
-	@Override
-	ScanResult<Tuple> zscan(String key, String cursor, ScanParams params);
+	
+	//ScanResult<Tuple> zscan(String key, String cursor, ScanParams params);
 
-	@Override
+	
 	Long pfadd(String key, String... elements);
 
-	@Override
+	
 	long pfcount(String key);
 
-	@Override
+	
 	Long geoadd(String key, double longitude, double latitude, String member);
 
-	@Override
-	Long geoadd(String key, Map<String, GeoCoordinate> memberCoordinateMap);
+	
+	//Long geoadd(String key, Map<String, GeoCoordinate> memberCoordinateMap);
 
-	@Override
+	
 	Double geodist(String key, String member1, String member2);
 
-	@Override
-	Double geodist(String key, String member1, String member2, GeoUnit unit);
+	
+	//Double geodist(String key, String member1, String member2, GeoUnit unit);
 
-	@Override
+	
 	List<String> geohash(String key, String... members);
 
-	@Override
-	List<GeoCoordinate> geopos(String key, String... members);
+	
+	//List<GeoCoordinate> geopos(String key, String... members);
 
-	@Override
-	List<GeoRadiusResponse> georadius(String key, double longitude, double latitude, double radius, GeoUnit unit);
+	
+	//List<GeoRadiusResponse> georadius(String key, double longitude, double latitude, double radius, GeoUnit unit);
 
-	@Override
-	List<GeoRadiusResponse> georadius(String key, double longitude, double latitude, double radius, GeoUnit unit, GeoRadiusParam param);
+	
+	//List<GeoRadiusResponse> georadius(String key, double longitude, double latitude, double radius, GeoUnit unit, GeoRadiusParam param);
 
-	@Override
-	List<GeoRadiusResponse> georadiusByMember(String key, String member, double radius, GeoUnit unit);
+	
+	//List<GeoRadiusResponse> georadiusByMember(String key, String member, double radius, GeoUnit unit);
 
-	@Override
-	List<GeoRadiusResponse> georadiusByMember(String key, String member, double radius, GeoUnit unit, GeoRadiusParam param);
+	
+	//List<GeoRadiusResponse> georadiusByMember(String key, String member, double radius, GeoUnit unit, GeoRadiusParam param);
 
-	@Override
+	
 	List<Long> bitfield(String key, String... arguments);
 }
