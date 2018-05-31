@@ -1,22 +1,20 @@
-package pers.zyc.tools.redis.client.jedisproxy;
+package pers.zyc.tools.redis.client.bean;
 
 import redis.clients.jedis.JedisCluster;
-
-import java.util.Objects;
 
 /**
  * @author zhangyancheng
  */
-public class ClusterJedisProxyFactoryBean extends AbstractJedisProxyFactoryBean<JedisCluster> {
+public class ClusterJedisProxyFactoryBean extends JedisProxyFactoryBean<JedisCluster> {
 
 	private final JedisCluster jedisCluster;
 
 	public ClusterJedisProxyFactoryBean(JedisCluster jedisCluster) {
-		this.jedisCluster = Objects.requireNonNull(jedisCluster);
+		this.jedisCluster = jedisCluster;
 	}
 
 	@Override
-	protected JedisCluster getJedis() {
+	protected JedisCluster getTarget() {
 		return jedisCluster;
 	}
 
