@@ -21,6 +21,9 @@ public class Protocol {
 	public static final byte CR = '\r';
 	public static final byte LF = '\n';
 
+	public static final byte[] BYTES_TRUE = toByteArray(1);
+	public static final byte[] BYTES_FALSE = toByteArray(0);
+
 	public static byte[] toByteArray(String str) {
 		return str.getBytes(UTF8);
 	}
@@ -31,6 +34,14 @@ public class Protocol {
 
 	public static byte[] toByteArray(long l) {
 		return Long.toString(l).getBytes(UTF8);
+	}
+
+	public static byte[] toByteArray(boolean b) {
+		return b ? BYTES_TRUE : BYTES_FALSE;
+	}
+
+	public static byte[] toByteArray(double d) {
+		return Double.toString(d).getBytes(UTF8);
 	}
 
 	private static void writeCRLF(ByteArrayOutputStream baos) {
@@ -58,7 +69,7 @@ public class Protocol {
 	 * @param request request
 	 */
 	static byte[] encode(Request request) {
-		byte[] cmd = request.getCmd().cmd;
+		byte[] cmd = request.getCmd();
 		byte[][] args = request.getArgs();
 
 

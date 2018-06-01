@@ -5,9 +5,14 @@ import pers.zyc.tools.redis.client.Protocol;
 /**
  * @author zhangyancheng
  */
-public class Exists extends Request {
+public class Increment extends Request {
 
-	public Exists(String key) {
+	public Increment(String key) {
 		super(Protocol.toByteArray(key));
+	}
+
+	@Override
+	String getCommand() {
+		return "INCR";
 	}
 }

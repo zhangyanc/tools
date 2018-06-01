@@ -5,7 +5,7 @@ import pers.zyc.tools.redis.client.Protocol;
 /**
  * @author zhangyancheng
  */
-public class Set extends BaseRequest {
+public class Set extends Request {
 
 	public Set(String key, String value) {
 		super(Protocol.toByteArray(key), Protocol.toByteArray(value));
@@ -19,10 +19,4 @@ public class Set extends BaseRequest {
 	public Set(String key, String value, String nxxx) {
 		super(Protocol.toByteArray(key), Protocol.toByteArray(value), Protocol.toByteArray(nxxx));
 	}
-
-	@Override
-	public Command getCmd() {
-		return Command.SET;
-	}
-
 }

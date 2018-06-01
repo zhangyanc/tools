@@ -49,182 +49,180 @@ public class CustomRedisClient implements RedisClient {
 		public Boolean handleException(Throwable cause, Callable<?> callable) {
 			return true;
 		}
-	}
 
-	/**
-	 * 执行请求(可重试)
-	 *
-	 * @param requestAction 请求动作
-	 * @param <R> 请求结果泛型
-	 * @return 请求结果
-	 */
-	private <R> ResponseFuture<R> run(RequestAction<R> requestAction) {
-		try {
-			return RetryLoop.execute(requestAction, retryPolicy);
-		} catch (RuntimeException e) {
-			throw e;
-		} catch (InterruptedException e) {
-			throw new RedisClientException("Thread interrupted", e);
-		} catch (RetryFailedException e) {
-			throw new RedisClientException("Retry failed", e.getCause());
-		} catch (Exception e) {
-			throw new RedisClientException("Execute error", e);
+		/**
+		 * 执行请求(可重试)
+		 *
+		 * @return 请求结果
+		 */
+		private ResponseFuture<R> execute() {
+			try {
+				return RetryLoop.execute(this, retryPolicy);
+			} catch (RuntimeException e) {
+				throw e;
+			} catch (InterruptedException e) {
+				throw new RedisClientException("Thread interrupted", e);
+			} catch (RetryFailedException e) {
+				throw new RedisClientException("Retry failed", e.getCause());
+			} catch (Exception e) {
+				throw new RedisClientException("Execute error", e);
+			}
 		}
 	}
 
 	@Override
 	public String set(String key, String value) {
-		return run(new RequestAction<String>(new pers.zyc.tools.redis.client.request.Set(key, value))).get(timeout);
+		return new RequestAction<String>(new pers.zyc.tools.redis.client.request.Set(key, value)).execute().get(timeout);
 	}
 
 	@Override
 	public String set(String key, String value, String nxxx, String expx, long time) {
-		return run(new RequestAction<String>(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx, expx, time))).get(timeout);
+		return new RequestAction<String>(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx, expx, time)).execute().get(timeout);
 	}
 
 	@Override
 	public String set(String key, String value, String nxxx) {
-		return run(new RequestAction<String>(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx))).get(timeout);
+		return new RequestAction<String>(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx)).execute().get(timeout);
 	}
 
 	@Override
 	public String get(String key) {
-		return run(new RequestAction<String>(new Get(key))).get(timeout);
+		return new RequestAction<String>(new Get(key)).execute().get(timeout);
 	}
 
 	@Override
 	public Boolean exists(String key) {
-		return run(new RequestAction<Boolean>(new Exists(key))).get(timeout);
+		return new RequestAction<Boolean>(new Exists(key)).execute().get(timeout);
 	}
 
 	@Override
 	public Long persist(String key) {
-		return run(new RequestAction<Long>(new Persist(key))).get(timeout);
+		return new RequestAction<Long>(new Persist(key)).execute().get(timeout);
 	}
 
 	@Override
 	public String type(String key) {
-		return run(new RequestAction<String>(new Type(key))).get(timeout);
+		return new RequestAction<String>(new Type(key)).execute().get(timeout);
 	}
 
 	@Override
 	public Long expire(String key, int seconds) {
-		return null;
+		return new RequestAction<Long>(new Expire(key, seconds)).execute().get(timeout);
 	}
 
 	@Override
 	public Long pexpire(String key, long milliseconds) {
-		return null;
+		return new RequestAction<Long>(new PExpire(key, milliseconds)).execute().get(timeout);
 	}
 
 	@Override
 	public Long expireAt(String key, long unixTime) {
-		return null;
+		return new RequestAction<Long>(new ExpireAt(key, unixTime)).execute().get(timeout);
 	}
 
 	@Override
 	public Long pexpireAt(String key, long millisecondsTimestamp) {
-		return null;
+		return new RequestAction<Long>(new PExpireAt(key, millisecondsTimestamp)).execute().get(timeout);
 	}
 
 	@Override
 	public Long ttl(String key) {
-		return null;
+		return new RequestAction<Long>(new Ttl(key)).execute().get(timeout);
 	}
 
 	@Override
 	public Long pttl(String key) {
-		return null;
+		return new RequestAction<Long>(new PTtl(key)).execute().get(timeout);
 	}
 
 	@Override
 	public Boolean setbit(String key, long offset, boolean value) {
-		return null;
+		return new RequestAction<Boolean>(new SetBit(key, offset, value)).execute().get(timeout);
 	}
 
 	@Override
 	public Boolean setbit(String key, long offset, String value) {
-		return null;
+		return new RequestAction<Boolean>(new SetBit(key, offset, value)).execute().get(timeout);
 	}
 
 	@Override
 	public Boolean getbit(String key, long offset) {
-		return null;
+		return new RequestAction<Boolean>(new GetBit(key, offset)).execute().get(timeout);
 	}
 
 	@Override
 	public Long setrange(String key, long offset, String value) {
-		return null;
+		return new RequestAction<Long>(new SetRange(key, offset, value)).execute().get(timeout);
 	}
 
 	@Override
 	public String getrange(String key, long startOffset, long endOffset) {
-		return null;
+		return new RequestAction<String>(new GetRange(key, startOffset, endOffset)).execute().get(timeout);
 	}
 
 	@Override
 	public String getSet(String key, String value) {
-		return null;
+		return new RequestAction<String>(new GetSet(key, value)).execute().get(timeout);
 	}
 
 	@Override
 	public Long setnx(String key, String value) {
-		return null;
+		return new RequestAction<Long>(new SetNx(key, value)).execute().get(timeout);
 	}
 
 	@Override
 	public String setex(String key, int seconds, String value) {
-		return null;
+		return new RequestAction<String>(new SetEx(key, seconds, value)).execute().get(timeout);
 	}
 
 	@Override
 	public String psetex(String key, long milliseconds, String value) {
-		return null;
+		return new RequestAction<String>(new PSetEx(key, milliseconds, value)).execute().get(timeout);
 	}
 
 	@Override
 	public Long decrBy(String key, long integer) {
-		return null;
+		return new RequestAction<Long>(new DecrementBy(key, integer)).execute().get(timeout);
 	}
 
 	@Override
 	public Long decr(String key) {
-		return null;
+		return new RequestAction<Long>(new Decrement(key)).execute().get(timeout);
 	}
 
 	@Override
 	public Long incrBy(String key, long integer) {
-		return null;
+		return new RequestAction<Long>(new IncrementBy(key, integer)).execute().get(timeout);
 	}
 
 	@Override
 	public Double incrByFloat(String key, double value) {
-		return null;
+		return new RequestAction<Double>(new IncrementByFloat(key, value)).execute().get(timeout);
 	}
 
 	@Override
 	public Long incr(String key) {
-		return null;
+		return new RequestAction<Long>(new Increment(key)).execute().get(timeout);
 	}
 
 	@Override
 	public Long append(String key, String value) {
-		return null;
+		return new RequestAction<Long>(new Append(key, value)).execute().get(timeout);
 	}
 
 	@Override
 	public String substr(String key, int start, int end) {
-		return null;
+		return new RequestAction<String>(new SubStr(key, start, end)).execute().get(timeout);
 	}
 
 	@Override
 	public Long hset(String key, String field, String value) {
-		return null;
+		return new RequestAction<Long>(new HSet(key, field, value)).execute().get(timeout);
 	}
 
 	@Override
 	public String hget(String key, String field) {
-		return null;
+		return new RequestAction<String>(new HGet(key, field)).execute().get(timeout);
 	}
 
 	@Override

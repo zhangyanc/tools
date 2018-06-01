@@ -5,14 +5,9 @@ import pers.zyc.tools.redis.client.Protocol;
 /**
  * @author zhangyancheng
  */
-public class Type extends BaseRequest {
+public class Type extends Request {
 
 	public Type(String key) {
 		super(Protocol.toByteArray(key));
-	}
-
-	@Override
-	public Command getCmd() {
-		return Command.TYPE;
 	}
 }
