@@ -60,10 +60,10 @@ public class ConnectionPool extends Service {
 
 	private void recycle(Connection connection) {
 		try {
-			if (connection.isBroken()) {
-				internalPool.invalidateObject(connection);
-			} else {
+			if (connection.getState() == ConnectionState.WORKING) {
 				internalPool.returnObject(connection);
+			} else {
+				internalPool.invalidateObject(connection);
 			}
 		} catch (Exception e) {
 			LOGGER.error("Connection recycle error", e);
@@ -74,10 +74,7 @@ public class ConnectionPool extends Service {
 
 		@Override
 		public void onEvent(ConnectionEvent event) {
-			Connection connection = event.getSource();
-			if (connection.canRecycle()) {
-				recycle(connection);
-			}
+			recycle(event.getSource());
 		}
 
 		@Override

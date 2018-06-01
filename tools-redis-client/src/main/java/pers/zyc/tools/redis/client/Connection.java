@@ -5,6 +5,7 @@ import pers.zyc.tools.event.EventSource;
 import pers.zyc.tools.event.Multicaster;
 import pers.zyc.tools.redis.client.NetWorker.SocketNIO;
 import pers.zyc.tools.redis.client.request.Request;
+import pers.zyc.tools.utils.Stateful;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -12,7 +13,7 @@ import java.io.IOException;
 /**
  * @author zhangyancheng
  */
-class Connection implements Closeable, EventSource<ConnectionEvent> {
+class Connection implements Stateful<ConnectionState>, Closeable, EventSource<ConnectionEvent> {
 
 	private final SocketNIO socketNio;
 
@@ -21,7 +22,7 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 
 	private Object response;
 
-	private State state;
+	private ConnectionState state = ConnectionState.WORKING;
 
 	Connection(SocketNIO socketNio) {
 		this.socketNio = socketNio;
@@ -45,12 +46,19 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 		multicaster.removeListener(listener);
 	}
 
-	boolean isBroken() {
-		return state == State.REQUEST_TIMEOUT || state == State.BROKEN;
+	@Override
+	public ConnectionState getState() {
+		return state;
 	}
 
-	boolean canRecycle() {
-		return state == State.REQUEST_TIMEOUT || state == State.BROKEN || state == State.RESPONSE_COMPLETED;
+	@Override
+	public boolean checkState(ConnectionState state) {
+		return this.state == state;
+	}
+
+	private void state(ConnectionState state) {
+		this.state = state;
+		multicaster.listeners.onEvent(new ConnectionEvent(this));
 	}
 
 	boolean isConnected() {
@@ -61,26 +69,15 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 		byte[] data = Protocol.encode(request);
 
 		socketNio.request(data);
-		changeState(State.REQUEST_SEND);
 
 		return new ResponseFuture<>(this);
 	}
 
 	Object getResponse(long timeout) {
-		synchronized (this) {
-			while (response == null && timeout > 0) {
-				long now = System.currentTimeMillis();
-				try {
-					wait(timeout);
-					timeout -= System.currentTimeMillis() - now;
-				} catch (InterruptedException interrupted) {
-					Thread.currentThread().interrupt();
-				}
-			}
-		}
+		await(timeout);
 
 		if (response == null) {
-			changeState(State.REQUEST_TIMEOUT);
+			state(ConnectionState.TIMEOUT);
 			throw new RedisClientException("Request timeout");
 		}
 
@@ -90,47 +87,38 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 		return response;
 	}
 
+	private synchronized void await(long timeout) {
+		while (response == null && timeout > 0) {
+			long now = System.currentTimeMillis();
+			try {
+				wait(timeout);
+				timeout -= System.currentTimeMillis() - now;
+			} catch (InterruptedException interrupted) {
+				Thread.currentThread().interrupt();
+			}
+		}
+	}
+
+	private synchronized void response(Object response) {
+		this.response = response;
+		notify();
+	}
+
 	void writeRequest() {
 		try {
 			socketNio.write();
-			changeState(State.REQUEST_WROTE);
 		} catch (Exception e) {
-			response = e;
-
-			synchronized (this) {
-				notify();
-			}
-			changeState(State.BROKEN);
+			response(e);
+			state(ConnectionState.EXCEPTION);
 		}
 	}
 
 	void readResponse() {
-		State newState;
 		try {
-			response = socketNio.read();
-			newState = State.RESPONSE_COMPLETED;
+			response(socketNio.read());
 		} catch (Exception e) {
-			response = e;
-			newState = State.BROKEN;
-		} finally {
-			synchronized (this) {
-				notify();
-			}
+			response(e);
+			state(ConnectionState.EXCEPTION);
 		}
-
-		changeState(newState);
-	}
-
-	enum State {
-		REQUEST_SEND,
-		REQUEST_WROTE,
-		REQUEST_TIMEOUT,
-		RESPONSE_COMPLETED,
-		BROKEN
-	}
-
-	private void changeState(State state) {
-		this.state = state;
-		multicaster.listeners.onEvent(new ConnectionEvent(this));
 	}
 }
