@@ -66,9 +66,7 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 	}
 
 	<R> ResponseFuture<R> sendRequest(Request request) {
-		byte[] data = Protocol.encode(request);
-
-		socketNio.request(data);
+		socketNio.request(request.getCmd(), request.getArgs());
 
 		return new ResponseFuture<>(this);
 	}
@@ -115,7 +113,10 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 
 	void readResponse() {
 		try {
-			response(socketNio.read());
+			Object response = socketNio.read();
+			if (response != null) {
+				response(response);
+			}
 		} catch (Exception e) {
 			response(e);
 			state(ConnectionState.EXCEPTION);

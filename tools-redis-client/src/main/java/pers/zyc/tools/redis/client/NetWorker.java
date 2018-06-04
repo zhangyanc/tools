@@ -4,14 +4,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.lifecycle.PeriodicService;
 
-import java.io.Closeable;
-import java.io.IOException;
+import java.io.*;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Set;
+
+import static pers.zyc.tools.redis.client.Protocol.*;
 
 /**
  * @author zhangyancheng
@@ -93,10 +94,16 @@ public class NetWorker extends PeriodicService {
 
 	static class SocketNIO implements Closeable {
 		private final SelectionKey sk;
-		private ByteBuffer requestDataBuffer;
+		private final SocketChannel channel;
+		private final ByteBuffer buffer = ByteBuffer.allocate(8192);
+		private final ReserveByteArrayOutputStream baos = new ReserveByteArrayOutputStream(8192);
+
+
+		private RType rType;
 
 		SocketNIO(SelectionKey sk) {
 			this.sk = sk;
+			channel = (SocketChannel) sk.channel();
 		}
 
 		@Override
@@ -106,11 +113,12 @@ public class NetWorker extends PeriodicService {
 		}
 
 		SocketChannel channel() {
-			return (SocketChannel) sk.channel();
+			return channel;
 		}
 
-		void request(byte[] requestData) {
-			this.requestDataBuffer = ByteBuffer.wrap(requestData);
+		void request(byte[] cmd, byte[][] args) {
+			encode(baos, cmd, args);
+
 			enableWrite();
 			sk.selector().wakeup();
 		}
@@ -124,15 +132,77 @@ public class NetWorker extends PeriodicService {
 		}
 
 		void write() throws IOException {
-			while (requestDataBuffer.remaining() > 0) {
-				channel().write(requestDataBuffer);
+			byte[] writeData = baos.reserveArray();
+
+			int wroteLen = 0, remain;
+			while ((remain = writeData.length - wroteLen) > 0) {
+				buffer.put(writeData, wroteLen, Math.min(remain, buffer.remaining()));
+
+				buffer.flip();
+				wroteLen += channel.write(buffer);
+				buffer.compact();
 			}
-			requestDataBuffer = null;
+
+			baos.reset();
+			buffer.clear();
 			disableWrite();
 		}
 
 		Object read() throws IOException {
+			while (channel.read(buffer) > 0) {
+				buffer.flip();
+
+				baos.write(buffer.array(), 0, buffer.remaining());
+
+				if (rType == null) {
+					rType = RType.match(buffer.get());
+				}
+
+
+				while (buffer.hasRemaining()) {
+					byte b = buffer.get();
+
+					if (b == CR) {
+
+					}
+				}
+			}
+
 			return new Object();
+		}
+	}
+
+	private enum RType {
+		STATUS_CODE(PLUS_BYTE),
+		BULK(DOLLAR_BYTE),
+		MULTI_BULK(ASTERISK_BYTE),
+		INTEGER(COLON_BYTE),
+		ERROR(MINUS_BYTE);
+
+		private byte b;
+
+		RType(byte b) {
+			this.b = b;
+		}
+
+		static RType match(byte b) {
+			for (RType t : values()) {
+				if (t.b == b) {
+					return t;
+				}
+			}
+			throw new Error();
+		}
+	}
+
+	private static class ReserveByteArrayOutputStream extends ByteArrayOutputStream {
+
+		ReserveByteArrayOutputStream(int size) {
+			super(size);
+		}
+
+		byte[] reserveArray() {
+			return buf;
 		}
 	}
 }

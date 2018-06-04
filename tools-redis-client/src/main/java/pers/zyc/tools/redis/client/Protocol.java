@@ -1,7 +1,5 @@
 package pers.zyc.tools.redis.client;
 
-import pers.zyc.tools.redis.client.request.Request;
-
 import java.io.ByteArrayOutputStream;
 import java.nio.charset.Charset;
 
@@ -66,15 +64,10 @@ public class Protocol {
 	 * [$号][参数字节个数]\r\n
 	 * [参数内容]\r\n           (最后两行循环参数个数次)
 	 *
-	 * @param request request
+	 * @param cmd cmd
+	 * @param args args
 	 */
-	static byte[] encode(Request request) {
-		byte[] cmd = request.getCmd();
-		byte[][] args = request.getArgs();
-
-
-		ByteArrayOutputStream baos = new ByteArrayOutputStream(1024);
-
+	static void encode(ByteArrayOutputStream baos, byte[] cmd, byte[][] args) {
 		byte[] lengthByte = toByteArray(1 + args.length);
 		baos.write(ASTERISK_BYTE);
 		baos.write(lengthByte, 0, lengthByte.length);
@@ -85,7 +78,5 @@ public class Protocol {
 		for (byte[] arg : args) {
 			writePart(baos, arg);
 		}
-
-		return baos.toByteArray();
 	}
 }
