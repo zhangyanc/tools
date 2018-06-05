@@ -3,7 +3,6 @@ package pers.zyc.tools.redis.client;
 import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.event.EventSource;
 import pers.zyc.tools.event.Multicaster;
-import pers.zyc.tools.redis.client.NetWorker.SocketNIO;
 import pers.zyc.tools.redis.client.request.Request;
 import pers.zyc.tools.utils.Stateful;
 

@@ -4,15 +4,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.lifecycle.PeriodicService;
 
-import java.io.*;
+import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.util.Set;
-
-import static pers.zyc.tools.redis.client.Protocol.*;
 
 /**
  * @author zhangyancheng
@@ -89,82 +86,6 @@ public class NetWorker extends PeriodicService {
 			}
 		} catch (IOException e) {
 			throw new RedisClientException(e);
-		}
-	}
-
-	static class SocketNIO implements Closeable {
-		private final SelectionKey sk;
-		private final SocketChannel channel;
-		private final ByteBuffer buffer = ByteBuffer.allocate(8192);
-		private final ReserveByteArrayOutputStream baos = new ReserveByteArrayOutputStream(8192);
-
-		SocketNIO(SelectionKey sk) {
-			this.sk = sk;
-			channel = (SocketChannel) sk.channel();
-		}
-
-		@Override
-		public void close() throws IOException {
-			sk.cancel();
-			sk.channel().close();
-		}
-
-		SocketChannel channel() {
-			return channel;
-		}
-
-		void request(byte[] cmd, byte[][] args) {
-			baos.reset();
-			encode(baos, cmd, args);
-
-			enableWrite();
-			sk.selector().wakeup();
-		}
-
-		void enableWrite() {
-			sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
-		}
-
-		void disableWrite() {
-			sk.interestOps(sk.interestOps() & ~SelectionKey.OP_WRITE);
-		}
-
-		void write() throws IOException {
-			byte[] writeData = baos.reserveArray();
-
-			int remain, wroteLen = 0;
-			while ((remain = writeData.length - wroteLen) > 0) {
-				buffer.put(writeData, wroteLen, Math.min(remain, buffer.remaining()));
-
-				buffer.flip();
-				wroteLen += channel.write(buffer);
-				buffer.compact();
-			}
-
-			baos.reset();
-			buffer.clear();
-			disableWrite();
-		}
-
-		Object read() throws IOException {
-			while (channel.read(buffer) > 0) {
-				buffer.flip();
-				baos.write(buffer.array(), 0, buffer.remaining());
-				buffer.clear();
-			}
-
-			return Protocol.decode(baos.reserveArray());
-		}
-	}
-
-	private static class ReserveByteArrayOutputStream extends ByteArrayOutputStream {
-
-		ReserveByteArrayOutputStream(int size) {
-			super(size);
-		}
-
-		byte[] reserveArray() {
-			return buf;
 		}
 	}
 }
