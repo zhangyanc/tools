@@ -98,9 +98,6 @@ public class NetWorker extends PeriodicService {
 		private final ByteBuffer buffer = ByteBuffer.allocate(8192);
 		private final ReserveByteArrayOutputStream baos = new ReserveByteArrayOutputStream(8192);
 
-
-		private RType rType;
-
 		SocketNIO(SelectionKey sk) {
 			this.sk = sk;
 			channel = (SocketChannel) sk.channel();
@@ -117,6 +114,7 @@ public class NetWorker extends PeriodicService {
 		}
 
 		void request(byte[] cmd, byte[][] args) {
+			baos.reset();
 			encode(baos, cmd, args);
 
 			enableWrite();
@@ -134,7 +132,7 @@ public class NetWorker extends PeriodicService {
 		void write() throws IOException {
 			byte[] writeData = baos.reserveArray();
 
-			int wroteLen = 0, remain;
+			int remain, wroteLen = 0;
 			while ((remain = writeData.length - wroteLen) > 0) {
 				buffer.put(writeData, wroteLen, Math.min(remain, buffer.remaining()));
 
@@ -151,47 +149,11 @@ public class NetWorker extends PeriodicService {
 		Object read() throws IOException {
 			while (channel.read(buffer) > 0) {
 				buffer.flip();
-
 				baos.write(buffer.array(), 0, buffer.remaining());
-
-				if (rType == null) {
-					rType = RType.match(buffer.get());
-				}
-
-
-				while (buffer.hasRemaining()) {
-					byte b = buffer.get();
-
-					if (b == CR) {
-
-					}
-				}
+				buffer.clear();
 			}
 
-			return new Object();
-		}
-	}
-
-	private enum RType {
-		STATUS_CODE(PLUS_BYTE),
-		BULK(DOLLAR_BYTE),
-		MULTI_BULK(ASTERISK_BYTE),
-		INTEGER(COLON_BYTE),
-		ERROR(MINUS_BYTE);
-
-		private byte b;
-
-		RType(byte b) {
-			this.b = b;
-		}
-
-		static RType match(byte b) {
-			for (RType t : values()) {
-				if (t.b == b) {
-					return t;
-				}
-			}
-			throw new Error();
+			return Protocol.decode(baos.reserveArray());
 		}
 	}
 
