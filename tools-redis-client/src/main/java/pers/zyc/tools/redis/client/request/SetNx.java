@@ -8,6 +8,9 @@ import pers.zyc.tools.redis.client.Protocol;
 public class SetNx extends Request {
 
 	public SetNx(String key, String value) {
-		super(Protocol.toByteArray(key), Protocol.toByteArray(value));
+		super(
+				Protocol.toByteArray(key),
+				Protocol.toByteArray(value)
+		);
 	}
 }

@@ -8,7 +8,10 @@ import pers.zyc.tools.redis.client.Protocol;
 public class IncrementByFloat extends Request {
 
 	public IncrementByFloat(String key, double value) {
-		super(Protocol.toByteArray(key), Protocol.toByteArray(value));
+		super(
+				Protocol.toByteArray(key),
+				Protocol.toByteArray(value)
+		);
 	}
 
 	@Override

@@ -8,7 +8,7 @@ import java.util.List;
 /**
  * @author zhangyancheng
  */
-class Protocol {
+public class Protocol {
 
 	static final Charset UTF8 = Charset.forName("UTF8");
 

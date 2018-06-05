@@ -8,6 +8,9 @@ import pers.zyc.tools.redis.client.Protocol;
 public class Expire extends Request {
 
 	public Expire(String key, int seconds) {
-		super(Protocol.toByteArray(key), Protocol.toByteArray(seconds));
+		super(
+				Protocol.toByteArray(key),
+				Protocol.toByteArray(seconds)
+		);
 	}
 }

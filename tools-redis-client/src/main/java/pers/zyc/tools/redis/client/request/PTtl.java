@@ -8,6 +8,8 @@ import pers.zyc.tools.redis.client.Protocol;
 public class PTtl extends Request {
 
 	public PTtl(String key) {
-		super(Protocol.toByteArray(key));
+		super(
+				Protocol.toByteArray(key)
+		);
 	}
 }

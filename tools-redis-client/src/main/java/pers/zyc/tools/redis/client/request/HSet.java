@@ -8,6 +8,10 @@ import pers.zyc.tools.redis.client.Protocol;
 public class HSet extends Request {
 
 	public HSet(String key, String field, String value) {
-		super(Protocol.toByteArray(key), Protocol.toByteArray(field), Protocol.toByteArray(value));
+		super(
+				Protocol.toByteArray(key),
+				Protocol.toByteArray(field),
+				Protocol.toByteArray(value)
+		);
 	}
 }

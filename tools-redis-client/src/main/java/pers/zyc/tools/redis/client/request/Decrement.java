@@ -8,7 +8,9 @@ import pers.zyc.tools.redis.client.Protocol;
 public class Decrement extends Request {
 
 	public Decrement(String key) {
-		super(Protocol.toByteArray(key));
+		super(
+				Protocol.toByteArray(key)
+		);
 	}
 
 	@Override

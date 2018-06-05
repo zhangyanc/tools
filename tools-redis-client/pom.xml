@@ -39,5 +39,9 @@
             <groupId>pers.zyc.tools</groupId>
             <artifactId>tools-event</artifactId>
         </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+        </dependency>
     </dependencies>
 </project>

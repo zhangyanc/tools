@@ -8,6 +8,9 @@ import pers.zyc.tools.redis.client.Protocol;
 public class GetBit extends Request {
 
 	public GetBit(String key, long offset) {
-		super(Protocol.toByteArray(key), Protocol.toByteArray(offset));
+		super(
+				Protocol.toByteArray(key),
+				Protocol.toByteArray(offset)
+		);
 	}
 }

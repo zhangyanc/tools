@@ -8,6 +8,9 @@ import pers.zyc.tools.redis.client.Protocol;
 public class HGet extends Request {
 
 	public HGet(String key, String field) {
-		super(Protocol.toByteArray(key), Protocol.toByteArray(field));
+		super(
+				Protocol.toByteArray(key),
+				Protocol.toByteArray(field)
+		);
 	}
 }

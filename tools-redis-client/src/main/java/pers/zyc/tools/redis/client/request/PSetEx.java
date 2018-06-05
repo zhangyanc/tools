@@ -8,6 +8,10 @@ import pers.zyc.tools.redis.client.Protocol;
 public class PSetEx extends Request {
 
 	public PSetEx(String key, long milliseconds, String value) {
-		super(Protocol.toByteArray(key), Protocol.toByteArray(milliseconds), Protocol.toByteArray(value));
+		super(
+				Protocol.toByteArray(key),
+				Protocol.toByteArray(milliseconds),
+				Protocol.toByteArray(value)
+		);
 	}
 }

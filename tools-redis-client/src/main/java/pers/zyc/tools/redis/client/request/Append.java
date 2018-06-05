@@ -8,6 +8,9 @@ import pers.zyc.tools.redis.client.Protocol;
 public class Append extends Request {
 
 	public Append(String key, String value) {
-		super(Protocol.toByteArray(key), Protocol.toByteArray(value));
+		super(
+				Protocol.toByteArray(key),
+				Protocol.toByteArray(value)
+		);
 	}
 }

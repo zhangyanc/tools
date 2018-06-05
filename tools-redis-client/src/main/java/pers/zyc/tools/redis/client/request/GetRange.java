@@ -8,6 +8,10 @@ import pers.zyc.tools.redis.client.Protocol;
 public class GetRange extends Request {
 
 	public GetRange(String key, long startOffset, long endOffset) {
-		super(Protocol.toByteArray(key), Protocol.toByteArray(startOffset), Protocol.toByteArray(endOffset));
+		super(
+				Protocol.toByteArray(key),
+				Protocol.toByteArray(startOffset),
+				Protocol.toByteArray(endOffset)
+		);
 	}
 }

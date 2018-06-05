@@ -8,6 +8,9 @@ import pers.zyc.tools.redis.client.Protocol;
 public class ExpireAt extends Request {
 
 	public ExpireAt(String key, long unixTime) {
-		super(Protocol.toByteArray(key), Protocol.toByteArray(unixTime));
+		super(
+				Protocol.toByteArray(key),
+				Protocol.toByteArray(unixTime)
+		);
 	}
 }
