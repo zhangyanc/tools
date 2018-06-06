@@ -11,20 +11,24 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class TimeMillis {
 
-    private static final AtomicLong TIME_MILLIS = new AtomicLong(System.currentTimeMillis());
+	private static final AtomicLong TIME_MILLIS = new AtomicLong(System.currentTimeMillis());
 
-    static {
-        Executors.newSingleThreadScheduledExecutor(new NameThreadFactory("TIME_MILLIS", true))
-                 .scheduleAtFixedRate(new Runnable() {
+	static {
+		Executors.newSingleThreadScheduledExecutor(new NameThreadFactory("TIME_MILLIS", true))
+				 .scheduleAtFixedRate(new Runnable() {
 
-                     @Override
-                     public void run() {
-                         TIME_MILLIS.set(System.currentTimeMillis());
-                     }
-                 }, 0, 1, TimeUnit.MILLISECONDS);
-    }
+					 @Override
+					 public void run() {
+						 TIME_MILLIS.set(System.currentTimeMillis());
+					 }
+				 }, 0, 1, TimeUnit.MILLISECONDS);
+	}
 
-    public static long get() {
-        return TIME_MILLIS.get();
-    }
+	public static long get() {
+		return TIME_MILLIS.get();
+	}
+
+	public static long now() {
+		return System.currentTimeMillis();
+	}
 }
