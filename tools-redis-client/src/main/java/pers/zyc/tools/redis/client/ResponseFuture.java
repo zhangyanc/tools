@@ -6,13 +6,14 @@ package pers.zyc.tools.redis.client;
 public class ResponseFuture<R> {
 
 	private final Connection connection;
+	private final ResponseCast<R> responseCast;
 
-	ResponseFuture(Connection connection) {
+	ResponseFuture(Connection connection, ResponseCast<R> responseCast) {
 		this.connection = connection;
+		this.responseCast = responseCast;
 	}
 
-	@SuppressWarnings("unchecked")
 	public R get(long timeout) {
-		return (R) connection.getResponse(timeout);
+		return responseCast.cast(connection.getResponse(timeout));
 	}
 }

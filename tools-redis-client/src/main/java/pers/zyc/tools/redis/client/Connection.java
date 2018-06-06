@@ -3,7 +3,6 @@ package pers.zyc.tools.redis.client;
 import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.event.EventSource;
 import pers.zyc.tools.event.Multicaster;
-import pers.zyc.tools.redis.client.request.Request;
 import pers.zyc.tools.utils.Stateful;
 
 import java.io.Closeable;
@@ -64,10 +63,8 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 		return socketNio.channel().isConnected();
 	}
 
-	<R> ResponseFuture<R> sendRequest(Request request) {
+	void sendRequest(Request request) {
 		socketNio.request(request.getCmd(), request.getArgs());
-
-		return new ResponseFuture<>(this);
 	}
 
 	Object getResponse(long timeout) {

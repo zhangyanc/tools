@@ -1,15 +1,11 @@
 package pers.zyc.tools.redis.client;
 
-import pers.zyc.retry.BaseRetryPolicy;
-import pers.zyc.retry.RetryExceptionHandler;
-import pers.zyc.retry.RetryFailedException;
-import pers.zyc.retry.RetryLoop;
 import pers.zyc.tools.redis.client.request.*;
 
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Callable;
+import static pers.zyc.tools.redis.client.ResponseCast.*;
 
 /**
  * @author zhangyancheng
@@ -17,212 +13,321 @@ import java.util.concurrent.Callable;
 public class CustomRedisClient implements RedisClient {
 
 	private final ConnectionPool connectionPool;
-
-	private final BaseRetryPolicy retryPolicy;
-
 	private final long timeout;
 
 	public CustomRedisClient(ConnectionPool connectionPool) {
-		this(connectionPool, null);
-	}
-
-	public CustomRedisClient(ConnectionPool connectionPool, BaseRetryPolicy retryPolicy) {
 		this.connectionPool = connectionPool;
-		this.retryPolicy = retryPolicy;
 		this.timeout = connectionPool.getRequestTimeout();
 	}
 
-	private class RequestAction<R> implements Callable<ResponseFuture<R>>, RetryExceptionHandler {
-
-		private final Request request;
-
-		private RequestAction(Request request) {
-			this.request = request;
-		}
-
-		@Override
-		public ResponseFuture<R> call() throws Exception {
-			return connectionPool.getConnection().sendRequest(request);
-		}
-
-		@Override
-		public Boolean handleException(Throwable cause, Callable<?> callable) {
-			return true;
-		}
-
-		/**
-		 * 执行请求(可重试)
-		 *
-		 * @return 请求结果
-		 */
-		private ResponseFuture<R> execute() {
-			try {
-				return RetryLoop.execute(this, retryPolicy);
-			} catch (RuntimeException e) {
-				throw e;
-			} catch (InterruptedException e) {
-				throw new RedisClientException("Thread interrupted", e);
-			} catch (RetryFailedException e) {
-				throw new RedisClientException("Retry failed", e.getCause());
-			} catch (Exception e) {
-				throw new RedisClientException("Execute error", e);
-			}
-		}
-	}
 
 	@Override
 	public String set(String key, String value) {
-		return new RequestAction<String>(new pers.zyc.tools.redis.client.request.Set(key, value)).execute().get(timeout);
+		return new RequestAction<String>()
+				.request(new pers.zyc.tools.redis.client.request.Set(key, value))
+				.connection(connectionPool.getConnection())
+				.responseCast(STRING)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public String set(String key, String value, String nxxx, String expx, long time) {
-		return new RequestAction<String>(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx, expx, time)).execute().get(timeout);
+		return new RequestAction<String>()
+				.request(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx, expx, time))
+				.connection(connectionPool.getConnection())
+				.responseCast(STRING)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public String set(String key, String value, String nxxx) {
-		return new RequestAction<String>(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx)).execute().get(timeout);
+		return new RequestAction<String>()
+				.request(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx))
+				.connection(connectionPool.getConnection())
+				.responseCast(STRING)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public String get(String key) {
-		return new RequestAction<String>(new Get(key)).execute().get(timeout);
+		return new RequestAction<String>()
+				.request(new Get(key))
+				.connection(connectionPool.getConnection())
+				.responseCast(STRING)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Boolean exists(String key) {
-		return new RequestAction<Boolean>(new Exists(key)).execute().get(timeout);
+		return new RequestAction<Boolean>()
+				.request(new Exists(key))
+				.connection(connectionPool.getConnection())
+				.responseCast(BOOLEAN)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long persist(String key) {
-		return new RequestAction<Long>(new Persist(key)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new Persist(key))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public String type(String key) {
-		return new RequestAction<String>(new Type(key)).execute().get(timeout);
+		return new RequestAction<String>()
+				.request(new Type(key))
+				.connection(connectionPool.getConnection())
+				.responseCast(STRING)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long expire(String key, int seconds) {
-		return new RequestAction<Long>(new Expire(key, seconds)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new Expire(key, seconds))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long pexpire(String key, long milliseconds) {
-		return new RequestAction<Long>(new PExpire(key, milliseconds)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new PExpire(key, milliseconds))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long expireAt(String key, long unixTime) {
-		return new RequestAction<Long>(new ExpireAt(key, unixTime)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new ExpireAt(key, unixTime))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG).execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long pexpireAt(String key, long millisecondsTimestamp) {
-		return new RequestAction<Long>(new PExpireAt(key, millisecondsTimestamp)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new PExpireAt(key, millisecondsTimestamp))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long ttl(String key) {
-		return new RequestAction<Long>(new Ttl(key)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new Ttl(key))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long pttl(String key) {
-		return new RequestAction<Long>(new PTtl(key)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new PTtl(key))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Boolean setbit(String key, long offset, boolean value) {
-		return new RequestAction<Boolean>(new SetBit(key, offset, value)).execute().get(timeout);
+		return new RequestAction<Boolean>()
+				.request(new SetBit(key, offset, value))
+				.connection(connectionPool.getConnection())
+				.responseCast(BOOLEAN)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Boolean setbit(String key, long offset, String value) {
-		return new RequestAction<Boolean>(new SetBit(key, offset, value)).execute().get(timeout);
+		return new RequestAction<Boolean>()
+				.request(new SetBit(key, offset, value))
+				.connection(connectionPool.getConnection())
+				.responseCast(BOOLEAN)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Boolean getbit(String key, long offset) {
-		return new RequestAction<Boolean>(new GetBit(key, offset)).execute().get(timeout);
+		return new RequestAction<Boolean>()
+				.request(new GetBit(key, offset))
+				.connection(connectionPool.getConnection())
+				.responseCast(BOOLEAN)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long setrange(String key, long offset, String value) {
-		return new RequestAction<Long>(new SetRange(key, offset, value)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new SetRange(key, offset, value))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public String getrange(String key, long startOffset, long endOffset) {
-		return new RequestAction<String>(new GetRange(key, startOffset, endOffset)).execute().get(timeout);
+		return new RequestAction<String>()
+				.request(new GetRange(key, startOffset, endOffset))
+				.connection(connectionPool.getConnection())
+				.responseCast(STRING)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public String getSet(String key, String value) {
-		return new RequestAction<String>(new GetSet(key, value)).execute().get(timeout);
+		return new RequestAction<String>()
+				.request(new GetSet(key, value))
+				.connection(connectionPool.getConnection())
+				.responseCast(STRING)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long setnx(String key, String value) {
-		return new RequestAction<Long>(new SetNx(key, value)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new SetNx(key, value))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public String setex(String key, int seconds, String value) {
-		return new RequestAction<String>(new SetEx(key, seconds, value)).execute().get(timeout);
+		return new RequestAction<String>()
+				.request(new SetEx(key, seconds, value))
+				.connection(connectionPool.getConnection())
+				.responseCast(STRING)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public String psetex(String key, long milliseconds, String value) {
-		return new RequestAction<String>(new PSetEx(key, milliseconds, value)).execute().get(timeout);
+		return new RequestAction<String>()
+				.request(new PSetEx(key, milliseconds, value))
+				.connection(connectionPool.getConnection())
+				.responseCast(STRING)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long decrBy(String key, long integer) {
-		return new RequestAction<Long>(new DecrementBy(key, integer)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new DecrementBy(key, integer))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long decr(String key) {
-		return new RequestAction<Long>(new Decrement(key)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new Decrement(key))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long incrBy(String key, long integer) {
-		return new RequestAction<Long>(new IncrementBy(key, integer)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new IncrementBy(key, integer))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Double incrByFloat(String key, double value) {
-		return new RequestAction<Double>(new IncrementByFloat(key, value)).execute().get(timeout);
+		return new RequestAction<Double>()
+				.request(new IncrementByFloat(key, value))
+				.connection(connectionPool.getConnection())
+				.responseCast(DOUBLE)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long incr(String key) {
-		return new RequestAction<Long>(new Increment(key)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new Increment(key))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long append(String key, String value) {
-		return new RequestAction<Long>(new Append(key, value)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new Append(key, value))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public String substr(String key, int start, int end) {
-		return new RequestAction<String>(new SubStr(key, start, end)).execute().get(timeout);
+		return new RequestAction<String>()
+				.request(new SubStr(key, start, end))
+				.connection(connectionPool.getConnection())
+				.responseCast(STRING)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public Long hset(String key, String field, String value) {
-		return new RequestAction<Long>(new HSet(key, field, value)).execute().get(timeout);
+		return new RequestAction<Long>()
+				.request(new HSet(key, field, value))
+				.connection(connectionPool.getConnection())
+				.responseCast(LONG)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
 	public String hget(String key, String field) {
-		return new RequestAction<String>(new HGet(key, field)).execute().get(timeout);
+		return new RequestAction<String>()
+				.request(new HGet(key, field))
+				.connection(connectionPool.getConnection())
+				.responseCast(STRING)
+				.execute()
+				.get(timeout);
 	}
 
 	@Override
