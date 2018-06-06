@@ -1,6 +1,7 @@
 package pers.zyc.tools.redis.client.request;
 
 import pers.zyc.tools.redis.client.Protocol;
+import pers.zyc.tools.redis.client.Request;
 
 /**
  * @author zhangyancheng
@@ -15,7 +16,7 @@ public class DecrementBy extends Request {
 	}
 
 	@Override
-	String getCommand() {
+	protected String getCommand() {
 		return "DECRBY";
 	}
 }

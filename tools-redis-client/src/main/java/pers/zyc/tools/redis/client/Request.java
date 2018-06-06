@@ -1,6 +1,4 @@
-package pers.zyc.tools.redis.client.request;
-
-import pers.zyc.tools.redis.client.Protocol;
+package pers.zyc.tools.redis.client;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -14,19 +12,19 @@ public abstract class Request {
 
 	private final byte[][] args;
 
-	Request(byte[]... args) {
+	protected Request(byte[]... args) {
 		this.args = args;
 	}
 
-	public byte[] getCmd() {
+	byte[] getCmd() {
 		return commandBytesCache.getCommandBytes(getCommand());
 	}
 
-	String getCommand() {
+	protected String getCommand() {
 		return getClass().getSimpleName().toUpperCase();
 	}
 
-	public byte[][] getArgs() {
+	byte[][] getArgs() {
 		return args;
 	}
 
@@ -42,7 +40,4 @@ public abstract class Request {
 			return commandBytes;
 		}
 	}
-
-
-
 }
