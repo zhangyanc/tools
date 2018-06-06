@@ -117,21 +117,27 @@ public class Protocol {
 	private static List<byte[]> readMultiBulk(byte[] bytes) {
 		List<byte[]> ret = new ArrayList<>();
 
-		int offset = 0;
+		int offset = 1;
 		byte[] partLenByte = getLongByte(bytes, offset);
 		long partLen = bytesToLong(partLenByte);
 		if (partLen == 0) {
 			return ret;
 		}
 
-		offset += (1 + 2 + partLenByte.length);
+		offset += (2 + partLenByte.length);
 		while (bytes.length > offset) {
-			byte[] partBytes = readPart(bytes, offset);
-			if (partBytes == null) {
+			offset++;
+			partLenByte = getLongByte(bytes, offset);
+			offset += (2 + partLenByte.length);
+
+			if (bytes.length <= offset) {
+				//数据未收完
 				return null;
 			}
+
+			byte[] partBytes = readPart(bytes, partLenByte, offset);
 			ret.add(partBytes);
-			offset += (1 + 2 + partBytes.length);
+			offset += (2 + partBytes.length);
 		}
 
 		//未读到足够的part返回null
@@ -139,21 +145,20 @@ public class Protocol {
 	}
 
 	private static byte[] readBulk(byte[] bytes) {
-		return readPart(bytes, 0);
+		int offset = 1;
+		byte[] contentLenByte = getLongByte(bytes, offset);
+		//offset增加(len bytes length + 一个\r\n)的长度
+		offset += (contentLenByte.length + 2);
+
+		return bytes.length <= offset ? null : readPart(bytes, contentLenByte, offset);
 	}
 
-	private static byte[] readPart(byte[] bytes, int offset) {
-		byte[] contentLenByte = getLongByte(bytes, offset);
+	private static byte[] readPart(byte[] bytes, byte[] contentLenByte, int offset) {
 		long contentLen = bytesToLong(contentLenByte);
 		if (contentLen == -1) {
 			return contentLenByte;
 		}
-		offset += (1 + 2 + contentLenByte.length);
-		//只要\r\n后还有内容, 就一定可以读到contentLen长度的内容
-		if (bytes.length <= offset) {
-			return null;
-		}
-
+		//一定可以读取contentLen长度的内容
 		return getContentByte(bytes, offset, (int) contentLen);
 	}
 
@@ -167,13 +172,13 @@ public class Protocol {
 
 	private static byte[] getLongByte(byte[] bytes, int offset) {
 		int end = 0;
-		for (int i = 0; i < bytes.length - 1; i++) {
+		for (int i = offset; i < bytes.length - 1; i++) {
 			if (bytes[i] == CR && bytes[i + 1] == LF) {
 				end = i;
 				break;
 			}
 		}
-		return getContentByte(bytes, offset + 1, end - offset - 1);
+		return getContentByte(bytes, offset, end - offset);
 	}
 
 	private static byte[] getContentByte(byte[] bytes, int offset, int len) {
