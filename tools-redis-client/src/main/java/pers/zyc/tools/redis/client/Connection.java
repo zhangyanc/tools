@@ -11,7 +11,7 @@ import java.io.IOException;
 /**
  * @author zhangyancheng
  */
-class Connection implements Stateful<ConnectionState>, Closeable, EventSource<ConnectionEvent> {
+class Connection implements Stateful<ConnectionState>, Closeable, EventSource<ConnectionEvent>, ResponseListener {
 
 	private final SocketNIO socketNio;
 
@@ -19,6 +19,7 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 			new Multicaster<EventListener<ConnectionEvent>>() {};
 
 	private Object response;
+	private boolean responded;
 
 	private ConnectionState state = ConnectionState.WORKING;
 
@@ -54,6 +55,18 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 		return this.state == state;
 	}
 
+	@Override
+	public void onResponseReceived(Object response) {
+		response(response);
+		state(ConnectionState.WORKING);
+	}
+
+	@Override
+	public void onSocketException(Exception e) {
+		response(e);
+		state(ConnectionState.EXCEPTION);
+	}
+
 	private void state(ConnectionState state) {
 		this.state = state;
 		multicaster.listeners.onEvent(new ConnectionEvent(this));
@@ -65,12 +78,13 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 
 	void sendRequest(Request request) {
 		socketNio.request(request.getCmd(), request.getArgs());
+		responded = false;
 	}
 
 	Object getResponse(long timeout) {
 		await(timeout);
 
-		if (response == null) {
+		if (!responded) {
 			state(ConnectionState.TIMEOUT);
 			throw new RedisClientException("Request timeout");
 		}
@@ -78,11 +92,12 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 		if (response instanceof Throwable) {
 			throw new RedisClientException((Throwable) response);
 		}
+
 		return response;
 	}
 
 	private synchronized void await(long timeout) {
-		while (response == null && timeout > 0) {
+		while (!responded && timeout > 0) {
 			long now = System.currentTimeMillis();
 			try {
 				wait(timeout);
@@ -95,27 +110,7 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 
 	private synchronized void response(Object response) {
 		this.response = response;
+		this.responded = true;
 		notify();
-	}
-
-	void writeRequest() {
-		try {
-			socketNio.write();
-		} catch (Exception e) {
-			response(e);
-			state(ConnectionState.EXCEPTION);
-		}
-	}
-
-	void readResponse() {
-		try {
-			Object response = socketNio.read();
-			if (response != null) {
-				response(response);
-			}
-		} catch (Exception e) {
-			response(e);
-			state(ConnectionState.EXCEPTION);
-		}
 	}
 }

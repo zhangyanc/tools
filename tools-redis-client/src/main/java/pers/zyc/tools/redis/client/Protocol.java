@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client;
 
-import java.io.ByteArrayOutputStream;
+import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,6 +20,8 @@ public class Protocol {
 
 	static final byte CR = '\r';
 	static final byte LF = '\n';
+
+	static final byte[] CRLF = new byte[] {CR, LF};
 
 	static final byte[] BYTES_TRUE = toByteArray(1);
 	static final byte[] BYTES_FALSE = toByteArray(0);
@@ -52,19 +54,13 @@ public class Protocol {
 		return Long.parseLong(bytesToString(longBytes));
 	}
 
-	private static void writeCRLF(ByteArrayOutputStream baos) {
-		baos.write(CR);
-		baos.write(LF);
-	}
-
-	private static void writePart(ByteArrayOutputStream baos, byte[] part) {
+	private static void writePart(ByteBuffer buffer, byte[] part) {
 		byte[] partLengthByte = toByteArray(part.length);
-		baos.write(DOLLAR_BYTE);
-		baos.write(partLengthByte, 0, partLengthByte.length);
-		writeCRLF(baos);
-
-		baos.write(part, 0, part.length);
-		writeCRLF(baos);
+		buffer.put(DOLLAR_BYTE);
+		buffer.put(partLengthByte);
+		buffer.put(CRLF);
+		buffer.put(part);
+		buffer.put(CRLF);
 	}
 
 	/**
@@ -74,29 +70,37 @@ public class Protocol {
 	 * [$号][参数字节个数]\r\n
 	 * [参数内容]\r\n           (最后两行循环参数个数次)
 	 *
-	 * @param cmd cmd
-	 * @param args args
+	 *
+	 * @param buffer 请求字节缓存区
+	 * @param cmd 请求命令字节
+	 * @param args 请求part字节组
 	 */
-	static void encode(ByteArrayOutputStream baos, byte[] cmd, byte[][] args) {
+	static void encode(ByteBuffer buffer, byte[] cmd, byte[][] args) {
 		byte[] lengthByte = toByteArray(1 + args.length);
-		baos.write(ASTERISK_BYTE);
-		baos.write(lengthByte, 0, lengthByte.length);
-		writeCRLF(baos);
+		buffer.put(ASTERISK_BYTE);
+		buffer.put(lengthByte);
+		buffer.put(CRLF);
 
-		writePart(baos, cmd);
+		writePart(buffer, cmd);
 
 		for (byte[] arg : args) {
-			writePart(baos, arg);
+			writePart(buffer, arg);
 		}
 	}
 
-	static Object decode(byte[] responseData) {
-		int len = responseData.length;
+	static Object decode(ByteBuffer buffer) {
+		int len = buffer.limit();
 		//响应包必然以\r\n结尾, 如果不是则响应数据未收完
-		if (responseData[len - 1] != LF || responseData[len - 2] != CR) {
-			return null;
+		if (buffer.get(len - 1) != LF || buffer.get(len - 2) != CR) {
+			throw new ResponseIncompleteException("Response packet not end with \\r\\n");
 		}
+		byte[] responseData = new byte[len];
+		buffer.get(responseData);
 
+		return decode(responseData);
+	}
+
+	private static Object decode(byte[] responseData) {
 		final byte b = responseData[0];
 		RType rType = RType.match(b);
 		switch (rType) {
@@ -115,51 +119,57 @@ public class Protocol {
 	}
 
 	private static List<byte[]> readMultiBulk(byte[] bytes) {
-		List<byte[]> ret = new ArrayList<>();
-
 		int offset = 1;
 		byte[] partLenByte = getLongByte(bytes, offset);
 		long partLen = bytesToLong(partLenByte);
+
+		List<byte[]> ret = new ArrayList<>((int) partLen);
 		if (partLen == 0) {
 			return ret;
 		}
 
-		offset += (2 + partLenByte.length);
+		offset += (partLenByte.length + CRLF.length);
 		while (bytes.length > offset) {
 			offset++;
 			partLenByte = getLongByte(bytes, offset);
-			offset += (2 + partLenByte.length);
-
-			if (bytes.length <= offset) {
-				//数据未收完
-				return null;
-			}
+			offset += (partLenByte.length + CRLF.length);
 
 			byte[] partBytes = readPart(bytes, partLenByte, offset);
 			ret.add(partBytes);
-			offset += (2 + partBytes.length);
+			if (partBytes != null) {
+				offset += (partBytes.length + CRLF.length);
+			}
 		}
 
-		//未读到足够的part返回null
-		return ret.size() == partLen ? ret : null;
+		if (ret.size() == partLen) {
+			return ret;
+		}
+
+		throw new ResponseIncompleteException("MultiBulk expect " + partLen + "part, but just received " + ret.size());
 	}
 
 	private static byte[] readBulk(byte[] bytes) {
 		int offset = 1;
 		byte[] contentLenByte = getLongByte(bytes, offset);
-		//offset增加(len bytes length + 一个\r\n)的长度
-		offset += (contentLenByte.length + 2);
 
-		return bytes.length <= offset ? null : readPart(bytes, contentLenByte, offset);
+		//offset增加(len bytes length + 一个\r\n)的长度
+		offset += (contentLenByte.length + CRLF.length);
+
+		return readPart(bytes, contentLenByte, offset);
 	}
 
 	private static byte[] readPart(byte[] bytes, byte[] contentLenByte, int offset) {
 		long contentLen = bytesToLong(contentLenByte);
-		if (contentLen == -1) {
-			return contentLenByte;
+		if (bytes.length <= offset) {
+			if (bytesToLong(contentLenByte) == -1) {
+				return null;
+			} else {
+				throw new ResponseIncompleteException("Bulk part data deficiency");
+			}
+		} else {
+			//一定可以读取contentLen长度的内容
+			return getContentByte(bytes, offset, (int) contentLen);
 		}
-		//一定可以读取contentLen长度的内容
-		return getContentByte(bytes, offset, (int) contentLen);
 	}
 
 	private static String readLine(byte[] bytes) {

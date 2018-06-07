@@ -9,7 +9,9 @@ import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
+import java.util.Iterator;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author zhangyancheng
@@ -19,6 +21,7 @@ public class NetWorker extends PeriodicService {
 	private static final Logger LOGGER = LoggerFactory.getLogger(NetWorker.class);
 
 	private final Selector selector = Selector.open();
+	private final AtomicBoolean wakeUp = new AtomicBoolean(false);
 
 	NetWorker() throws IOException {
 	}
@@ -46,14 +49,19 @@ public class NetWorker extends PeriodicService {
 		selector.close();
 	}
 
-	Connection createConnection(String host, int port) throws IOException {
+	SocketNIO createSocket(String host, int port) throws IOException {
 		SocketChannel channel = createChannel(host, port);
 
-		SelectionKey sk = channel.register(selector, SelectionKey.OP_READ);
-		Connection connection = new Connection(new SocketNIO(sk));
-		sk.attach(connection);
+		SelectionKey sk;
+		synchronized (this) {
+			wakeUp();
+			sk = channel.register(selector, SelectionKey.OP_READ);
+		}
 
-		return connection;
+		SocketNIO socket = new SocketNIO(sk, this);
+		sk.attach(socket);
+
+		return socket;
 	}
 
 	@Override
@@ -67,25 +75,54 @@ public class NetWorker extends PeriodicService {
 		return 0;
 	}
 
-	@Override
-	protected void execute() throws InterruptedException {
-		try {
-			if (selector.select(60000) == 0) {
-				return;
-			}
+	void wakeUp() {
+		if (wakeUp.compareAndSet(false, true)) {
+			selector.wakeup();
+		}
+	}
 
-			Set<SelectionKey> selected = selector.selectedKeys();
-			for (SelectionKey sk : selected) {
-				Connection connection = (Connection) sk.attachment();
-				if (sk.isWritable()) {
-					connection.writeRequest();
-				}
-				if (sk.isReadable()) {
-					connection.readResponse();
-				}
+	private void doSelect() {
+		try {
+			selector.select();
+
+			if (wakeUp.compareAndSet(true, false)) {
+				selector.selectNow();
 			}
 		} catch (IOException e) {
 			throw new RedisClientException(e);
+		}
+	}
+
+	@Override
+	protected void execute() throws InterruptedException {
+		doSelect();
+
+		Set<SelectionKey> selected;
+		synchronized (this) {
+			selected = selector.selectedKeys();
+		}
+
+		if (selected.isEmpty()) {
+			return;
+		}
+
+		Iterator<SelectionKey> i = selected.iterator();
+
+		while (i.hasNext()) {
+			SelectionKey sk = i.next();
+			i.remove();
+
+			if (!sk.isValid()) {
+				continue;
+			}
+
+			SocketNIO socket = (SocketNIO) sk.attachment();
+			if (sk.isWritable()) {
+				socket.write();
+			}
+			if (sk.isReadable()) {
+				socket.read();
+			}
 		}
 	}
 }

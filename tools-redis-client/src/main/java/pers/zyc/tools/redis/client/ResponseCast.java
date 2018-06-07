@@ -15,6 +15,10 @@ abstract class ResponseCast<R> {
 
 		@Override
 		String cast(Object response) {
+			if (response == null) {
+				return null;
+			}
+
 			if (response instanceof String) {
 				return (String) response;
 			}

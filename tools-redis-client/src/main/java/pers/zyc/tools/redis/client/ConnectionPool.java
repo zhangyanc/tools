@@ -79,8 +79,12 @@ public class ConnectionPool extends Service {
 
 		@Override
 		public PooledObject<Connection> makeObject() throws Exception {
-			Connection connection = netWorker.createConnection(uri.getHost(), uri.getPort());
+			SocketNIO socket = netWorker.createSocket(uri.getHost(), uri.getPort());
+
+			Connection connection = new Connection(socket);
 			connection.addListener(this);
+			socket.addListener(connection);
+
 			return new DefaultPooledObject<>(connection);
 		}
 
