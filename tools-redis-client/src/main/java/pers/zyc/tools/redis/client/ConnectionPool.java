@@ -2,6 +2,7 @@ package pers.zyc.tools.redis.client;
 
 import org.apache.commons.pool2.PooledObject;
 import org.apache.commons.pool2.PooledObjectFactory;
+import org.apache.commons.pool2.SwallowedExceptionListener;
 import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
@@ -37,7 +38,14 @@ public class ConnectionPool extends Service {
 	@Override
 	protected void doStart() {
 		netWorker.start();
+
 		internalPool = new GenericObjectPool<>(new ConnectionFactory(), poolConfig);
+		internalPool.setSwallowedExceptionListener(new SwallowedExceptionListener() {
+			@Override
+			public void onSwallowException(Exception e) {
+				LOGGER.error("Pool exception caught", e);
+			}
+		});
 	}
 
 	@Override
