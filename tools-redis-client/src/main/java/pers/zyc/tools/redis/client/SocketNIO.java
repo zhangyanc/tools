@@ -92,13 +92,16 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 				}
 			} while (readSize > 0);
 
-			ByteBuffer responseBuffer = buffer.duplicate();
-			responseBuffer.flip();
+			readSize = buffer.position();//记录总共写入位置
+			buffer.flip();
 
 			try {
-				Object response = Protocol.decode(responseBuffer);
+				Object response = Protocol.decode(buffer);
 				multicaster.listeners.onResponseReceived(response);
-			} catch (ResponseIncompleteException ignored) {
+			} catch (ResponseIncompleteException rie) {
+				//响应数据包未收完, 需重置buffer写入位置继续读channel
+				buffer.position(readSize);
+				buffer.limit(buffer.capacity());
 			}
 		} catch (Exception e) {
 			multicaster.listeners.onSocketException(e);

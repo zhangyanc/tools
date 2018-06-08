@@ -12,19 +12,19 @@ public class Protocol {
 
 	static final Charset UTF8 = Charset.forName("UTF8");
 
-	static final byte DOLLAR_BYTE = '$';
-	static final byte ASTERISK_BYTE = '*';
-	static final byte PLUS_BYTE = '+';
-	static final byte MINUS_BYTE = '-';
-	static final byte COLON_BYTE = ':';
+	static final byte DOLLAR = '$';
+	static final byte ASTERISK = '*';
+	static final byte PLUS = '+';
+	static final byte MINUS = '-';
+	static final byte COLON = ':';
 
-	static final byte CR = '\r';
-	static final byte LF = '\n';
+	private static final byte CR = '\r';
+	private static final byte LF = '\n';
 
-	static final byte[] CRLF = new byte[] {CR, LF};
+	private static final byte[] CRLF = new byte[] {CR, LF};
 
-	static final byte[] BYTES_TRUE = toByteArray(1);
-	static final byte[] BYTES_FALSE = toByteArray(0);
+	private static final byte[] BYTES_TRUE = toByteArray(1);
+	private static final byte[] BYTES_FALSE = toByteArray(0);
 
 	public static byte[] toByteArray(String str) {
 		return str.getBytes(UTF8);
@@ -46,17 +46,21 @@ public class Protocol {
 		return Double.toString(d).getBytes(UTF8);
 	}
 
-	private static String bytesToString(byte[] strBytes) {
+	static String bytesToString(byte[] strBytes) {
 		return new String(strBytes, UTF8);
 	}
 
-	private static long bytesToLong(byte[] longBytes) {
-		return Long.parseLong(bytesToString(longBytes));
+	static Long bytesToLong(byte[] longBytes) {
+		return Long.valueOf(bytesToString(longBytes));
+	}
+
+	static Double byteToDouble(byte[] doubleBytes) {
+		return Double.valueOf(bytesToString(doubleBytes));
 	}
 
 	private static void writePart(ByteBuffer buffer, byte[] part) {
 		byte[] partLengthByte = toByteArray(part.length);
-		buffer.put(DOLLAR_BYTE);
+		buffer.put(DOLLAR);
 		buffer.put(partLengthByte);
 		buffer.put(CRLF);
 		buffer.put(part);
@@ -77,7 +81,7 @@ public class Protocol {
 	 */
 	static void encode(ByteBuffer buffer, byte[] cmd, byte[][] args) {
 		byte[] lengthByte = toByteArray(1 + args.length);
-		buffer.put(ASTERISK_BYTE);
+		buffer.put(ASTERISK);
 		buffer.put(lengthByte);
 		buffer.put(CRLF);
 
@@ -88,34 +92,55 @@ public class Protocol {
 		}
 	}
 
+	private static void skipCRLF(ByteBuffer buffer) {
+		assert buffer.get() == CR;
+		assert buffer.get() == LF;
+	}
+
 	static Object decode(ByteBuffer buffer) {
 		int len = buffer.limit();
 		//响应包必然以\r\n结尾, 如果不是则响应数据未收完
 		if (buffer.get(len - 1) != LF || buffer.get(len - 2) != CR) {
 			throw new ResponseIncompleteException("Response packet not end with \\r\\n");
 		}
-		byte[] responseData = new byte[len];
-		buffer.get(responseData);
 
-		return decode(responseData);
-	}
-
-	private static Object decode(byte[] responseData) {
-		final byte b = responseData[0];
+		byte b = buffer.get();
 		RType rType = RType.match(b);
 		switch (rType) {
 			case STATUS_CODE:
 			case ERROR:
-				return readLine(responseData);
+				return readLine(buffer);
 			case INTEGER:
-				return readLong(responseData);
+				return readLong(buffer);
 			case BULK:
-				return readBulk(responseData);
+				return readBulk(buffer);
 			case MULTI_BULK:
-				return readMultiBulk(responseData);
+				return readMultiBulk(buffer);
 			default:
 				throw new RedisClientException("Unknown reply: " + (char) b);
 		}
+	}
+
+	private static List<byte[]> readMultiBulk(ByteBuffer buffer) {
+		long partLen = readLong(buffer);
+
+		List<byte[]> ret = new ArrayList<>((int) partLen);
+		if (partLen == 0) {
+			return ret;
+		}
+
+		skipCRLF(buffer);
+
+		while (buffer.hasRemaining()) {
+			assert buffer.get() == DOLLAR;
+			ret.add(readPart(buffer));
+		}
+
+		if (ret.size() == partLen) {
+			return ret;
+		}
+
+		throw new ResponseIncompleteException("MultiBulk expect " + partLen + "part, but just received " + ret.size());
 	}
 
 	private static List<byte[]> readMultiBulk(byte[] bytes) {
@@ -158,10 +183,31 @@ public class Protocol {
 		return readPart(bytes, contentLenByte, offset);
 	}
 
+	private static byte[] readBulk(ByteBuffer buffer) {
+		return readPart(buffer);
+	}
+
+	private static byte[] readPart(ByteBuffer buffer) {
+		long contentLen = readLong(buffer);
+
+		skipCRLF(buffer);
+
+		if (!buffer.hasRemaining()) {
+			if (contentLen == -1) {
+				return null;
+			} else {
+				throw new ResponseIncompleteException("Bulk part data deficiency");
+			}
+		}
+
+		//一定可以读取contentLen长度的内容
+		return getContentByte(buffer, (int) contentLen);
+	}
+
 	private static byte[] readPart(byte[] bytes, byte[] contentLenByte, int offset) {
 		long contentLen = bytesToLong(contentLenByte);
 		if (bytes.length <= offset) {
-			if (bytesToLong(contentLenByte) == -1) {
+			if (contentLen == -1) {
 				return null;
 			} else {
 				throw new ResponseIncompleteException("Bulk part data deficiency");
@@ -172,12 +218,35 @@ public class Protocol {
 		}
 	}
 
+
+
+	private static String readLine(ByteBuffer buffer) {
+		return bytesToString(getContentByte(buffer, buffer.limit() - 3));
+	}
+
 	private static String readLine(byte[] bytes) {
 		return bytesToString(getContentByte(bytes, 1, bytes.length - 3));
 	}
 
+	private static long readLong(ByteBuffer buffer) {
+		return bytesToLong(getLongByte(buffer));
+	}
+
 	private static long readLong(byte[] bytes) {
 		return bytesToLong(getLongByte(bytes, 1));
+	}
+
+	private static byte[] getLongByte(ByteBuffer buffer) {
+		int len = 0;
+
+		buffer.mark();
+		while (buffer.get() != CR) {
+			len++;
+		}
+		assert buffer.get() == LF;
+		buffer.reset();
+
+		return getContentByte(buffer, len);
 	}
 
 	private static byte[] getLongByte(byte[] bytes, int offset) {
@@ -191,6 +260,12 @@ public class Protocol {
 		return getContentByte(bytes, offset, end - offset);
 	}
 
+	private static byte[] getContentByte(ByteBuffer buffer, int len) {
+		byte[] ret = new byte[len];
+		buffer.get(ret, 0, len);
+		return ret;
+	}
+
 	private static byte[] getContentByte(byte[] bytes, int offset, int len) {
 		byte[] ret = new byte[len];
 		System.arraycopy(bytes, offset, ret, 0, len);
@@ -198,11 +273,11 @@ public class Protocol {
 	}
 
 	private enum RType {
-		STATUS_CODE(PLUS_BYTE),
-		BULK(DOLLAR_BYTE),
-		MULTI_BULK(ASTERISK_BYTE),
-		INTEGER(COLON_BYTE),
-		ERROR(MINUS_BYTE);
+		STATUS_CODE(PLUS),
+		BULK(DOLLAR),
+		MULTI_BULK(ASTERISK),
+		INTEGER(COLON),
+		ERROR(MINUS);
 
 		private byte b;
 
