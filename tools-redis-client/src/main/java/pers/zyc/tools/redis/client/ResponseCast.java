@@ -1,8 +1,6 @@
 package pers.zyc.tools.redis.client;
 
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * @author zhangyancheng
@@ -24,10 +22,10 @@ abstract class ResponseCast<R> {
 			}
 
 			if (response instanceof byte[]) {
-				return new String((byte[]) response, Protocol.UTF8);
+				return Protocol.bytesToString((byte[]) response);
 			}
 
-			return response.toString();
+			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to String");
 		}
 	};
 
@@ -40,7 +38,7 @@ abstract class ResponseCast<R> {
 			}
 
 			if (response instanceof byte[]) {
-				return Long.parseLong(new String((byte[]) response, Protocol.UTF8));
+				return Protocol.bytesToLong((byte[]) response);
 			}
 
 			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to Long");
@@ -51,29 +49,11 @@ abstract class ResponseCast<R> {
 
 		@Override
 		Boolean cast(Object response) {
-			if (response instanceof Boolean) {
-				return (Boolean) response;
-			}
-
-			if (response instanceof String) {
-				return stringToBoolean((String) response);
-			}
-
-			if (response instanceof byte[]) {
-				return stringToBoolean(new String((byte[]) response, Protocol.UTF8));
+			if (response instanceof Long) {
+				return (long) response == 1;
 			}
 
 			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to Boolean");
-		}
-
-		private boolean stringToBoolean(String string) {
-			switch (string) {
-				case "1":
-				case "true":
-					return true;
-				default:
-					return false;
-			}
 		}
 	};
 
@@ -81,31 +61,63 @@ abstract class ResponseCast<R> {
 
 		@Override
 		Double cast(Object response) {
-			if (response instanceof Double) {
-				return (Double) response;
+			if (response == null) {
+				return null;
 			}
 
-			if (response instanceof String) {
+			if (response instanceof byte[]) {
+				Protocol.byteToDouble((byte[]) response);
 			}
 
-			return null;
+			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to Double");
 		}
 	};
 
 	static final ResponseCast<List<String>> STRING_LIST = new ResponseCast<List<String>>() {
 
 		@Override
+		@SuppressWarnings("unchecked")
 		List<String> cast(Object response) {
+			if (response == null) {
+				return Collections.emptyList();
+			}
 
-			return null;
+			if (response instanceof List) {
+				List<byte[]> byteRespList = (List<byte[]>) response;
+
+				List<String> result = new ArrayList<>(byteRespList.size());
+				for (byte[] br : byteRespList) {
+					result.add(br == null ? null : Protocol.bytesToString(br));
+				}
+
+				return Collections.unmodifiableList(result);
+			}
+
+			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to List<String>");
 		}
 	};
 
 	static final ResponseCast<Set<String>> STRING_SET = new ResponseCast<Set<String>>() {
 
 		@Override
+		@SuppressWarnings("unchecked")
 		Set<String> cast(Object response) {
-			return null;
+			if (response == null) {
+				return Collections.emptySet();
+			}
+
+			if (response instanceof List) {
+				List<byte[]> byteRespList = (List<byte[]>) response;
+
+				Set<String> result = new HashSet<>(byteRespList.size());
+				for (byte[] br : byteRespList) {
+					result.add(br == null ? null : Protocol.bytesToString(br));
+				}
+
+				return Collections.unmodifiableSet(result);
+			}
+
+			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to Set<String>");
 		}
 	};
 
