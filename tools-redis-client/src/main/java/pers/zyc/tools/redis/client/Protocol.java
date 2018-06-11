@@ -1,6 +1,7 @@
 package pers.zyc.tools.redis.client;
 
 import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,7 +22,7 @@ public class Protocol {
 	private static final byte CR = '\r';
 	private static final byte LF = '\n';
 
-	private static final byte[] CRLF = new byte[] {CR, LF};
+	static final byte[] CRLF = new byte[] {CR, LF};
 
 	private static final byte[] BYTES_TRUE = toByteArray(1);
 	private static final byte[] BYTES_FALSE = toByteArray(0);
@@ -58,39 +59,10 @@ public class Protocol {
 		return Double.valueOf(bytesToString(doubleBytes));
 	}
 
-	private static void writePart(ByteBuffer buffer, byte[] part) {
-		byte[] partLengthByte = toByteArray(part.length);
-		buffer.put(DOLLAR);
-		buffer.put(partLengthByte);
-		buffer.put(CRLF);
-		buffer.put(part);
-		buffer.put(CRLF);
+	static void write(ByteBuffer buffer, SocketChannel channel, Request request) {
+
 	}
 
-	/**
-	 * [*号][消息元素个数]\r\n   (消息元素个数 = 参数个数 + 1个命令)
-	 * [$号][命令字节个数]\r\n
-	 * [命令内容]\r\n
-	 * [$号][参数字节个数]\r\n
-	 * [参数内容]\r\n           (最后两行循环参数个数次)
-	 *
-	 *
-	 * @param buffer 请求字节缓存区
-	 * @param cmd 请求命令字节
-	 * @param args 请求part字节组
-	 */
-	static void encode(ByteBuffer buffer, byte[] cmd, byte[][] args) {
-		byte[] lengthByte = toByteArray(1 + args.length);
-		buffer.put(ASTERISK);
-		buffer.put(lengthByte);
-		buffer.put(CRLF);
-
-		writePart(buffer, cmd);
-
-		for (byte[] arg : args) {
-			writePart(buffer, arg);
-		}
-	}
 
 	private static void skipCRLF(ByteBuffer buffer) {
 		assert buffer.get() == CR;

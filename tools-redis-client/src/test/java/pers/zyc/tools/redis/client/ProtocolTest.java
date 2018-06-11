@@ -1,3 +1,4 @@
+/*
 package pers.zyc.tools.redis.client;
 
 import org.junit.Assert;
@@ -9,9 +10,11 @@ import pers.zyc.tools.redis.client.request.Set;
 import java.nio.ByteBuffer;
 import java.util.List;
 
+*/
 /**
  * @author zhangyancheng
- */
+ *//*
+
 public class ProtocolTest {
 
 	@Test
@@ -257,3 +260,4 @@ public class ProtocolTest {
 		Assert.assertArrayEquals(jedisEncoded, protocolEncoded);
 	}
 }
+*/

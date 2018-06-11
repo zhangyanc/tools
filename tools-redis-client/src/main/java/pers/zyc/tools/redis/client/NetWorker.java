@@ -51,16 +51,12 @@ public class NetWorker extends PeriodicService {
 
 	SocketNIO createSocket(String host, int port) throws IOException {
 		SocketChannel channel = createChannel(host, port);
+		SocketNIO socket = new SocketNIO(channel, this);
 
-		SelectionKey sk;
 		synchronized (this) {
 			wakeUp();
-			sk = channel.register(selector, SelectionKey.OP_READ);
+			channel.register(selector, SelectionKey.OP_READ, socket);
 		}
-
-		SocketNIO socket = new SocketNIO(sk, this);
-		sk.attach(socket);
-
 		return socket;
 	}
 
@@ -70,15 +66,32 @@ public class NetWorker extends PeriodicService {
 		super.uncaughtException(t, e);
 	}
 
-	@Override
-	protected long period() {
-		return 0;
+	void cancel(SocketNIO socketNIO) {
+		socketNIO.channel.keyFor(selector).cancel();
 	}
 
-	void wakeUp() {
+	void switchWrite(SocketNIO socketNIO) {
+		updateInterestOps(socketNIO.channel.keyFor(selector), SelectionKey.OP_WRITE);
+		wakeUp();
+	}
+
+	void switchRead(SocketNIO socketNIO) {
+		updateInterestOps(socketNIO.channel.keyFor(selector), SelectionKey.OP_READ);
+	}
+
+	private static void updateInterestOps(SelectionKey sk, int interestOps) {
+		sk.interestOps(interestOps);
+	}
+
+	private void wakeUp() {
 		if (wakeUp.compareAndSet(false, true)) {
 			selector.wakeup();
 		}
+	}
+
+	@Override
+	protected long period() {
+		return 0;
 	}
 
 	private void doSelect() {

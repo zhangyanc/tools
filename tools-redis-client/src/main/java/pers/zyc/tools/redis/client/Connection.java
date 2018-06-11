@@ -73,11 +73,11 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 	}
 
 	boolean isConnected() {
-		return socketNio.channel().isConnected();
+		return socketNio.channel.isConnected();
 	}
 
 	void sendRequest(Request request) {
-		socketNio.request(request.getCmd(), request.getArgs());
+		socketNio.request(request);
 		responded = false;
 	}
 

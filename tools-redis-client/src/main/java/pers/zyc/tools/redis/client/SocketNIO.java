@@ -7,31 +7,31 @@ import sun.nio.ch.DirectBuffer;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 
-import static pers.zyc.tools.redis.client.Protocol.encode;
+import static pers.zyc.tools.redis.client.Protocol.*;
 
 /**
  * @author zhangyancheng
  */
 class SocketNIO implements Closeable, Listenable<ResponseListener> {
-	private final SelectionKey sk;
+	final SocketChannel channel;
+
 	private final NetWorker netWorker;
-	private final SocketChannel channel;
 	private final ByteBuffer buffer = ByteBuffer.allocateDirect(8192);
 	private final Multicaster<ResponseListener> multicaster = new Multicaster<ResponseListener>() {};
 
-	SocketNIO(SelectionKey sk, NetWorker netWorker) {
+	private Request request;
+
+	SocketNIO(SocketChannel channel, NetWorker netWorker) {
+		this.channel = channel;
 		this.netWorker = netWorker;
-		this.sk = sk;
-		channel = (SocketChannel) sk.channel();
 	}
 
 	@Override
 	public void close() throws IOException {
-		sk.cancel();
-		sk.channel().close();
+		channel.close();
+		netWorker.cancel(this);
 		((DirectBuffer) buffer).cleaner().clean();
 	}
 
@@ -45,38 +45,15 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 		multicaster.removeListener(listener);
 	}
 
-	private void switchWrite() {
-		sk.interestOps(SelectionKey.OP_WRITE);
-	}
-
-	private void switchRead() {
-		sk.interestOps(SelectionKey.OP_READ);
-	}
-
-	SocketChannel channel() {
-		return channel;
-	}
-
-	void request(byte[] cmd, byte[][] args) {
-		try {
-			buffer.clear();
-			encode(buffer, cmd, args);
-			buffer.flip();
-
-			switchWrite();
-			netWorker.wakeUp();
-		} catch (Exception e) {
-			multicaster.listeners.onSocketException(e);
-		}
+	void request(Request request) {
+		this.request = request;
+		netWorker.switchWrite(this);
 	}
 
 	void write() {
 		try {
-			while (buffer.hasRemaining()) {
-				channel.write(buffer);
-			}
-			buffer.clear();
-			switchRead();
+			new Encoder(request).encodeAndWrite();
+			netWorker.switchRead(this);
 		} catch (Exception e) {
 			multicaster.listeners.onSocketException(e);
 		}
@@ -106,5 +83,84 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 		} catch (Exception e) {
 			multicaster.listeners.onSocketException(e);
 		}
+	}
+
+	private class Encoder {
+		private final Request request;
+
+		Encoder(Request request) {
+			this.request = request;
+			buffer.clear();
+		}
+
+		void encodeAndWrite() throws IOException {
+			encodeIntCRLF(ASTERISK, request.partSize());
+
+			byte[] part;
+			while ((part = request.nextPart()) != null) {
+				encodePartCRLF(part);
+			}
+
+			drainBuffer();
+		}
+
+		void encodeCRLF() throws IOException {
+			need(2);
+			buffer.put(CRLF);
+		}
+
+		void encodeIntCRLF(byte b, int length) throws IOException {
+			byte[] intByte = toByteArray(length);
+			need(intByte.length + 1);
+			buffer.put(b);
+			buffer.put(intByte);
+			encodeCRLF();
+		}
+
+		void encodePartCRLF(byte[] part) throws IOException {
+			encodeIntCRLF(DOLLAR, part.length);
+			writePart(part);
+			encodeCRLF();
+		}
+
+		void writePart(byte[] partData) throws IOException {
+			ByteBuffer tmpMemBuffer = ByteBuffer.wrap(partData);
+			int writeRemain;
+			while ((writeRemain = tmpMemBuffer.remaining()) > 0) {
+				while (buffer.hasRemaining() && writeRemain-- > 0) {
+					buffer.put(tmpMemBuffer.get());
+				}
+				if (!buffer.hasRemaining()) {
+					writeOnce();
+				}
+			}
+		}
+
+		void need(int need) throws IOException {
+			while (buffer.remaining() < need) writeOnce();
+		}
+
+		void writeOnce() throws IOException {
+			buffer.flip();
+			channel.write(buffer);
+			buffer.compact();
+		}
+
+		void drainBuffer() throws IOException {
+			buffer.flip();
+
+			while (buffer.hasRemaining()) {
+				channel.write(buffer);
+			}
+		}
+	}
+
+	private class Decoder {
+
+		Decoder() {
+			buffer.clear();
+		}
+
+
 	}
 }

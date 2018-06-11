@@ -1,5 +1,7 @@
 package pers.zyc.tools.redis.client;
 
+import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
@@ -10,13 +12,14 @@ public abstract class Request {
 
 	private final CommandBytesCache commandBytesCache = new CommandBytesCache();
 
-	private final byte[][] args;
+	private final LinkedList<byte[]> parts;
 
 	protected Request(byte[]... args) {
-		this.args = args;
+		parts = new LinkedList<>(Arrays.asList(args));
+		parts.addFirst(getCmd());
 	}
 
-	byte[] getCmd() {
+	private byte[] getCmd() {
 		return commandBytesCache.getCommandBytes(getCommand());
 	}
 
@@ -24,8 +27,12 @@ public abstract class Request {
 		return getClass().getSimpleName().toUpperCase();
 	}
 
-	byte[][] getArgs() {
-		return args;
+	int partSize() {
+		return parts.size();
+	}
+
+	byte[] nextPart() {
+		return parts.poll();
 	}
 
 	private static class CommandBytesCache {
