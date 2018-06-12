@@ -1,23 +1,40 @@
 package pers.zyc.tools.redis.client;
 
-import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
+import org.junit.After;
+import org.junit.Assert;
+import org.junit.Before;
+import org.junit.Test;
 
 /**
  * @author zhangyancheng
  */
 public class RedisClientTest {
 
-	public static void main(String[] args) throws Exception {
-		ConnectionPool connectionPool = new ConnectionPool("redis://172.25.45.240:5274",
-				new GenericObjectPoolConfig(),
-				60000);
+	private ConnectionPool connectionPool;
+	private RedisClient redisClient;
+
+	@Before
+	public void setUp() throws Exception {
+		connectionPool = new ConnectionPool("redis://172.25.45.240:5274");
 		connectionPool.start();
 
-		RedisClient redisClient = new CustomRedisClient(connectionPool);
-		System.out.println(redisClient.get("af"));
+		redisClient = new CustomRedisClient(connectionPool);
+	}
 
-		System.out.println(redisClient.set("af", "av"));
+	@After
+	public void tearDown() {
+		connectionPool.stop();
+	}
 
-		System.out.println(redisClient.get("af"));
+	@Test
+	public void case_SET_normal_success() {
+		String key = "TestKey-SET_normal";
+		String val = "val";
+
+		String setResp = redisClient.set(key, val);
+		Assert.assertEquals("OK", setResp);
+
+		String getResp = redisClient.get(key);
+		Assert.assertEquals(val, getResp);
 	}
 }

@@ -1,5 +1,7 @@
 package pers.zyc.tools.redis.client;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.event.EventSource;
 import pers.zyc.tools.event.Multicaster;
@@ -12,6 +14,7 @@ import java.io.IOException;
  * @author zhangyancheng
  */
 class Connection implements Stateful<ConnectionState>, Closeable, EventSource<ConnectionEvent>, ResponseListener {
+	private static final Logger LOGGER = LoggerFactory.getLogger(Connection.class);
 
 	private final SocketNIO socketNio;
 
@@ -33,6 +36,7 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 			socketNio.close();
 		} catch (IOException ignored) {
 		}
+		LOGGER.debug("Connection closed.");
 	}
 
 	@Override
@@ -57,12 +61,14 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 
 	@Override
 	public void onResponseReceived(Object response) {
+		LOGGER.debug("Response received.");
 		response(response);
 		state(ConnectionState.WORKING);
 	}
 
 	@Override
 	public void onSocketException(Exception e) {
+		LOGGER.debug("Exception caught!", e);
 		response(e);
 		state(ConnectionState.EXCEPTION);
 	}
@@ -85,6 +91,7 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 		await(timeout);
 
 		if (!responded) {
+			LOGGER.debug("Request timeout!");
 			state(ConnectionState.TIMEOUT);
 			throw new RedisClientException("Request timeout");
 		}
@@ -103,6 +110,7 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 				wait(timeout);
 				timeout -= System.currentTimeMillis() - now;
 			} catch (InterruptedException interrupted) {
+				LOGGER.debug("Thread Interrupted!");
 				Thread.currentThread().interrupt();
 			}
 		}

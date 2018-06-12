@@ -110,6 +110,10 @@ public class NetWorker extends PeriodicService {
 	protected void execute() throws InterruptedException {
 		doSelect();
 
+		if (!isRunning()) {
+			return;
+		}
+
 		Set<SelectionKey> selected;
 		synchronized (this) {
 			selected = selector.selectedKeys();

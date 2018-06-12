@@ -33,10 +33,6 @@ abstract class ResponseCast<R> {
 
 		@Override
 		Long cast(Object response) {
-			if (response instanceof Long) {
-				return (Long) response;
-			}
-
 			if (response instanceof byte[]) {
 				return Util.bytesToLong((byte[]) response);
 			}
@@ -49,8 +45,8 @@ abstract class ResponseCast<R> {
 
 		@Override
 		Boolean cast(Object response) {
-			if (response instanceof Long) {
-				return (long) response == 1;
+			if (response instanceof byte[]) {
+				return Util.bytesToLong((byte[]) response) == 1;
 			}
 
 			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to Boolean");

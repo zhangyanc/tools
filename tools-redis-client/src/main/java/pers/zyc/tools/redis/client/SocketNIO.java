@@ -33,6 +33,8 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 
 	@Override
 	public void close() throws IOException {
+		encoder = null;
+		decoder = null;
 		channel.close();
 		netWorker.cancel(this);
 		((DirectBuffer) buffer).cleaner().clean();
@@ -50,13 +52,13 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 
 	void request(Request request) {
 		encoder = new Encoder(request);
+		decoder = new Decoder();
 		netWorker.switchWrite(this);
 	}
 
 	void write() {
 		try {
 			encoder.encodeAndWrite();
-			decoder = new Decoder();
 			netWorker.switchRead(this);
 		} catch (Exception e) {
 			multicaster.listeners.onSocketException(e);
@@ -89,6 +91,8 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 			while ((part = request.nextPart()) != null) {
 				encodePartCRLF(part);
 			}
+
+			drainBuffer();
 		}
 
 		void encodeIntCRLF(byte b, int length) throws IOException {
@@ -128,6 +132,16 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 			channel.write(buffer);
 			buffer.compact();
 		}
+
+		void drainBuffer() throws IOException {
+			buffer.flip();
+
+			while (buffer.hasRemaining()) {
+				channel.write(buffer);
+			}
+
+			buffer.clear();
+		}
 	}
 
 	private class Decoder {
@@ -166,7 +180,7 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 				case MINUS:
 					return readLine(respBuffer);
 				case COLON:
-					return readLong(respBuffer);
+					return readInteger(respBuffer);
 				case DOLLAR:
 					return readBulk(respBuffer);
 				case ASTERISK:
@@ -197,7 +211,7 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 		skipCRLF(buffer);
 
 		while (buffer.hasRemaining()) {
-			assert buffer.get() == DOLLAR;
+			buffer.get();//assert buffer.get() == DOLLAR;
 			ret.add(readPart(buffer));
 		}
 
@@ -225,16 +239,16 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 		return getContentByte(buffer, contentLen);
 	}
 
-	private static String readLine(ByteBuffer buffer) {
-		return bytesToString(getContentByte(buffer, buffer.limit() - 3));
+	private static byte[] readLine(ByteBuffer buffer) {
+		return getContentByte(buffer, buffer.limit() - 3);
 	}
 
 	private static int readLength(ByteBuffer buffer) {
-		return (int) readLong(buffer);
+		return bytesToLong(getLongByte(buffer)).intValue();
 	}
 
-	private static long readLong(ByteBuffer buffer) {
-		return bytesToLong(getLongByte(buffer));
+	private static byte[] readInteger(ByteBuffer buffer) {
+		return getLongByte(buffer);
 	}
 
 	private static byte[] getLongByte(ByteBuffer buffer) {
@@ -244,7 +258,7 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 		while (buffer.get() != CR) {
 			len++;
 		}
-		assert buffer.get() == LF;
+		//assert buffer.get() == LF;
 		buffer.reset();
 
 		return getContentByte(buffer, len);
@@ -257,7 +271,7 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 	}
 
 	private static void skipCRLF(ByteBuffer buffer) {
-		assert buffer.get() == CR;
-		assert buffer.get() == LF;
+		buffer.get();//assert buffer.get() == CR
+		buffer.get();//assert buffer.get() == LF
 	}
 }

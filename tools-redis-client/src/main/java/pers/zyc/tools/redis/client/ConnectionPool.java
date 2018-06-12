@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import pers.zyc.tools.lifecycle.Service;
 
 import java.net.URI;
+import java.util.Objects;
 
 /**
  * @author zhangyancheng
@@ -18,6 +19,7 @@ import java.net.URI;
 public class ConnectionPool extends Service {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionPool.class);
+	private static final int DEFAULT_REQUEST_TIMEOUT = 60000;
 
 	private final URI uri;
 	private final GenericObjectPoolConfig poolConfig;
@@ -26,12 +28,21 @@ public class ConnectionPool extends Service {
 	private GenericObjectPool<Connection> internalPool;
 	private long requestTimeout;
 
+	public ConnectionPool(String connectStr) throws Exception {
+		this(connectStr, new GenericObjectPoolConfig());
+	}
+
+	public ConnectionPool(String connectStr,
+						  GenericObjectPoolConfig poolConfig) throws Exception {
+		this(connectStr, poolConfig, DEFAULT_REQUEST_TIMEOUT);
+	}
+
 	public ConnectionPool(String connectStr,
 						  GenericObjectPoolConfig poolConfig,
 						  long requestTimeout) throws Exception {
 
 		this.uri = URI.create(connectStr);
-		this.poolConfig = poolConfig;
+		this.poolConfig = Objects.requireNonNull(poolConfig);
 		this.requestTimeout = requestTimeout;
 	}
 
@@ -50,8 +61,8 @@ public class ConnectionPool extends Service {
 
 	@Override
 	protected void doStop() throws Exception {
-		netWorker.stop();
 		internalPool.close();
+		netWorker.stop();
 	}
 
 	long getRequestTimeout() {
