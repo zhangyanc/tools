@@ -41,7 +41,7 @@ public abstract class Request {
 		byte[] getCommandBytes(String command) {
 			byte[] commandBytes = commandBytesCacheMap.get(command);
 			if (commandBytes == null) {
-				commandBytes = Protocol.toByteArray(command);
+				commandBytes = Util.toByteArray(command);
 				commandBytesCacheMap.put(command, commandBytes);
 			}
 			return commandBytes;

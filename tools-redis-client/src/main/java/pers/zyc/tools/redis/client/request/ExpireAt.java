@@ -1,7 +1,7 @@
 package pers.zyc.tools.redis.client.request;
 
-import pers.zyc.tools.redis.client.Protocol;
 import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.Util;
 
 /**
  * @author zhangyancheng
@@ -10,8 +10,8 @@ public class ExpireAt extends Request {
 
 	public ExpireAt(String key, long unixTime) {
 		super(
-				Protocol.toByteArray(key),
-				Protocol.toByteArray(unixTime)
+				Util.toByteArray(key),
+				Util.toByteArray(unixTime)
 		);
 	}
 }

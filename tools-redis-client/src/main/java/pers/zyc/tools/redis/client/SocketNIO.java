@@ -8,8 +8,10 @@ import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
+import java.util.List;
 
-import static pers.zyc.tools.redis.client.Protocol.*;
+import static pers.zyc.tools.redis.client.Util.*;
 
 /**
  * @author zhangyancheng
@@ -21,7 +23,8 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 	private final ByteBuffer buffer = ByteBuffer.allocateDirect(8192);
 	private final Multicaster<ResponseListener> multicaster = new Multicaster<ResponseListener>() {};
 
-	private Request request;
+	private Encoder encoder;
+	private Decoder decoder;
 
 	SocketNIO(SocketChannel channel, NetWorker netWorker) {
 		this.channel = channel;
@@ -46,13 +49,14 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 	}
 
 	void request(Request request) {
-		this.request = request;
+		encoder = new Encoder(request);
 		netWorker.switchWrite(this);
 	}
 
 	void write() {
 		try {
-			new Encoder(request).encodeAndWrite();
+			encoder.encodeAndWrite();
+			decoder = new Decoder();
 			netWorker.switchRead(this);
 		} catch (Exception e) {
 			multicaster.listeners.onSocketException(e);
@@ -61,24 +65,10 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 
 	void read() {
 		try {
-			int readSize;
-			do {
-				readSize = channel.read(buffer);
-				if (readSize == -1) {
-					//TODO channel closed
-				}
-			} while (readSize > 0);
-
-			readSize = buffer.position();//记录总共写入位置
-			buffer.flip();
-
 			try {
-				Object response = Protocol.decode(buffer);
+				Object response = decoder.readAndDecode();
 				multicaster.listeners.onResponseReceived(response);
-			} catch (ResponseIncompleteException rie) {
-				//响应数据包未收完, 需重置buffer写入位置继续读channel
-				buffer.position(readSize);
-				buffer.limit(buffer.capacity());
+			} catch (ResponseIncompleteException ignored) {
 			}
 		} catch (Exception e) {
 			multicaster.listeners.onSocketException(e);
@@ -90,7 +80,6 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 
 		Encoder(Request request) {
 			this.request = request;
-			buffer.clear();
 		}
 
 		void encodeAndWrite() throws IOException {
@@ -100,31 +89,20 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 			while ((part = request.nextPart()) != null) {
 				encodePartCRLF(part);
 			}
-
-			drainBuffer();
-		}
-
-		void encodeCRLF() throws IOException {
-			need(2);
-			buffer.put(CRLF);
 		}
 
 		void encodeIntCRLF(byte b, int length) throws IOException {
 			byte[] intByte = toByteArray(length);
-			need(intByte.length + 1);
+			need(intByte.length + 3);
 			buffer.put(b);
 			buffer.put(intByte);
-			encodeCRLF();
+			buffer.put(CRLF);
 		}
 
 		void encodePartCRLF(byte[] part) throws IOException {
 			encodeIntCRLF(DOLLAR, part.length);
-			writePart(part);
-			encodeCRLF();
-		}
 
-		void writePart(byte[] partData) throws IOException {
-			ByteBuffer tmpMemBuffer = ByteBuffer.wrap(partData);
+			ByteBuffer tmpMemBuffer = ByteBuffer.wrap(part);
 			int writeRemain;
 			while ((writeRemain = tmpMemBuffer.remaining()) > 0) {
 				while (buffer.hasRemaining() && writeRemain-- > 0) {
@@ -134,10 +112,15 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 					writeOnce();
 				}
 			}
+
+			need(2);
+			buffer.put(CRLF);
 		}
 
 		void need(int need) throws IOException {
-			while (buffer.remaining() < need) writeOnce();
+			while (buffer.remaining() < need) {
+				writeOnce();
+			}
 		}
 
 		void writeOnce() throws IOException {
@@ -145,22 +128,136 @@ class SocketNIO implements Closeable, Listenable<ResponseListener> {
 			channel.write(buffer);
 			buffer.compact();
 		}
-
-		void drainBuffer() throws IOException {
-			buffer.flip();
-
-			while (buffer.hasRemaining()) {
-				channel.write(buffer);
-			}
-		}
 	}
 
 	private class Decoder {
 
-		Decoder() {
-			buffer.clear();
+		final VisibleByteArrayOutputStream vbaos = new VisibleByteArrayOutputStream();
+
+		void readData() throws IOException {
+			int read;
+			while ((read = channel.read(buffer)) > 0) {
+				buffer.flip();
+				while (buffer.hasRemaining()) {
+					vbaos.write(buffer.get());
+				}
+				buffer.clear();
+			}
+
+			if (read == -1) {
+				throw new IOException("End of stream");
+			}
 		}
 
+		Object readAndDecode() throws IOException {
+			readData();
 
+			byte[] respBytes = vbaos.reserveArray();
+			int c = vbaos.size();
+
+			if (respBytes[c - 2] != CR || respBytes[c - 1] != LF) {
+				throw new ResponseIncompleteException("Response packet not end with \\r\\n");
+			}
+
+			ByteBuffer respBuffer = ByteBuffer.wrap(respBytes, 0, c);
+			byte bType = respBuffer.get();
+			switch (bType) {
+				case PLUS:
+				case MINUS:
+					return readLine(respBuffer);
+				case COLON:
+					return readLong(respBuffer);
+				case DOLLAR:
+					return readBulk(respBuffer);
+				case ASTERISK:
+					return readMultiBulk(respBuffer);
+				default:
+					throw new RedisClientException("Unknown reply: " + (char) bType);
+			}
+		}
+
+	}
+
+	private static byte[] readBulk(ByteBuffer buffer) {
+		return readPart(buffer);
+	}
+
+	private static List<byte[]> readMultiBulk(ByteBuffer buffer) {
+		int partLen = readLength(buffer);
+
+		if (partLen == -1) {
+			return null;
+		}
+
+		List<byte[]> ret = new ArrayList<>(partLen);
+		if (partLen == 0) {
+			return ret;
+		}
+
+		skipCRLF(buffer);
+
+		while (buffer.hasRemaining()) {
+			assert buffer.get() == DOLLAR;
+			ret.add(readPart(buffer));
+		}
+
+		if (ret.size() == partLen) {
+			return ret;
+		}
+
+		throw new ResponseIncompleteException("MultiBulk expect " + partLen + "part, but just received " + ret.size());
+	}
+
+	private static byte[] readPart(ByteBuffer buffer) {
+		int contentLen = readLength(buffer);
+
+		skipCRLF(buffer);
+
+		if (!buffer.hasRemaining()) {
+			if (contentLen == -1) {
+				return null;
+			} else {
+				throw new ResponseIncompleteException("Bulk part data deficiency");
+			}
+		}
+
+		//一定可以读取contentLen长度的内容
+		return getContentByte(buffer, contentLen);
+	}
+
+	private static String readLine(ByteBuffer buffer) {
+		return bytesToString(getContentByte(buffer, buffer.limit() - 3));
+	}
+
+	private static int readLength(ByteBuffer buffer) {
+		return (int) readLong(buffer);
+	}
+
+	private static long readLong(ByteBuffer buffer) {
+		return bytesToLong(getLongByte(buffer));
+	}
+
+	private static byte[] getLongByte(ByteBuffer buffer) {
+		int len = 0;
+
+		buffer.mark();
+		while (buffer.get() != CR) {
+			len++;
+		}
+		assert buffer.get() == LF;
+		buffer.reset();
+
+		return getContentByte(buffer, len);
+	}
+
+	private static byte[] getContentByte(ByteBuffer buffer, int len) {
+		byte[] ret = new byte[len];
+		buffer.get(ret, 0, len);
+		return ret;
+	}
+
+	private static void skipCRLF(ByteBuffer buffer) {
+		assert buffer.get() == CR;
+		assert buffer.get() == LF;
 	}
 }

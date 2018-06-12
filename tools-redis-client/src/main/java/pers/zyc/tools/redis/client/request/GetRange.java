@@ -1,7 +1,7 @@
 package pers.zyc.tools.redis.client.request;
 
-import pers.zyc.tools.redis.client.Protocol;
 import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.Util;
 
 /**
  * @author zhangyancheng
@@ -10,9 +10,9 @@ public class GetRange extends Request {
 
 	public GetRange(String key, long startOffset, long endOffset) {
 		super(
-				Protocol.toByteArray(key),
-				Protocol.toByteArray(startOffset),
-				Protocol.toByteArray(endOffset)
+				Util.toByteArray(key),
+				Util.toByteArray(startOffset),
+				Util.toByteArray(endOffset)
 		);
 	}
 }

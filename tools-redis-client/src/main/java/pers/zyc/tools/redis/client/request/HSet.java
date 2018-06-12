@@ -1,7 +1,7 @@
 package pers.zyc.tools.redis.client.request;
 
-import pers.zyc.tools.redis.client.Protocol;
 import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.Util;
 
 /**
  * @author zhangyancheng
@@ -10,9 +10,9 @@ public class HSet extends Request {
 
 	public HSet(String key, String field, String value) {
 		super(
-				Protocol.toByteArray(key),
-				Protocol.toByteArray(field),
-				Protocol.toByteArray(value)
+				Util.toByteArray(key),
+				Util.toByteArray(field),
+				Util.toByteArray(value)
 		);
 	}
 }

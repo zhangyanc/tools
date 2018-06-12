@@ -22,7 +22,7 @@ abstract class ResponseCast<R> {
 			}
 
 			if (response instanceof byte[]) {
-				return Protocol.bytesToString((byte[]) response);
+				return Util.bytesToString((byte[]) response);
 			}
 
 			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to String");
@@ -38,7 +38,7 @@ abstract class ResponseCast<R> {
 			}
 
 			if (response instanceof byte[]) {
-				return Protocol.bytesToLong((byte[]) response);
+				return Util.bytesToLong((byte[]) response);
 			}
 
 			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to Long");
@@ -66,7 +66,7 @@ abstract class ResponseCast<R> {
 			}
 
 			if (response instanceof byte[]) {
-				Protocol.byteToDouble((byte[]) response);
+				Util.byteToDouble((byte[]) response);
 			}
 
 			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to Double");
@@ -87,7 +87,7 @@ abstract class ResponseCast<R> {
 
 				List<String> result = new ArrayList<>(byteRespList.size());
 				for (byte[] br : byteRespList) {
-					result.add(br == null ? null : Protocol.bytesToString(br));
+					result.add(br == null ? null : Util.bytesToString(br));
 				}
 
 				return Collections.unmodifiableList(result);
@@ -111,7 +111,7 @@ abstract class ResponseCast<R> {
 
 				Set<String> result = new HashSet<>(byteRespList.size());
 				for (byte[] br : byteRespList) {
-					result.add(br == null ? null : Protocol.bytesToString(br));
+					result.add(br == null ? null : Util.bytesToString(br));
 				}
 
 				return Collections.unmodifiableSet(result);

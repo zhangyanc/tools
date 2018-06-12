@@ -7,8 +7,8 @@ import java.io.ByteArrayOutputStream;
  */
 class VisibleByteArrayOutputStream extends ByteArrayOutputStream {
 
-	VisibleByteArrayOutputStream(int size) {
-		super(size);
+	VisibleByteArrayOutputStream() {
+		super(8192);
 	}
 
 	byte[] reserveArray() {
