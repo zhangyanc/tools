@@ -13,13 +13,10 @@ import static pers.zyc.tools.redis.client.ResponseCast.*;
 public class CustomRedisClient implements RedisClient {
 
 	private final ConnectionPool connectionPool;
-	private final long timeout;
 
 	public CustomRedisClient(ConnectionPool connectionPool) {
 		this.connectionPool = connectionPool;
-		this.timeout = connectionPool.getRequestTimeout();
 	}
-
 
 	@Override
 	public String set(String key, String value) {
@@ -28,7 +25,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(STRING)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -38,7 +35,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(STRING)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -48,7 +45,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(STRING)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -58,7 +55,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(STRING)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -68,7 +65,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(BOOLEAN)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -78,7 +75,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -88,7 +85,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(STRING)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -98,7 +95,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -108,7 +105,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -117,7 +114,7 @@ public class CustomRedisClient implements RedisClient {
 				.request(new ExpireAt(key, unixTime))
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG).execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -127,7 +124,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -137,7 +134,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -147,7 +144,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -157,7 +154,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(BOOLEAN)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -167,7 +164,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(BOOLEAN)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -177,7 +174,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(BOOLEAN)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -187,7 +184,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -197,7 +194,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(STRING)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -207,7 +204,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(STRING)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -217,7 +214,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -227,7 +224,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(STRING)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -237,7 +234,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(STRING)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -247,7 +244,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -257,7 +254,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -267,7 +264,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -277,7 +274,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(DOUBLE)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -287,7 +284,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -297,7 +294,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -307,7 +304,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(STRING)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -317,7 +314,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(LONG)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override
@@ -327,7 +324,7 @@ public class CustomRedisClient implements RedisClient {
 				.connection(connectionPool.getConnection())
 				.responseCast(STRING)
 				.execute()
-				.get(timeout);
+				.get();
 	}
 
 	@Override

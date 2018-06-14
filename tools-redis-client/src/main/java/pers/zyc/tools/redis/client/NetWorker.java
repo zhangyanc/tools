@@ -2,45 +2,32 @@ package pers.zyc.tools.redis.client;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.lifecycle.PeriodicService;
+import pers.zyc.tools.utils.TimeMillis;
 
 import java.io.IOException;
-import java.net.InetSocketAddress;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.nio.channels.SocketChannel;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author zhangyancheng
  */
-public class NetWorker extends PeriodicService {
-
+class NetWorker extends PeriodicService implements EventListener<ConnectionEvent> {
 	private static final Logger LOGGER = LoggerFactory.getLogger(NetWorker.class);
 
+	private final long requestTimeout;
 	private final Selector selector = Selector.open();
-	private final AtomicBoolean wakeUp = new AtomicBoolean(false);
+	private final AtomicBoolean wakeUp = new AtomicBoolean();
+	private final Map<Connection, Long> requestingConnectionMap = new LinkedHashMap<>();
 
-	NetWorker() throws IOException {
-	}
-
-	private static SocketChannel createChannel(String host, int port) throws IOException {
-		SocketChannel sock = SocketChannel.open();
-		try {
-			sock.socket().setSoLinger(false, -1);
-			sock.socket().setTcpNoDelay(true);
-			sock.connect(new InetSocketAddress(host, port));
-			sock.configureBlocking(false);
-			return sock;
-		} catch (IOException e) {
-			try {
-				sock.close();
-			} catch (IOException ignored) {
-			}
-			throw e;
-		}
+	NetWorker(long requestTimeout) throws IOException {
+		this.requestTimeout = requestTimeout;
 	}
 
 	@Override
@@ -49,34 +36,56 @@ public class NetWorker extends PeriodicService {
 		selector.close();
 	}
 
-	SocketNIO createSocket(String host, int port) throws IOException {
-		SocketChannel channel = createChannel(host, port);
-		SocketNIO socket = new SocketNIO(channel, this);
-
-		synchronized (this) {
-			wakeUp();
-			channel.register(selector, SelectionKey.OP_READ, socket);
-		}
-		return socket;
-	}
-
 	@Override
 	public void uncaughtException(Thread t, Throwable e) {
 		LOGGER.error("Uncaught exception", e);
 		super.uncaughtException(t, e);
 	}
 
-	void cancel(SocketNIO socketNIO) {
-		socketNIO.channel.keyFor(selector).cancel();
+	@Override
+	public void onEvent(ConnectionEvent event) {
+		Connection connection = event.getSource();
+		switch (event.eventType) {
+			case REQUEST_SET:
+				updateInterestOps(keyFor(connection), SelectionKey.OP_WRITE);
+				wakeUp();
+				break;
+			case REQUEST_SEND:
+				updateInterestOps(keyFor(connection), SelectionKey.OP_READ);
+				requestingConnectionMap.put(connection, TimeMillis.get() + requestTimeout);
+				break;
+			case RESPONSE_RECEIVED:
+				requestingConnectionMap.remove(connection);
+				break;
+			case CONNECTION_CLOSED:
+				keyFor(connection).cancel();
+				break;
+			default:
+				LOGGER.debug("OnEvent: {}", event);
+		}
 	}
 
-	void switchWrite(SocketNIO socketNIO) {
-		updateInterestOps(socketNIO.channel.keyFor(selector), SelectionKey.OP_WRITE);
-		wakeUp();
+	private SelectionKey keyFor(Connection connection) {
+		return connection.channel.keyFor(selector);
 	}
 
-	void switchRead(SocketNIO socketNIO) {
-		updateInterestOps(socketNIO.channel.keyFor(selector), SelectionKey.OP_READ);
+	private void checkTimeoutConnection() {
+		Iterator<Map.Entry<Connection, Long>> iterator = requestingConnectionMap.entrySet().iterator();
+		while (iterator.hasNext()) {
+			Map.Entry<Connection, Long> entry = iterator.next();
+			if (entry.getValue() < TimeMillis.get()) {
+				entry.getKey().timeout();
+				iterator.remove();
+			}
+		}
+	}
+
+	void register(Connection connection) throws IOException {
+		connection.addListener(this);
+		synchronized (this) {
+			wakeUp();
+			connection.channel.register(selector, SelectionKey.OP_READ, connection);
+		}
 	}
 
 	private static void updateInterestOps(SelectionKey sk, int interestOps) {
@@ -96,7 +105,7 @@ public class NetWorker extends PeriodicService {
 
 	private void doSelect() {
 		try {
-			selector.select();
+			selector.select(1000);
 
 			if (wakeUp.compareAndSet(true, false)) {
 				selector.selectNow();
@@ -120,6 +129,7 @@ public class NetWorker extends PeriodicService {
 		}
 
 		if (selected.isEmpty()) {
+			checkTimeoutConnection();
 			return;
 		}
 
@@ -133,12 +143,12 @@ public class NetWorker extends PeriodicService {
 				continue;
 			}
 
-			SocketNIO socket = (SocketNIO) sk.attachment();
+			Connection connection = (Connection) sk.attachment();
 			if (sk.isWritable()) {
-				socket.write();
+				connection.write();
 			}
 			if (sk.isReadable()) {
-				socket.read();
+				connection.read();
 			}
 		}
 	}

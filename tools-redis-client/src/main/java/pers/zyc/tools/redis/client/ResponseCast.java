@@ -33,8 +33,12 @@ abstract class ResponseCast<R> {
 
 		@Override
 		Long cast(Object response) {
-			if (response instanceof byte[]) {
-				return Util.bytesToLong((byte[]) response);
+			if (response instanceof String) {
+				throw new RedisClientException((String) response);
+			}
+
+			if (response instanceof Long) {
+				return (Long) response;
 			}
 
 			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to Long");

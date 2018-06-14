@@ -8,10 +8,15 @@ import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.lifecycle.Service;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.net.URI;
+import java.nio.channels.SocketChannel;
 import java.util.Objects;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * @author zhangyancheng
@@ -20,13 +25,14 @@ public class ConnectionPool extends Service {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionPool.class);
 	private static final int DEFAULT_REQUEST_TIMEOUT = 60000;
+	private static final int DEFAULT_NET_WORKERS = 1;
 
 	private final URI uri;
 	private final GenericObjectPoolConfig poolConfig;
-	private final NetWorker netWorker = new NetWorker();
+	private final NetWorker[] netWorkers;
+	private final AtomicInteger chooseIndexer = new AtomicInteger();
 
 	private GenericObjectPool<Connection> internalPool;
-	private long requestTimeout;
 
 	public ConnectionPool(String connectStr) throws Exception {
 		this(connectStr, new GenericObjectPoolConfig());
@@ -43,13 +49,21 @@ public class ConnectionPool extends Service {
 
 		this.uri = URI.create(connectStr);
 		this.poolConfig = Objects.requireNonNull(poolConfig);
-		this.requestTimeout = requestTimeout;
+		this.netWorkers = new NetWorker[DEFAULT_NET_WORKERS];
+
+		if (requestTimeout <= 0) {
+			requestTimeout = DEFAULT_REQUEST_TIMEOUT;
+		}
+		for (int i = 0; i < DEFAULT_NET_WORKERS; i++) {
+			netWorkers[i] = new NetWorker(requestTimeout);
+		}
 	}
 
 	@Override
 	protected void doStart() {
-		netWorker.start();
-
+		for (NetWorker netWorker : netWorkers) {
+			netWorker.start();
+		}
 		internalPool = new GenericObjectPool<>(new ConnectionFactory(), poolConfig);
 		internalPool.setSwallowedExceptionListener(new SwallowedExceptionListener() {
 			@Override
@@ -62,11 +76,9 @@ public class ConnectionPool extends Service {
 	@Override
 	protected void doStop() throws Exception {
 		internalPool.close();
-		netWorker.stop();
-	}
-
-	long getRequestTimeout() {
-		return requestTimeout;
+		for (NetWorker netWorker : netWorkers) {
+			netWorker.stop();
+		}
 	}
 
 	Connection getConnection() {
@@ -77,33 +89,38 @@ public class ConnectionPool extends Service {
 		}
 	}
 
-	private void recycle(Connection connection) {
-		try {
-			if (connection.getState() == ConnectionState.WORKING) {
-				internalPool.returnObject(connection);
-			} else {
-				internalPool.invalidateObject(connection);
-			}
-		} catch (Exception e) {
-			LOGGER.error("Connection recycle error", e);
-		}
+	private NetWorker chooseNetWorker() {
+		return netWorkers[chooseIndexer.getAndIncrement() % netWorkers.length];
 	}
 
-	private class ConnectionFactory implements ConnectionListener, PooledObjectFactory<Connection> {
+	private class ConnectionFactory implements EventListener<ConnectionEvent>, PooledObjectFactory<Connection> {
 
 		@Override
 		public void onEvent(ConnectionEvent event) {
-			recycle(event.getSource());
+			Connection connection = event.getSource();
+			try {
+				switch (event.eventType) {
+					case REQUEST_TIMEOUT:
+					case EXCEPTION_CAUGHT:
+						internalPool.invalidateObject(connection);
+						break;
+					case RESPONSE_RECEIVED:
+						internalPool.returnObject(connection);
+						break;
+					default:
+						LOGGER.debug("OnEvent: {}", event);
+				}
+			} catch (Exception e) {
+				LOGGER.error("Connection recycle error", e);
+			}
 		}
 
 		@Override
 		public PooledObject<Connection> makeObject() throws Exception {
-			SocketNIO socket = netWorker.createSocket(uri.getHost(), uri.getPort());
-
-			Connection connection = new Connection(socket);
+			SocketChannel channel = createChannel(uri.getHost(), uri.getPort());
+			Connection connection = new Connection(channel);
 			connection.addListener(this);
-			socket.addListener(connection);
-
+			chooseNetWorker().register(connection);
 			return new DefaultPooledObject<>(connection);
 		}
 
@@ -130,6 +147,23 @@ public class ConnectionPool extends Service {
 		@Override
 		public void passivateObject(PooledObject<Connection> p) throws Exception {
 
+		}
+	}
+
+	private static SocketChannel createChannel(String host, int port) throws IOException {
+		SocketChannel sock = SocketChannel.open();
+		try {
+			sock.socket().setSoLinger(false, -1);
+			sock.socket().setTcpNoDelay(true);
+			sock.connect(new InetSocketAddress(host, port));
+			sock.configureBlocking(false);
+			return sock;
+		} catch (IOException e) {
+			try {
+				sock.close();
+			} catch (IOException ignored) {
+			}
+			throw e;
 		}
 	}
 }

@@ -1,5 +1,7 @@
 package pers.zyc.tools.redis.client;
 
+import java.util.Objects;
+
 /**
  * @author zhangyancheng
  */
@@ -24,8 +26,23 @@ class RequestAction<R> {
 		return this;
 	}
 
+	private void validate() {
+		Objects.requireNonNull(request);
+		Objects.requireNonNull(connection);
+		Objects.requireNonNull(responseCast);
+	}
+
 	ResponseFuture<R> execute() {
+		validate();
+
 		connection.sendRequest(request);
-		return new ResponseFuture<>(connection, responseCast);
+
+		return new ResponseFuture<R>() {
+
+			@Override
+			public R get() {
+				return responseCast.cast(connection.getResponse());
+			}
+		};
 	}
 }

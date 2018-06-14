@@ -37,4 +37,16 @@ public class RedisClientTest {
 		String getResp = redisClient.get(key);
 		Assert.assertEquals(val, getResp);
 	}
+
+
+	@Test
+	public void case_Increment_WrongType_error() {
+		String key = "TestKey-SET_normal";
+		try {
+			redisClient.incr(key);
+			Assert.fail();
+		} catch (RedisClientException rce) {
+			Assert.assertTrue(rce.getMessage().contains("ERR"));
+		}
+	}
 }

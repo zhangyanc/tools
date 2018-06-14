@@ -2,41 +2,48 @@ package pers.zyc.tools.redis.client;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.event.EventListener;
-import pers.zyc.tools.event.EventSource;
-import pers.zyc.tools.event.Multicaster;
-import pers.zyc.tools.utils.Stateful;
+import pers.zyc.tools.event.*;
+import sun.nio.ch.DirectBuffer;
 
+import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
+import java.util.ArrayList;
+import java.util.List;
+
+import static pers.zyc.tools.redis.client.Util.*;
 
 /**
  * @author zhangyancheng
  */
-class Connection implements Stateful<ConnectionState>, Closeable, EventSource<ConnectionEvent>, ResponseListener {
+class Connection implements Closeable, EventSource<ConnectionEvent> {
 	private static final Logger LOGGER = LoggerFactory.getLogger(Connection.class);
+	private static final int DEFAULT_BUFFER_SIZE = 8192;
 
-	private final SocketNIO socketNio;
+	final SocketChannel channel;
 
-	private final Multicaster<EventListener<ConnectionEvent>> multicaster =
-			new Multicaster<EventListener<ConnectionEvent>>() {};
+	private final ByteBuffer buffer = ByteBuffer.allocateDirect(DEFAULT_BUFFER_SIZE);
+	private final ResponseReceiveBuffer receiveBuffer = new ResponseReceiveBuffer(DEFAULT_BUFFER_SIZE);
+	private final Multicaster<EventListener<ConnectionEvent>>
+			multicaster = new Multicaster<EventListener<ConnectionEvent>>() {};
 
+	private Request request;
 	private Object response;
 	private boolean responded;
 
-	private ConnectionState state = ConnectionState.WORKING;
+	Connection(SocketChannel channel) {
+		this.channel = channel;
 
-	Connection(SocketNIO socketNio) {
-		this.socketNio = socketNio;
-	}
-
-	@Override
-	public void close() {
-		try {
-			socketNio.close();
-		} catch (IOException ignored) {
-		}
-		LOGGER.debug("Connection closed.");
+		multicaster.setExceptionHandler(new MulticastExceptionHandler() {
+			@Override
+			public Void handleException(Throwable cause, MulticastDetail multicastDetail) {
+				LOGGER.error("Event[{}] multicast error on listener[{}], errorMsg[{}]",
+						multicastDetail.args[0], multicastDetail.listener, cause.getMessage());
+				return null;
+			}
+		});
 	}
 
 	@Override
@@ -50,65 +57,53 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 	}
 
 	@Override
-	public ConnectionState getState() {
-		return state;
+	public void close() {
+		try {
+			channel.close();
+		} catch (IOException ignored) {
+		}
+		((DirectBuffer) buffer).cleaner().clean();
+		publishEvent(new ConnectionEvent.ConnectionClosed(this));
+		LOGGER.debug("Connection closed.");
 	}
 
 	@Override
-	public boolean checkState(ConnectionState state) {
-		return this.state == state;
+	public String toString() {
+		return "Connection{" +
+				"channel=" + channel +
+				'}';
 	}
 
-	@Override
-	public void onResponseReceived(Object response) {
-		LOGGER.debug("Response received.");
-		response(response);
-		state(ConnectionState.WORKING);
-	}
-
-	@Override
-	public void onSocketException(Exception e) {
-		LOGGER.debug("Exception caught!", e);
-		response(e);
-		state(ConnectionState.EXCEPTION);
-	}
-
-	private void state(ConnectionState state) {
-		this.state = state;
-		multicaster.listeners.onEvent(new ConnectionEvent(this));
+	private void publishEvent(ConnectionEvent event) {
+		multicaster.listeners.onEvent(event);
 	}
 
 	boolean isConnected() {
-		return socketNio.channel.isConnected();
+		return channel.isConnected();
 	}
 
 	void sendRequest(Request request) {
-		socketNio.request(request);
+		this.request = request;
 		responded = false;
+		publishEvent(new ConnectionEvent.RequestSet(this));
 	}
 
-	Object getResponse(long timeout) {
-		await(timeout);
-
-		if (!responded) {
-			LOGGER.debug("Request timeout!");
-			state(ConnectionState.TIMEOUT);
-			throw new RedisClientException("Request timeout");
-		}
+	Object getResponse() {
+		await();
 
 		if (response instanceof Throwable) {
+			if (response instanceof RedisClientException) {
+				throw (RedisClientException) response;
+			}
 			throw new RedisClientException((Throwable) response);
 		}
-
 		return response;
 	}
 
-	private synchronized void await(long timeout) {
-		while (!responded && timeout > 0) {
-			long now = System.currentTimeMillis();
+	private synchronized void await() {
+		while (!responded) {
 			try {
-				wait(timeout);
-				timeout -= System.currentTimeMillis() - now;
+				wait();
 			} catch (InterruptedException interrupted) {
 				LOGGER.debug("Thread Interrupted!");
 				Thread.currentThread().interrupt();
@@ -120,5 +115,255 @@ class Connection implements Stateful<ConnectionState>, Closeable, EventSource<Co
 		this.response = response;
 		this.responded = true;
 		notify();
+	}
+
+	void write() {
+		try {
+			encodeAndWrite();
+			publishEvent(new ConnectionEvent.RequestSend(this));
+		} catch (Exception e) {
+			response(e);
+			publishEvent(new ConnectionEvent.ExceptionCaught(this));
+		}
+	}
+
+	void read() {
+		try {
+			try {
+				response(readAndDecode());
+				receiveBuffer.reset();
+				publishEvent(new ConnectionEvent.ResponseReceived(this));
+			} catch (ResponseIncompleteException ignored) {
+			}
+		} catch (Exception e) {
+			response(e);
+			publishEvent(new ConnectionEvent.ExceptionCaught(this));
+		}
+	}
+
+	void timeout() {
+		response(new RedisClientException("Request Timeout!"));
+		publishEvent(new ConnectionEvent.RequestTimeout(this));
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	//encode and decode
+
+	private void encodeAndWrite() throws IOException {
+		encodeIntCRLF(ASTERISK, request.partSize());
+
+		byte[] part;
+		while ((part = request.nextPart()) != null) {
+			encodePartCRLF(part);
+		}
+
+		drainBuffer();
+	}
+
+	private void encodeIntCRLF(byte b, int length) throws IOException {
+		byte[] intByte = toByteArray(length);
+		need(intByte.length + 3);
+		buffer.put(b);
+		buffer.put(intByte);
+		buffer.put(CRLF);
+	}
+
+	private void encodePartCRLF(byte[] part) throws IOException {
+		encodeIntCRLF(DOLLAR, part.length);
+
+		ByteBuffer tmpMemBuffer = ByteBuffer.wrap(part);
+		int writeRemain;
+		while ((writeRemain = tmpMemBuffer.remaining()) > 0) {
+			while (buffer.hasRemaining() && writeRemain-- > 0) {
+				buffer.put(tmpMemBuffer.get());
+			}
+			if (!buffer.hasRemaining()) {
+				writeOnce();
+			}
+		}
+
+		need(2);
+		buffer.put(CRLF);
+	}
+
+	private void need(int need) throws IOException {
+		while (buffer.remaining() < need) {
+			writeOnce();
+		}
+	}
+
+	private void writeOnce() throws IOException {
+		buffer.flip();
+		channel.write(buffer);
+		buffer.compact();
+	}
+
+	private void drainBuffer() throws IOException {
+		buffer.flip();
+
+		while (buffer.hasRemaining()) {
+			channel.write(buffer);
+		}
+
+		buffer.clear();
+	}
+
+	private Object readAndDecode() throws IOException {
+		int read;
+		while ((read = channel.read(buffer)) > 0) {
+			buffer.flip();
+			while (buffer.hasRemaining()) {
+				receiveBuffer.write(buffer.get());
+			}
+			buffer.clear();
+		}
+
+		if (read == -1) {
+			throw new IOException("End of stream");
+		}
+
+		byte[] respBytes = receiveBuffer.reserveArray();
+		int c = receiveBuffer.size();
+
+		if (respBytes[c - 2] != CR || respBytes[c - 1] != LF) {
+			throw new ResponseIncompleteException("Response packet not end with \\r\\n");
+		}
+
+		ByteBuffer respBuffer = ByteBuffer.wrap(respBytes, 0, c);
+		byte bType = respBuffer.get();
+		switch (bType) {
+			case PLUS:
+			case MINUS:
+				return readLine(respBuffer);
+			case COLON:
+				return readInteger(respBuffer);
+			case DOLLAR:
+				return readBulk(respBuffer);
+			case ASTERISK:
+				return readMultiBulk(respBuffer);
+			default:
+				throw new RedisClientException("Unknown reply: " + (char) bType);
+		}
+	}
+
+	private static byte[] readBulk(ByteBuffer buffer) {
+		return readPart(buffer);
+	}
+
+	private static List<byte[]> readMultiBulk(ByteBuffer buffer) {
+		int partLen = readLength(buffer);
+
+		if (partLen == -1) {
+			return null;
+		}
+
+		List<byte[]> ret = new ArrayList<>(partLen);
+		if (partLen == 0) {
+			return ret;
+		}
+
+		skipCRLF(buffer);
+
+		while (buffer.hasRemaining()) {
+			buffer.get();//assert buffer.get() == DOLLAR;
+			ret.add(readPart(buffer));
+		}
+
+		if (ret.size() == partLen) {
+			return ret;
+		}
+
+		throw new ResponseIncompleteException("MultiBulk expect " + partLen + "part, but just received " + ret.size());
+	}
+
+	private static byte[] readPart(ByteBuffer buffer) {
+		int contentLen = readLength(buffer);
+
+		skipCRLF(buffer);
+
+		if (!buffer.hasRemaining()) {
+			if (contentLen == -1) {
+				return null;
+			} else {
+				throw new ResponseIncompleteException("Bulk part data deficiency");
+			}
+		}
+
+		//一定可以读取contentLen长度的内容
+		return getContentByte(buffer, contentLen);
+	}
+
+	private static String readLine(ByteBuffer buffer) {
+		return bytesToString(getContentByte(buffer, buffer.limit() - 3));
+	}
+
+	private static int readLength(ByteBuffer buffer) {
+		return bytesToLong(getLongByte(buffer)).intValue();
+	}
+
+	private static long readInteger(ByteBuffer buffer) {
+		return bytesToLong(getLongByte(buffer));
+	}
+
+	private static byte[] getLongByte(ByteBuffer buffer) {
+		int len = 0;
+
+		buffer.mark();
+		while (buffer.get() != CR) {
+			len++;
+		}
+		//assert buffer.get() == LF;
+		buffer.reset();
+
+		return getContentByte(buffer, len);
+	}
+
+	private static byte[] getContentByte(ByteBuffer buffer, int len) {
+		byte[] ret = new byte[len];
+		buffer.get(ret, 0, len);
+		return ret;
+	}
+
+	private static void skipCRLF(ByteBuffer buffer) {
+		buffer.get();//assert buffer.get() == CR
+		buffer.get();//assert buffer.get() == LF
+	}
+
+	private static class ResponseReceiveBuffer extends ByteArrayOutputStream {
+
+		ResponseReceiveBuffer(int size) {
+			super(size);
+		}
+
+		byte[] reserveArray() {
+			return buf;
+		}
+
+		@Override
+		public synchronized void reset() {
+			//TODO shrink buf capacity
+			super.reset();
+		}
 	}
 }

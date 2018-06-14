@@ -232,6 +232,8 @@ public interface RedisClient {
 	 * 		Redis没有专有的整数类型, 所有的加、减操作都发生在string类型的10进制64位数字值上,
 	 * 		返回值也是将string转换为数字返回
 	 *
+	 * 		如果key存在但不是整数类型, 将抛出异常
+	 *
 	 *
 	 * @param key 键
 	 * @return 加后的值
