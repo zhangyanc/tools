@@ -82,6 +82,10 @@ public class ConnectionPool extends Service {
 	}
 
 	Connection getConnection() {
+		if (!isRunning()) {
+			throw new RedisClientException("Connection is not running!");
+		}
+
 		try {
 			return internalPool.borrowObject();
 		} catch (Exception e) {

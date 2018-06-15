@@ -30,8 +30,6 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 			multicaster = new Multicaster<EventListener<ConnectionEvent>>() {};
 
 	private Request request;
-	private Object response;
-	private boolean responded;
 
 	Connection(SocketChannel channel) {
 		this.channel = channel;
@@ -63,8 +61,8 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 		} catch (IOException ignored) {
 		}
 		((DirectBuffer) buffer).cleaner().clean();
-		publishEvent(new ConnectionEvent.ConnectionClosed(this));
 		LOGGER.debug("Connection closed.");
+		publishEvent(new ConnectionEvent.ConnectionClosed(this));
 	}
 
 	@Override
@@ -84,65 +82,36 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 
 	void sendRequest(Request request) {
 		this.request = request;
-		responded = false;
+		LOGGER.debug("Request set.");
 		publishEvent(new ConnectionEvent.RequestSet(this));
-	}
-
-	Object getResponse() {
-		await();
-
-		if (response instanceof Throwable) {
-			if (response instanceof RedisClientException) {
-				throw (RedisClientException) response;
-			}
-			throw new RedisClientException((Throwable) response);
-		}
-		return response;
-	}
-
-	private synchronized void await() {
-		while (!responded) {
-			try {
-				wait();
-			} catch (InterruptedException interrupted) {
-				LOGGER.debug("Thread Interrupted!");
-				Thread.currentThread().interrupt();
-			}
-		}
-	}
-
-	private synchronized void response(Object response) {
-		this.response = response;
-		this.responded = true;
-		notify();
 	}
 
 	void write() {
 		try {
 			encodeAndWrite();
+			LOGGER.debug("Request send.");
 			publishEvent(new ConnectionEvent.RequestSend(this));
 		} catch (Exception e) {
-			response(e);
-			publishEvent(new ConnectionEvent.ExceptionCaught(this));
+			publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
 		}
 	}
 
 	void read() {
 		try {
 			try {
-				response(readAndDecode());
+				Object response = readAndDecode();
 				receiveBuffer.reset();
-				publishEvent(new ConnectionEvent.ResponseReceived(this));
+				LOGGER.debug("Response received.");
+				publishEvent(new ConnectionEvent.ResponseReceived(this, response));
 			} catch (ResponseIncompleteException ignored) {
 			}
 		} catch (Exception e) {
-			response(e);
-			publishEvent(new ConnectionEvent.ExceptionCaught(this));
+			publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
 		}
 	}
 
 	void timeout() {
-		response(new RedisClientException("Request Timeout!"));
+		LOGGER.debug("Request timeout.");
 		publishEvent(new ConnectionEvent.RequestTimeout(this));
 	}
 

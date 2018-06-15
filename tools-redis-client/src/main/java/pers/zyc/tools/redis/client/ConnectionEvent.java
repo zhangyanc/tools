@@ -8,9 +8,19 @@ import pers.zyc.tools.event.SourcedEvent;
 class ConnectionEvent extends SourcedEvent<Connection> {
 	final EventType eventType;
 
+	private Object payload;
+
 	ConnectionEvent(Connection source, EventType eventType) {
 		super(source);
 		this.eventType = eventType;
+	}
+
+	Object payload() {
+		return payload;
+	}
+
+	void payload(Object payload) {
+		this.payload = payload;
 	}
 
 	enum EventType {
@@ -19,7 +29,7 @@ class ConnectionEvent extends SourcedEvent<Connection> {
 		REQUEST_TIMEOUT,
 		RESPONSE_RECEIVED,
 		EXCEPTION_CAUGHT,
-		CONNECTION_CLOSED;
+		CONNECTION_CLOSED
 	}
 
 	@Override
@@ -52,15 +62,17 @@ class ConnectionEvent extends SourcedEvent<Connection> {
 
 	static class ResponseReceived extends ConnectionEvent {
 
-		ResponseReceived(Connection source) {
+		ResponseReceived(Connection source, Object response) {
 			super(source, EventType.RESPONSE_RECEIVED);
+			payload(response);
 		}
 	}
 
 	static class ExceptionCaught extends ConnectionEvent {
 
-		ExceptionCaught(Connection source) {
+		ExceptionCaught(Connection source, Exception exception) {
 			super(source, EventType.EXCEPTION_CAUGHT);
+			payload(exception);
 		}
 	}
 
