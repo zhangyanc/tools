@@ -12,7 +12,7 @@ public abstract class Request {
 
 	private final CommandBytesCache commandBytesCache = new CommandBytesCache();
 
-	private final LinkedList<byte[]> parts;
+	protected final LinkedList<byte[]> parts;
 
 	protected Request(byte[]... args) {
 		parts = new LinkedList<>(Arrays.asList(args));
