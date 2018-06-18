@@ -1,7 +1,6 @@
 package pers.zyc.tools.redis.client;
 
-
-import pers.zyc.tools.lifecycle.Lifecycle;
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
 
 import java.util.List;
 import java.util.Map;
@@ -10,674 +9,626 @@ import java.util.Set;
 /**
  * @author zhangyancheng
  */
-public interface RedisClient extends Lifecycle {
-
-	/**
-	 * 将字符串值设置到键, 如果键已存在则覆盖就值, 且无视类型
-	 *
-	 * @param key key
-	 * @param value value
-	 * @return 响应码
-	 */
-	String set(String key, String value);
-
-	/**
-	 * 将字符串值设置到键, 并且设置过期时间
-	 *
-	 * @param key 键
-	 * @param value 字符串值
-	 * @param nxxx 可选值为"NX"或者XX
-	 *             NX -- 当且仅当键不存在才设置
-	 *             XX -- 当前仅当键存在才设置
-	 * @param expx 过期时间单位,可选值为"EX"或者"PX"
-	 *             EX -- 秒
-	 *             PX --毫秒
-	 * @param time 过期时间
-	 * @return 响应码
-	 */
-	String set(String key, String value, String nxxx, String expx, long time);
-
-	/**
-	 * 将字符串值设置到键
-	 *
-	 * @param key 键
-	 * @param value 字符串值
-	 * @param nxxx 可选值为"NX"或者XX
-	 *             NX -- 当且仅当键不存在才设置
-	 *             XX -- 当前仅当键存在才设置
-	 * @return 响应码
-	 */
-	String set(String key, String value, String nxxx);
-
-	/**
-	 * 获取键设置的的字符串值
-	 *
-	 * @param key 键
-	 * @return 如果键不存在返回null
-	 */
-	String get(String key);
-
-	/**
-	 * 检查键是否存在
-	 *
-	 * @param key 键
-	 * @return 键是否存在
-	 */
-	Boolean exists(String key);
-
-	/**
-	 * 取消{@link #expire(String, int) expire}设置在键上的超时时间
-	 *
-	 * @param key 键
-	 * @return 键不存在返回0, 否者返回1
-	 */
-	Long persist(String key);
-
-	/**
-	 * 返回键存储的值类型, 如果键不存在返回特殊字符串"none"
-	 *
-	 * @param key 键
-	 * @return "none" -- 键不存在
-	 * 		   "string" -- 字符串类型
-	 * 		   "list" -- list类型
-	 * 		   "set" -- set类型
-	 * 		   "zset" -- 排序set
-	 * 		   "hash" -- 哈希表
-	 */
-	String type(String key);
-
-	/**
-	 * 在键上设置一个过期时间, 过期后键将在服务端被自动删除
-	 *
-	 * @param key 键
-	 * @param seconds 过期秒数
-	 * @return 1 -- 成功设置了过期时间, 0 -- 键不存在.(键已有过期时间时, Redis 2.1.3之后的版本
-	 * 		   会更新时间并返回1, 之前的版本不更新时间返回0)
-	 */
-	Long expire(String key, int seconds);
-
-	/**
-	 * 和{@link #expire(String, int) expire}一样, 不过过期时间为一个毫秒数
-	 *
-	 * @param key 键
-	 * @param milliseconds 过期毫秒数
-	 * @return 响应码, 同expire.
-	 */
-	Long pexpire(String key, long milliseconds);
-
-	/**
-	 * 和{@link #expire(String, int) expire}一样, 不过过期时间是一个用秒数表示的绝对unix时间点
-	 *
-	 * @param key 键
-	 * @param unixTime 过期时间点
-	 * @return 响应码, 同expire
-	 */
-	Long expireAt(String key, long unixTime);
-
-	/**
-	 * 和{@link #expireAt(String, long) expire}一样, 不过过期时间是一个用毫秒数表示的绝对unix时间点
-	 *
-	 * @param key 键
-	 * @param millisecondsTimestamp 过期时间点
-	 * @return 响应码, 同expire
-	 */
-	Long pexpireAt(String key, long millisecondsTimestamp);
-
-	/**
-	 * 检查键的剩余过期时间秒数
-	 *
-	 * @param key 键
-	 * @return 键剩余过期秒数, 在Redis 2.6及之前版本, 如果键不存在或者未设置过期时间都将返回-1,
-	 * 		   但在2.8及之后的版本, 如果键不存在返回-2, 键未设置过期时间返回-1
-	 *
-	 */
-	Long ttl(String key);
-
-	/**
-	 * 和{@link #ttl(String) ttl}一样, 不过返回的是毫秒数
-	 *
-	 * @param key 键
-	 * @return 同ttl
-	 */
-	Long pttl(String key);
-
-	Boolean setbit(String key, long offset, boolean value);
-
-	Boolean setbit(String key, long offset, String value);
-
-	Boolean getbit(String key, long offset);
-
-	Long setrange(String key, long offset, String value);
-
-	String getrange(String key, long startOffset, long endOffset);
-
-	/**
-	 * 将字符串值设置到键, 并返回键原先的值
-	 *
-	 * @param key 键
-	 * @param value 字符串值
-	 * @return 键原先的值, 如果键不存在返回null
-	 */
-	String getSet(String key, String value);
-
-	/**
-	 * 将字符串值设置到键, 当且仅当键不存在才设置成功
-	 *
-	 * @param key 键
-	 * @param value 字符串值
-	 * @return 1 -- 设置成功, 0 -- 设置未成功
-	 */
-	Long setnx(String key, String value);
-
-	/**
-	 * 将字符串值设置到键, 同时设置过期时间
-	 *
-	 * @param key 键
-	 * @param seconds 过期时间秒数
-	 * @param value 字符串值
-	 * @return 响应码
-	 */
-	String setex(String key, int seconds, String value);
-
-	/**
-	 * 将字符串值设置到键, 同时设置过期时间
-	 *
-	 * @param key 键
-	 * @param milliseconds 过期时间毫秒数
-	 * @param value 字符串值
-	 * @return 响应吗
-	 */
-	String psetex(String key, long milliseconds, String value);
-
-	/**
-	 * 将键设置的数值减去减数并返回结果值
-	 *
-	 * @param key 键
-	 * @param integer 减数
-	 * @return 减后的值
-	 */
-	Long decrBy(String key, long integer);
-
-	/**
-	 * 将键设置的数值减1并返回结果值
-	 *
-	 * @param key 键
-	 * @return 减后的值
-	 */
-	Long decr(String key);
-
-	/**
-	 * 将键设置的数值加上加数并返回结果值
-	 *
-	 * @param key 键
-	 * @param integer 加数
-	 * @return 加后的值
-	 */
-	Long incrBy(String key, long integer);
-
-	/**
-	 * 将键设置的数值加上加数并返回结果值
-	 *
-	 * @param key 键
-	 * @param value 加数(浮点数)
-	 * @return 加后的值
-	 */
-	Double incrByFloat(String key, double value);
-
-	/**
-	 * 将键设置的数值加1并返回结果值
-	 *
-	 * <p>
-	 * 		如果key不存在将以0为起始数进行操作,
-	 * 		Redis没有专有的整数类型, 所有的加、减操作都发生在string类型的10进制64位数字值上,
-	 * 		返回值也是将string转换为数字返回
-	 *
-	 * 		如果key存在但不是整数类型, 将抛出异常
-	 *
-	 *
-	 * @param key 键
-	 * @return 加后的值
-	 */
-	Long incr(String key);
-
-	/**
-	 * 将给定的字符串追加到键已设置的值, 如果键不存在则等同于set操作
-	 *
-	 * @param key 键
-	 * @param value 字符串值
-	 * @return 追加后的字符串长度
-	 */
-	Long append(String key, String value);
-
-	/**
-	 * 返回键上设置的字符串值的子串, 其中起始、结束位置都会被包含
-	 *
-	 * <p>
-	 *     负数下标表示从字符串的末尾开始计算(-1表示最后一个, -2表示倒数第二个...依次类推)
-	 *
-	 *     substr不会反馈越界异常, 而是按照字符串实际长度返回
-	 *
-	 * @param key 键
-	 * @param start 开始位置
-	 * @param end 结束位置
-	 * @return 子串
-	 */
-	String substr(String key, int start, int end);
-
-	/**
-	 * 在键对应的HASH上设置一对"字段-值", 如果键不存在则新增后再设置, 字段已存在则更新值
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @param value 值
-	 * @return 字段已存在时更新值并返回0, 否则返回1
-	 */
-	Long hset(String key, String field, String value);
-
-	/**
-	 * 返回键对应HASH上字段设置的值, 如果键不存在或者字段不存在返回null
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @return 字段值或者null
-	 */
-	String hget(String key, String field);
-
-	/**
-	 * 在键对应的HASH上设置一对"字段-值", 当且仅当字段不存在时才设置
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @param value 值
-	 * @return 如果字段已存在返回0, 否则返回1
-	 */
-	Long hsetnx(String key, String field, String value);
-
-	/**
-	 * 在键对应的HASH上设置多对"字段-值", 如果键不存在则新增后再设置, 字段已存在则更新值
-	 *
-	 * @param key 键
-	 * @param hash "字段-值"Map集合
-	 * @return 响应码
-	 */
-	String hmset(String key, Map<String, String> hash);
-
-	/**
-	 * 返回键对应HASH上多个字段设置的值, 如果键不存在或者字段不存在返回null
-	 *
-	 * @param key 键
-	 * @param fields 字段
-	 * @return 多个字段值
-	 */
-	List<String> hmget(String key, String... fields);
-
-	/**
-	 * 将键对应HASH上字段的数值加上加数, 如果键不存在则新建, 字段不存在则按照0计算
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @param value 加数
-	 * @return 加后的值
-	 */
-	Long hincrBy(String key, String field, long value);
-
-	/**
-	 * 将键对应HASH上字段的数值加上加数, 如果键不存在则新建, 字段不存在则按照0计算
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @param value 加数(浮点数)
-	 * @return 加后的值
-	 */
-	Double hincrByFloat(String key, String field, double value);
-
-	/**
-	 * 检查键对应HASH上字段是否存在
-	 *
-	 * @param key 键
-	 * @param field 值
-	 * @return 字段是否存在
-	 */
-	Boolean hexists(String key, String field);
-
-	/**
-	 * 删除键对应HASH上"字段-值"对
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @return 字段存在被删除后返回1, 否则返回0
-	 */
-	Long hdel(String key, String... field);
-
-	/**
-	 * 返回键对应HASH上"字段-值"的对数
-	 *
-	 * @param key 键
-	 * @return "字段-值"的对数
-	 */
-	Long hlen(String key);
-
-	/**
-	 * 返回键对应HASH上所有"字段-值"对的字段集合
-	 *
-	 * @param key 键
-	 * @return 字段集合
-	 */
-	Set<String> hkeys(String key);
-
-	/**
-	 * 返回键对应HASH上所有"字段-值"对的值集合
-	 *
-	 * @param key 键
-	 * @return 值集合
-	 */
-	List<String> hvals(String key);
-
-	/**
-	 * 返回键对应HASH上所有"字段-值"对
-	 *
-	 * @param key 键
-	 * @return "字段-值"对Map
-	 */
-	Map<String, String> hgetAll(String key);
-
-	
-	Long rpush(String key, String... string);
-
-	
-	Long lpush(String key, String... string);
-
-	
-	Long llen(String key);
-
-	
-	List<String> lrange(String key, long start, long end);
-
-	
-	String ltrim(String key, long start, long end);
-
-	
-	String lindex(String key, long index);
-
-	
-	String lset(String key, long index, String value);
-
-	
-	Long lrem(String key, long count, String value);
-
-	
-	String lpop(String key);
-
-	
-	String rpop(String key);
-
-	
-	Long sadd(String key, String... member);
-
-	
-	Set<String> smembers(String key);
-
-	
-	Long srem(String key, String... member);
-
-	
-	String spop(String key);
-
-	
-	Set<String> spop(String key, long count);
-
-	
-	Long scard(String key);
-
-	
-	Boolean sismember(String key, String member);
-
-	
-	String srandmember(String key);
-
-	
-	List<String> srandmember(String key, int count);
-
-	
-	Long strlen(String key);
-
-	
-	Long zadd(String key, double score, String member);
-
-	
-	//Long zadd(String key, double score, String member, ZAddParams params);
-
-	
-	Long zadd(String key, Map<String, Double> scoreMembers);
-
-	
-	//Long zadd(String key, Map<String, Double> scoreMembers, ZAddParams params);
-
-	
-	Set<String> zrange(String key, long start, long end);
-
-	
-	Long zrem(String key, String... member);
-
-	
-	Double zincrby(String key, double score, String member);
-
-	
-	//Double zincrby(String key, double score, String member, ZIncrByParams params);
-
-	
-	Long zrank(String key, String member);
-
-	
-	Long zrevrank(String key, String member);
-
-	
-	Set<String> zrevrange(String key, long start, long end);
-
-	
-	//Set<Tuple> zrangeWithScores(String key, long start, long end);
-
-	
-	//Set<Tuple> zrevrangeWithScores(String key, long start, long end);
-
-	
-	Long zcard(String key);
-
-	
-	Double zscore(String key, String member);
-
-	
-	List<String> sort(String key);
-
-	
-	//List<String> sort(String key, SortingParams sortingParameters);
-
-	
-	Long zcount(String key, double min, double max);
-
-	
-	Long zcount(String key, String min, String max);
-
-	
-	Set<String> zrangeByScore(String key, double min, double max);
-
-	
-	Set<String> zrangeByScore(String key, String min, String max);
-
-	
-	Set<String> zrevrangeByScore(String key, double max, double min);
-
-	
-	Set<String> zrangeByScore(String key, double min, double max, int offset, int count);
-
-	
-	Set<String> zrevrangeByScore(String key, String max, String min);
-
-	
-	Set<String> zrangeByScore(String key, String min, String max, int offset, int count);
-
-	
-	Set<String> zrevrangeByScore(String key, double max, double min, int offset, int count);
-
-	
-	//Set<Tuple> zrangeByScoreWithScores(String key, double min, double max);
-
-	
-	//Set<Tuple> zrevrangeByScoreWithScores(String key, double max, double min);
-
-	
-	//Set<Tuple> zrangeByScoreWithScores(String key, double min, double max, int offset, int count);
-
-	
-	Set<String> zrevrangeByScore(String key, String max, String min, int offset, int count);
-
-	
-	//Set<Tuple> zrangeByScoreWithScores(String key, String min, String max);
-
-	
-	//Set<Tuple> zrevrangeByScoreWithScores(String key, String max, String min);
-
-	
-	//Set<Tuple> zrangeByScoreWithScores(String key, String min, String max, int offset, int count);
-
-	
-	//Set<Tuple> zrevrangeByScoreWithScores(String key, double max, double min, int offset, int count);
-
-	
-	//Set<Tuple> zrevrangeByScoreWithScores(String key, String max, String min, int offset, int count);
-
-	
-	Long zremrangeByRank(String key, long start, long end);
-
-	
-	Long zremrangeByScore(String key, double start, double end);
-
-	
-	Long zremrangeByScore(String key, String start, String end);
-
-	
-	Long zlexcount(String key, String min, String max);
-
-	
-	Set<String> zrangeByLex(String key, String min, String max);
-
-	
-	Set<String> zrangeByLex(String key, String min, String max, int offset, int count);
-
-	
-	Set<String> zrevrangeByLex(String key, String max, String min);
-
-	
-	Set<String> zrevrangeByLex(String key, String max, String min, int offset, int count);
-
-	
-	Long zremrangeByLex(String key, String min, String max);
-
-	
-	//Long linsert(String key, BinaryClient.LIST_POSITION where, String pivot, String value);
-
-	
-	Long lpushx(String key, String... string);
-
-	
-	Long rpushx(String key, String... string);
-
-	
-	List<String> blpop(String arg);
-
-	
-	List<String> blpop(int timeout, String key);
-
-	
-	List<String> brpop(String arg);
-
-	
-	List<String> brpop(int timeout, String key);
-
-	
-	Long del(String key);
-
-	
-	String echo(String string);
-
-	
-	Long move(String key, int dbIndex);
-
-	
-	Long bitcount(String key);
-
-	
-	Long bitcount(String key, long start, long end);
-
-	
-	Long bitpos(String key, boolean value);
-
-	
-	//Long bitpos(String key, boolean value, BitPosParams params);
-
-	
-	//ScanResult<Map.Entry<String, String>> hscan(String key, int cursor);
-
-	
-	//ScanResult<String> sscan(String key, int cursor);
-
-	
-	//ScanResult<Tuple> zscan(String key, int cursor);
-
-	
-	//ScanResult<Map.Entry<String, String>> hscan(String key, String cursor);
-
-	
-	//ScanResult<Map.Entry<String, String>> hscan(String key, String cursor, ScanParams params);
-
-	
-	//ScanResult<String> sscan(String key, String cursor);
-
-	
-	//ScanResult<String> sscan(String key, String cursor, ScanParams params);
-
-	
-	//ScanResult<Tuple> zscan(String key, String cursor);
-
-	
-	//ScanResult<Tuple> zscan(String key, String cursor, ScanParams params);
-
-	
-	Long pfadd(String key, String... elements);
-
-	
-	long pfcount(String key);
-
-	
-	Long geoadd(String key, double longitude, double latitude, String member);
-
-	
-	//Long geoadd(String key, Map<String, GeoCoordinate> memberCoordinateMap);
-
-	
-	Double geodist(String key, String member1, String member2);
-
-	
-	//Double geodist(String key, String member1, String member2, GeoUnit unit);
-
-	
-	List<String> geohash(String key, String... members);
-
-	
-	//List<GeoCoordinate> geopos(String key, String... members);
-
-	
-	//List<GeoRadiusResponse> georadius(String key, double longitude, double latitude, double radius, GeoUnit unit);
-
-	
-	//List<GeoRadiusResponse> georadius(String key, double longitude, double latitude, double radius, GeoUnit unit, GeoRadiusParam param);
-
-	
-	//List<GeoRadiusResponse> georadiusByMember(String key, String member, double radius, GeoUnit unit);
-
-	
-	//List<GeoRadiusResponse> georadiusByMember(String key, String member, double radius, GeoUnit unit, GeoRadiusParam param);
-
-	
-	List<Long> bitfield(String key, String... arguments);
+public class RedisClient extends AsyncClient implements SyncCommands {
+
+	public RedisClient(String connectStr) throws Exception {
+		super(connectStr);
+	}
+
+	public RedisClient(String connectStr, int workers, GenericObjectPoolConfig poolConfig) throws Exception {
+		super(connectStr, workers, poolConfig);
+	}
+
+	public RedisClient(String connectStr, int timeout, int workers) throws Exception {
+		super(connectStr, timeout, workers);
+	}
+
+	public RedisClient(String connectStr, int connectionTimeout, int requestTimeout, int workers, GenericObjectPoolConfig poolConfig) throws Exception {
+		super(connectStr, connectionTimeout, requestTimeout, workers, poolConfig);
+	}
+
+	@Override
+	public String set(String key, String value) {
+		return _set(key, value)
+				.get();
+	}
+
+	@Override
+	public String set(String key, String value, String nxxx, String expx, long time) {
+		return _set(key, value, nxxx, expx, time)
+				.get();
+	}
+
+	@Override
+	public String set(String key, String value, String nxxx) {
+		return _set(key, value, nxxx)
+				.get();
+	}
+
+	@Override
+	public String get(String key) {
+		return _get(key)
+				.get();
+	}
+
+	@Override
+	public Boolean exists(String key) {
+		return _exists(key)
+				.get();
+	}
+
+	@Override
+	public Long persist(String key) {
+		return _persist(key)
+				.get();
+	}
+
+	@Override
+	public String type(String key) {
+		return _type(key)
+				.get();
+	}
+
+	@Override
+	public Long expire(String key, int seconds) {
+		return _expire(key, seconds)
+				.get();
+	}
+
+	@Override
+	public Long pexpire(String key, long milliseconds) {
+		return _pexpire(key, milliseconds)
+				.get();
+	}
+
+	@Override
+	public Long expireAt(String key, long unixTime) {
+		return _expireAt(key, unixTime)
+				.get();
+	}
+
+	@Override
+	public Long pexpireAt(String key, long millisecondsTimestamp) {
+		return _pexpireAt(key, millisecondsTimestamp)
+				.get();
+	}
+
+	@Override
+	public Long ttl(String key) {
+		return _ttl(key)
+				.get();
+	}
+
+	@Override
+	public Long pttl(String key) {
+		return _pttl(key)
+				.get();
+	}
+
+	@Override
+	public Boolean setbit(String key, long offset, boolean value) {
+		return _setbit(key, offset, value)
+				.get();
+	}
+
+	@Override
+	public Boolean setbit(String key, long offset, String value) {
+		return _setbit(key, offset, value)
+				.get();
+	}
+
+	@Override
+	public Boolean getbit(String key, long offset) {
+		return _getbit(key, offset)
+				.get();
+	}
+
+	@Override
+	public Long setrange(String key, long offset, String value) {
+		return _setrange(key, offset, value)
+				.get();
+	}
+
+	@Override
+	public String getrange(String key, long startOffset, long endOffset) {
+		return _getrange(key, startOffset, endOffset)
+				.get();
+	}
+
+	@Override
+	public String getSet(String key, String value) {
+		return _getSet(key, value)
+				.get();
+	}
+
+	@Override
+	public Long setnx(String key, String value) {
+		return _setnx(key, value)
+				.get();
+	}
+
+	@Override
+	public String setex(String key, int seconds, String value) {
+		return _setex(key, seconds, value)
+				.get();
+	}
+
+	@Override
+	public String psetex(String key, long milliseconds, String value) {
+		return _psetex(key, milliseconds, value)
+				.get();
+	}
+
+	@Override
+	public Long decrBy(String key, long integer) {
+		return _decrBy(key, integer)
+				.get();
+	}
+
+	@Override
+	public Long decr(String key) {
+		return _decr(key)
+				.get();
+	}
+
+	@Override
+	public Long incrBy(String key, long integer) {
+		return _incrBy(key, integer)
+				.get();
+	}
+
+	@Override
+	public Double incrByFloat(String key, double value) {
+		return _incrByFloat(key, value)
+				.get();
+	}
+
+	@Override
+	public Long incr(String key) {
+		return _incr(key)
+				.get();
+	}
+
+	@Override
+	public Long append(String key, String value) {
+		return _append(key, value)
+				.get();
+	}
+
+	@Override
+	public String substr(String key, int start, int end) {
+		return _substr(key, start, end)
+				.get();
+	}
+
+	@Override
+	public Long hset(String key, String field, String value) {
+		return _hset(key, field, value)
+				.get();
+	}
+
+	@Override
+	public String hget(String key, String field) {
+		return _hget(key, field)
+				.get();
+	}
+
+	@Override
+	public Long hsetnx(String key, String field, String value) {
+		return _hsetnx(key, field, value)
+				.get();
+	}
+
+	@Override
+	public String hmset(String key, Map<String, String> hash) {
+		return _hmset(key, hash)
+				.get();
+	}
+
+	@Override
+	public List<String> hmget(String key, String... fields) {
+		return _hmget(key, fields)
+				.get();
+	}
+
+	@Override
+	public Long hincrBy(String key, String field, long value) {
+		return _hincrBy(key, field, value)
+				.get();
+	}
+
+	@Override
+	public Double hincrByFloat(String key, String field, double value) {
+		return _hincrByFloat(key, field, value)
+				.get();
+	}
+
+	@Override
+	public Boolean hexists(String key, String field) {
+		return _hexists(key, field)
+				.get();
+	}
+
+	@Override
+	public Long hdel(String key, String... field) {
+		return _hdel(key, field)
+				.get();
+	}
+
+	@Override
+	public Long hlen(String key) {
+		return _hlen(key)
+				.get();
+	}
+
+	@Override
+	public Set<String> hkeys(String key) {
+		return _hkeys(key)
+				.get();
+	}
+
+	@Override
+	public List<String> hvals(String key) {
+		return _hvals(key)
+				.get();
+	}
+
+	@Override
+	public Map<String, String> hgetAll(String key) {
+		return _hgetAll(key)
+				.get();
+	}
+
+	@Override
+	public Long rpush(String key, String... string) {
+		return _rpush(key, string)
+				.get();
+	}
+
+	@Override
+	public Long lpush(String key, String... string) {
+		return _lpush(key, string)
+				.get();
+	}
+
+	@Override
+	public Long llen(String key) {
+		return _llen(key)
+				.get();
+	}
+
+	@Override
+	public List<String> lrange(String key, long start, long end) {
+		return _lrange(key, start, end)
+				.get();
+	}
+
+	@Override
+	public String ltrim(String key, long start, long end) {
+		return _ltrim(key, start, end)
+				.get();
+	}
+
+	@Override
+	public String lindex(String key, long index) {
+		return _lindex(key, index)
+				.get();
+	}
+
+	@Override
+	public String lset(String key, long index, String value) {
+		return _lset(key, index, value)
+				.get();
+	}
+
+	@Override
+	public Long lrem(String key, long count, String value) {
+		return _lrem(key, count, value)
+				.get();
+	}
+
+	@Override
+	public String lpop(String key) {
+		return _lpop(key)
+				.get();
+	}
+
+	@Override
+	public String rpop(String key) {
+		return _rpop(key)
+				.get();
+	}
+
+	@Override
+	public Long sadd(String key, String... member) {
+		return _sadd(key, member)
+				.get();
+	}
+
+	@Override
+	public Set<String> smembers(String key) {
+		return _smembers(key)
+				.get();
+	}
+	//TODO
+	@Override
+	public Long srem(String key, String... member) {
+		return null;
+	}
+
+	@Override
+	public String spop(String key) {
+		return null;
+	}
+
+	@Override
+	public Set<String> spop(String key, long count) {
+		return null;
+	}
+
+	@Override
+	public Long scard(String key) {
+		return null;
+	}
+
+	@Override
+	public Boolean sismember(String key, String member) {
+		return null;
+	}
+
+	@Override
+	public String srandmember(String key) {
+		return null;
+	}
+
+	@Override
+	public List<String> srandmember(String key, int count) {
+		return null;
+	}
+
+	@Override
+	public Long strlen(String key) {
+		return _strlen(key)
+				.get();
+	}
+
+	@Override
+	public Long zadd(String key, double score, String member) {
+		return null;
+	}
+
+	@Override
+	public Long zadd(String key, Map<String, Double> scoreMembers) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrange(String key, long start, long end) {
+		return null;
+	}
+
+	@Override
+	public Long zrem(String key, String... member) {
+		return null;
+	}
+
+	@Override
+	public Double zincrby(String key, double score, String member) {
+		return null;
+	}
+
+	@Override
+	public Long zrank(String key, String member) {
+		return null;
+	}
+
+	@Override
+	public Long zrevrank(String key, String member) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrevrange(String key, long start, long end) {
+		return null;
+	}
+
+	@Override
+	public Long zcard(String key) {
+		return null;
+	}
+
+	@Override
+	public Double zscore(String key, String member) {
+		return null;
+	}
+
+	@Override
+	public List<String> sort(String key) {
+		return null;
+	}
+
+	@Override
+	public Long zcount(String key, double min, double max) {
+		return null;
+	}
+
+	@Override
+	public Long zcount(String key, String min, String max) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrangeByScore(String key, double min, double max) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrangeByScore(String key, String min, String max) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrevrangeByScore(String key, double max, double min) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrangeByScore(String key, double min, double max, int offset, int count) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrevrangeByScore(String key, String max, String min) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrangeByScore(String key, String min, String max, int offset, int count) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrevrangeByScore(String key, double max, double min, int offset, int count) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrevrangeByScore(String key, String max, String min, int offset, int count) {
+		return null;
+	}
+
+	@Override
+	public Long zremrangeByRank(String key, long start, long end) {
+		return null;
+	}
+
+	@Override
+	public Long zremrangeByScore(String key, double start, double end) {
+		return null;
+	}
+
+	@Override
+	public Long zremrangeByScore(String key, String start, String end) {
+		return null;
+	}
+
+	@Override
+	public Long zlexcount(String key, String min, String max) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrangeByLex(String key, String min, String max) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrangeByLex(String key, String min, String max, int offset, int count) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrevrangeByLex(String key, String max, String min) {
+		return null;
+	}
+
+	@Override
+	public Set<String> zrevrangeByLex(String key, String max, String min, int offset, int count) {
+		return null;
+	}
+
+	@Override
+	public Long zremrangeByLex(String key, String min, String max) {
+		return null;
+	}
+
+	@Override
+	public Long lpushx(String key, String... string) {
+		return null;
+	}
+
+	@Override
+	public Long rpushx(String key, String... string) {
+		return null;
+	}
+
+	@Override
+	public List<String> blpop(String arg) {
+		return null;
+	}
+
+	@Override
+	public List<String> blpop(int timeout, String key) {
+		return null;
+	}
+
+	@Override
+	public List<String> brpop(String arg) {
+		return null;
+	}
+
+	@Override
+	public List<String> brpop(int timeout, String key) {
+		return null;
+	}
+
+	@Override
+	public Long del(String key) {
+		return null;
+	}
+
+	@Override
+	public String echo(String string) {
+		return null;
+	}
+
+	@Override
+	public Long move(String key, int dbIndex) {
+		return null;
+	}
+
+	@Override
+	public Long bitcount(String key) {
+		return null;
+	}
+
+	@Override
+	public Long bitcount(String key, long start, long end) {
+		return null;
+	}
+
+	@Override
+	public Long bitpos(String key, boolean value) {
+		return null;
+	}
+
+	@Override
+	public Long pfadd(String key, String... elements) {
+		return null;
+	}
+
+	@Override
+	public long pfcount(String key) {
+		return 0;
+	}
+
+	@Override
+	public Long geoadd(String key, double longitude, double latitude, String member) {
+		return null;
+	}
+
+	@Override
+	public Double geodist(String key, String member1, String member2) {
+		return null;
+	}
+
+	@Override
+	public List<String> geohash(String key, String... members) {
+		return null;
+	}
+
+	@Override
+	public List<Long> bitfield(String key, String... arguments) {
+		return null;
+	}
 }

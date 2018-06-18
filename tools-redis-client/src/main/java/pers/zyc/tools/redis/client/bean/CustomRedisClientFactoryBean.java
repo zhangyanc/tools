@@ -1,28 +1,28 @@
 package pers.zyc.tools.redis.client.bean;
 
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
-import pers.zyc.tools.redis.client.CustomRedisClient;
+import pers.zyc.tools.redis.client.RedisClient;
 
 /**
  * @author zhangyancheng
  */
-public class CustomRedisClientFactoryBean extends RedisClientFactoryBean<CustomRedisClient> {
+public class CustomRedisClientFactoryBean extends RedisClientFactoryBean<RedisClient> {
 	private String connectStr;
-	private int connectionTimeout = CustomRedisClient.DEFAULT_CONNECTION_TIMEOUT;
-	private int requestTimeout = CustomRedisClient.DEFAULT_REQUEST_TIMEOUT;
-	private int netWorkers = CustomRedisClient.DEFAULT_NET_WORKERS;
+	private int connectionTimeout = RedisClient.DEFAULT_CONNECTION_TIMEOUT;
+	private int requestTimeout = RedisClient.DEFAULT_REQUEST_TIMEOUT;
+	private int netWorkers = RedisClient.DEFAULT_NET_WORKERS;
 	private GenericObjectPoolConfig poolConfig;
 
-	private CustomRedisClient redisClient;
+	private RedisClient redisClient;
 
 	@Override
-	public CustomRedisClient getObject() throws Exception {
+	public RedisClient getObject() throws Exception {
 		return redisClient;
 	}
 
 	@Override
-	public Class<CustomRedisClient> getObjectType() {
-		return CustomRedisClient.class;
+	public Class<RedisClient> getObjectType() {
+		return RedisClient.class;
 	}
 
 	@Override
@@ -30,7 +30,7 @@ public class CustomRedisClientFactoryBean extends RedisClientFactoryBean<CustomR
 		if (poolConfig == null) {
 			poolConfig = new GenericObjectPoolConfig();
 		}
-		redisClient = new CustomRedisClient(connectStr, connectionTimeout, requestTimeout, netWorkers, poolConfig);
+		redisClient = new RedisClient(connectStr, connectionTimeout, requestTimeout, netWorkers, poolConfig);
 		redisClient.start();
 	}
 

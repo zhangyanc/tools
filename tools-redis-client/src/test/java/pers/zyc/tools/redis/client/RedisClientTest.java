@@ -16,7 +16,7 @@ public class RedisClientTest {
 
 	@Before
 	public void setUp() throws Exception {
-		redisClient = new CustomRedisClient("redis://localhost:6379");
+		redisClient = new RedisClient("redis://localhost:6379");
 		redisClient.start();
 	}
 
