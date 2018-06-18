@@ -1,6 +1,5 @@
 package pers.zyc.tools.redis.client.bean;
 
-import pers.zyc.tools.redis.client.RedisClient;
 import pers.zyc.tools.redis.client.RedisClientException;
 import redis.clients.jedis.JedisCommands;
 
@@ -13,24 +12,22 @@ import java.util.Objects;
 /**
  * @author zhangyancheng
  */
-public abstract class JedisProxyFactoryBean<J extends JedisCommands> extends RedisClientFactoryBean {
+public abstract class JedisProxyFactoryBean<J extends JedisCommands> extends RedisClientFactoryBean<JedisCommands> {
 
 	@Override
-	public RedisClient getObject() throws Exception {
-		/*
-		 * 返回动态代理实例, 所有方法调用都由InvocationHandler代理执行
-		 *
-		 * JedisCommands与RedisClient有相同的方法声明, 却不具有继承关系
-		 * 因此设置代理接口时, JedisCommands.class必须在RedisClient.class前面,
-		 * 使得代理对象内部的Method实例的所属Class为JedisCommands, 否则无法在InvocationHandler中反射调用
-		 */
+	public JedisCommands getObject() throws Exception {
 		return getObjectType().cast(
 				Proxy.newProxyInstance(
 						getClass().getClassLoader(),
-						new Class<?>[] { JedisCommands.class, RedisClient.class },
+						new Class<?>[] { getObjectType() },
 						newJedisInvocationHandler()
 				)
 		);
+	}
+
+	@Override
+	public Class<JedisCommands> getObjectType() {
+		return JedisCommands.class;
 	}
 
 	protected JedisInvocationHandler newJedisInvocationHandler() {

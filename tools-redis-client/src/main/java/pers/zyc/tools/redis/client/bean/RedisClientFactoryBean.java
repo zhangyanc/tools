@@ -3,18 +3,15 @@ package pers.zyc.tools.redis.client.bean;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.beans.factory.InitializingBean;
-import pers.zyc.tools.redis.client.RedisClient;
 
 /**
  * @author zhangyancheng
  */
-public abstract class RedisClientFactoryBean
-		implements FactoryBean<RedisClient>, InitializingBean, DisposableBean {
+public abstract class RedisClientFactoryBean<C>
+		implements FactoryBean<C>, InitializingBean, DisposableBean {
 
 	@Override
-	public Class<RedisClient> getObjectType() {
-		return RedisClient.class;
-	}
+	public abstract Class<C> getObjectType();
 
 	@Override
 	public boolean isSingleton() {
@@ -22,10 +19,10 @@ public abstract class RedisClientFactoryBean
 	}
 
 	@Override
-	public void destroy() throws Exception {
+	public void afterPropertiesSet() throws Exception {
 	}
 
 	@Override
-	public void afterPropertiesSet() throws Exception {
+	public void destroy() throws Exception {
 	}
 }
