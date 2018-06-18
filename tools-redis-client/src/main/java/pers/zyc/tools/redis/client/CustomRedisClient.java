@@ -1,365 +1,391 @@
 package pers.zyc.tools.redis.client;
 
+import org.apache.commons.pool2.PooledObject;
+import org.apache.commons.pool2.PooledObjectFactory;
+import org.apache.commons.pool2.impl.DefaultPooledObject;
+import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
+import pers.zyc.tools.lifecycle.Service;
 import pers.zyc.tools.redis.client.request.*;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.net.URI;
+import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static pers.zyc.tools.redis.client.ResponseCast.*;
 
 /**
  * @author zhangyancheng
  */
-public class CustomRedisClient implements RedisClient {
+public class CustomRedisClient extends Service implements RedisClient {
+	public static final int DEFAULT_CONNECTION_TIMEOUT = -1;
+	public static final int DEFAULT_REQUEST_TIMEOUT = -1;
+	public static final int DEFAULT_NET_WORKERS = 1;
 
+	private final NetWorker[] netWorkers;
 	private final ConnectionPool connectionPool;
+	private final RequestExecutor requestExecutor;
 
-	public CustomRedisClient(ConnectionPool connectionPool) {
-		this.connectionPool = connectionPool;
+	public CustomRedisClient(String connectStr) throws Exception {
+		this(connectStr, DEFAULT_NET_WORKERS, new GenericObjectPoolConfig());
+	}
+
+	public CustomRedisClient(String connectStr,
+							 int workers,
+							 GenericObjectPoolConfig poolConfig) throws Exception {
+		this(connectStr, DEFAULT_CONNECTION_TIMEOUT, DEFAULT_REQUEST_TIMEOUT, workers, poolConfig);
+	}
+
+	public CustomRedisClient(String connectStr,
+							 int timeout,
+							 int workers) throws Exception {
+		this(connectStr, timeout, timeout, workers, new GenericObjectPoolConfig());
+	}
+
+	public CustomRedisClient(String connectStr,
+							 int connectionTimeout,
+							 int requestTimeout,
+							 int workers,
+							 GenericObjectPoolConfig poolConfig) throws Exception {
+		if (workers <= 0) {
+			throw new IllegalArgumentException(String.format("workers: %d (expected: > 0)", workers));
+		}
+
+		URI uri = URI.create(connectStr);
+		this.netWorkers = new NetWorker[workers];
+		for (int i = 0; i < workers; i++) {
+			netWorkers[i] = new NetWorker(requestTimeout);
+		}
+		connectionPool = new ConnectionPool(new ConnectionFactory(uri.getHost(),
+				uri.getPort(), connectionTimeout), poolConfig);
+		requestExecutor = new RequestExecutor(connectionPool);
+	}
+
+	private NetWorker chooseNetWorker(int connectionId) {
+		return netWorkers[connectionId % netWorkers.length];
+	}
+
+	private class ConnectionFactory implements PooledObjectFactory<Connection> {
+
+		private final String host;
+		private final int port, connectionTimeout;
+		private final AtomicInteger connectionId = new AtomicInteger();
+
+		 ConnectionFactory(String host, int port, int connectionTimeout) {
+			this.host = host;
+			this.port = port;
+			this.connectionTimeout = connectionTimeout;
+		}
+
+		@Override
+		public PooledObject<Connection> makeObject() throws Exception {
+			SocketChannel channel = createChannel(host, port, connectionTimeout);
+
+			Connection connection = new Connection(channel);
+			connection.addListener(requestExecutor);
+			connection.addListener(connectionPool);
+
+			NetWorker netWorker = chooseNetWorker(connectionId.incrementAndGet());
+			connection.addListener(netWorker);
+			netWorker.register(connection);
+
+			return new DefaultPooledObject<>(connection);
+		}
+
+		@Override
+		public void destroyObject(PooledObject<Connection> p) throws Exception {
+			Connection connection = p.getObject();
+			if (connection.isConnected()) {
+				//TODO quit and close
+				connection.close();
+			}
+		}
+
+		@Override
+		public boolean validateObject(PooledObject<Connection> p) {
+			//TODO PING-PONG
+			return p.getObject().isConnected();
+		}
+
+		@Override
+		public void activateObject(PooledObject<Connection> p) throws Exception {
+
+		}
+
+		@Override
+		public void passivateObject(PooledObject<Connection> p) throws Exception {
+
+		}
+	}
+
+	private static SocketChannel createChannel(String host, int port, int connectionTimeout) throws IOException {
+		SocketChannel channel = SocketChannel.open();
+		try {
+			channel.socket().setSoLinger(false, -1);
+			channel.socket().setTcpNoDelay(true);
+			SocketAddress connectTo = new InetSocketAddress(host, port);
+			if (connectionTimeout > 0) {
+				channel.socket().connect(connectTo, connectionTimeout);
+			} else {
+				channel.connect(connectTo);
+			}
+			channel.configureBlocking(false);
+			return channel;
+		} catch (IOException e) {
+			try {
+				channel.close();
+			} catch (IOException ignored) {
+			}
+			throw e;
+		}
+	}
+
+	@Override
+	protected void doStart() {
+		for (NetWorker netWorker : netWorkers) {
+			netWorker.start();
+		}
+	}
+
+	@Override
+	protected void doStop() throws Exception {
+		connectionPool.close();
+		for (NetWorker netWorker : netWorkers) {
+			netWorker.stop();
+		}
 	}
 
 	@Override
 	public String set(String key, String value) {
-		return new RequestAction<String>()
-				.request(new pers.zyc.tools.redis.client.request.Set(key, value))
-				.connection(connectionPool.getConnection())
-				.responseCast(STRING)
-				.execute()
+		return requestExecutor.execute(new pers.zyc.tools.redis.client.request.Set(key, value), STRING)
 				.get();
 	}
 
 	@Override
 	public String set(String key, String value, String nxxx, String expx, long time) {
-		return new RequestAction<String>()
-				.request(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx, expx, time))
-				.connection(connectionPool.getConnection())
-				.responseCast(STRING)
-				.execute()
+		return requestExecutor.execute(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx, expx, time), STRING)
 				.get();
 	}
 
 	@Override
 	public String set(String key, String value, String nxxx) {
-		return new RequestAction<String>()
-				.request(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx))
-				.connection(connectionPool.getConnection())
-				.responseCast(STRING)
-				.execute()
+		return requestExecutor.execute(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx), STRING)
 				.get();
 	}
 
 	@Override
 	public String get(String key) {
-		return new RequestAction<String>()
-				.request(new Get(key))
-				.connection(connectionPool.getConnection())
-				.responseCast(STRING)
-				.execute()
+		return requestExecutor.execute(new Get(key), STRING)
 				.get();
 	}
 
 	@Override
 	public Boolean exists(String key) {
-		return new RequestAction<Boolean>()
-				.request(new Exists(key))
-				.connection(connectionPool.getConnection())
-				.responseCast(BOOLEAN)
-				.execute()
+		return requestExecutor.execute(new Exists(key), BOOLEAN)
 				.get();
 	}
 
 	@Override
 	public Long persist(String key) {
-		return new RequestAction<Long>()
-				.request(new Persist(key))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new Persist(key), LONG)
 				.get();
 	}
 
 	@Override
 	public String type(String key) {
-		return new RequestAction<String>()
-				.request(new Type(key))
-				.connection(connectionPool.getConnection())
-				.responseCast(STRING)
-				.execute()
+		return requestExecutor.execute(new Type(key), STRING)
 				.get();
 	}
 
 	@Override
 	public Long expire(String key, int seconds) {
-		return new RequestAction<Long>()
-				.request(new Expire(key, seconds))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new Expire(key, seconds), LONG)
 				.get();
 	}
 
 	@Override
 	public Long pexpire(String key, long milliseconds) {
-		return new RequestAction<Long>()
-				.request(new PExpire(key, milliseconds))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new PExpire(key, milliseconds), LONG)
 				.get();
 	}
 
 	@Override
 	public Long expireAt(String key, long unixTime) {
-		return new RequestAction<Long>()
-				.request(new ExpireAt(key, unixTime))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG).execute()
+		return requestExecutor.execute(new ExpireAt(key, unixTime), LONG)
 				.get();
 	}
 
 	@Override
 	public Long pexpireAt(String key, long millisecondsTimestamp) {
-		return new RequestAction<Long>()
-				.request(new PExpireAt(key, millisecondsTimestamp))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new PExpireAt(key, millisecondsTimestamp), LONG)
 				.get();
 	}
 
 	@Override
 	public Long ttl(String key) {
-		return new RequestAction<Long>()
-				.request(new Ttl(key))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new Ttl(key), LONG)
 				.get();
 	}
 
 	@Override
 	public Long pttl(String key) {
-		return new RequestAction<Long>()
-				.request(new PTtl(key))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new PTtl(key), LONG)
 				.get();
 	}
 
 	@Override
 	public Boolean setbit(String key, long offset, boolean value) {
-		return new RequestAction<Boolean>()
-				.request(new SetBit(key, offset, value))
-				.connection(connectionPool.getConnection())
-				.responseCast(BOOLEAN)
-				.execute()
+		return requestExecutor.execute(new SetBit(key, offset, value), BOOLEAN)
 				.get();
 	}
 
 	@Override
 	public Boolean setbit(String key, long offset, String value) {
-		return new RequestAction<Boolean>()
-				.request(new SetBit(key, offset, value))
-				.connection(connectionPool.getConnection())
-				.responseCast(BOOLEAN)
-				.execute()
+		return requestExecutor.execute(new SetBit(key, offset, value), BOOLEAN)
 				.get();
 	}
 
 	@Override
 	public Boolean getbit(String key, long offset) {
-		return new RequestAction<Boolean>()
-				.request(new GetBit(key, offset))
-				.connection(connectionPool.getConnection())
-				.responseCast(BOOLEAN)
-				.execute()
+		return requestExecutor.execute(new GetBit(key, offset), BOOLEAN)
 				.get();
 	}
 
 	@Override
 	public Long setrange(String key, long offset, String value) {
-		return new RequestAction<Long>()
-				.request(new SetRange(key, offset, value))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new SetRange(key, offset, value), LONG)
 				.get();
 	}
 
 	@Override
 	public String getrange(String key, long startOffset, long endOffset) {
-		return new RequestAction<String>()
-				.request(new GetRange(key, startOffset, endOffset))
-				.connection(connectionPool.getConnection())
-				.responseCast(STRING)
-				.execute()
+		return requestExecutor.execute(new GetRange(key, startOffset, endOffset), STRING)
 				.get();
 	}
 
 	@Override
 	public String getSet(String key, String value) {
-		return new RequestAction<String>()
-				.request(new GetSet(key, value))
-				.connection(connectionPool.getConnection())
-				.responseCast(STRING)
-				.execute()
+		return requestExecutor.execute(new GetSet(key, value), STRING)
 				.get();
 	}
 
 	@Override
 	public Long setnx(String key, String value) {
-		return new RequestAction<Long>()
-				.request(new SetNx(key, value))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new SetNx(key, value), LONG)
 				.get();
 	}
 
 	@Override
 	public String setex(String key, int seconds, String value) {
-		return new RequestAction<String>()
-				.request(new SetEx(key, seconds, value))
-				.connection(connectionPool.getConnection())
-				.responseCast(STRING)
-				.execute()
+		return requestExecutor.execute(new SetEx(key, seconds, value), STRING)
 				.get();
 	}
 
 	@Override
 	public String psetex(String key, long milliseconds, String value) {
-		return new RequestAction<String>()
-				.request(new PSetEx(key, milliseconds, value))
-				.connection(connectionPool.getConnection())
-				.responseCast(STRING)
-				.execute()
+		return requestExecutor.execute(new PSetEx(key, milliseconds, value), STRING)
 				.get();
 	}
 
 	@Override
 	public Long decrBy(String key, long integer) {
-		return new RequestAction<Long>()
-				.request(new DecrementBy(key, integer))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new DecrementBy(key, integer), LONG)
 				.get();
 	}
 
 	@Override
 	public Long decr(String key) {
-		return new RequestAction<Long>()
-				.request(new Decrement(key))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new Decrement(key), LONG)
 				.get();
 	}
 
 	@Override
 	public Long incrBy(String key, long integer) {
-		return new RequestAction<Long>()
-				.request(new IncrementBy(key, integer))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new IncrementBy(key, integer), LONG)
 				.get();
 	}
 
 	@Override
 	public Double incrByFloat(String key, double value) {
-		return new RequestAction<Double>()
-				.request(new IncrementByFloat(key, value))
-				.connection(connectionPool.getConnection())
-				.responseCast(DOUBLE)
-				.execute()
+		return requestExecutor.execute(new IncrementByFloat(key, value), DOUBLE)
 				.get();
 	}
 
 	@Override
 	public Long incr(String key) {
-		return new RequestAction<Long>()
-				.request(new Increment(key))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new Increment(key), LONG)
 				.get();
 	}
 
 	@Override
 	public Long append(String key, String value) {
-		return new RequestAction<Long>()
-				.request(new Append(key, value))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new Append(key, value), LONG)
 				.get();
 	}
 
 	@Override
 	public String substr(String key, int start, int end) {
-		return new RequestAction<String>()
-				.request(new SubStr(key, start, end))
-				.connection(connectionPool.getConnection())
-				.responseCast(STRING)
-				.execute()
+		return requestExecutor.execute(new SubStr(key, start, end), STRING)
 				.get();
 	}
 
 	@Override
 	public Long hset(String key, String field, String value) {
-		return new RequestAction<Long>()
-				.request(new HSet(key, field, value))
-				.connection(connectionPool.getConnection())
-				.responseCast(LONG)
-				.execute()
+		return requestExecutor.execute(new HSet(key, field, value), LONG)
 				.get();
 	}
 
 	@Override
 	public String hget(String key, String field) {
-		return new RequestAction<String>()
-				.request(new HGet(key, field))
-				.connection(connectionPool.getConnection())
-				.responseCast(STRING)
-				.execute()
+		return requestExecutor.execute(new HGet(key, field), STRING)
 				.get();
 	}
 
 	@Override
 	public Long hsetnx(String key, String field, String value) {
-		return null;
+		return requestExecutor.execute(new HSetNx(key, field, value), LONG)
+				.get();
 	}
 
 	@Override
 	public String hmset(String key, Map<String, String> hash) {
-		return null;
+		return requestExecutor.execute(new HMSet(key, hash), STRING)
+				.get();
 	}
 
 	@Override
 	public List<String> hmget(String key, String... fields) {
-		return null;
+		return requestExecutor.execute(new HMGet(key, fields), STRING_LIST)
+				.get();
 	}
 
 	@Override
 	public Long hincrBy(String key, String field, long value) {
-		return null;
+		return requestExecutor.execute(new HIncrementBy(key, field, value), LONG)
+				.get();
 	}
 
 	@Override
 	public Double hincrByFloat(String key, String field, double value) {
-		return null;
+		return requestExecutor.execute(new HIncrementByFloat(key, field, value), DOUBLE)
+				.get();
 	}
 
 	@Override
 	public Boolean hexists(String key, String field) {
-		return null;
+		return requestExecutor.execute(new HExists(key, field), BOOLEAN)
+				.get();
 	}
 
 	@Override
 	public Long hdel(String key, String... field) {
-		return null;
+		return requestExecutor.execute(new HDelete(key, field), LONG)
+				.get();
 	}
 
 	@Override
@@ -479,7 +505,7 @@ public class CustomRedisClient implements RedisClient {
 
 	@Override
 	public Long strlen(String key) {
-		return null;
+		return requestExecutor.execute(new StrLen(key), LONG).get();
 	}
 
 	@Override
@@ -739,7 +765,8 @@ public class CustomRedisClient implements RedisClient {
 
 	@Override
 	public Long del(String key) {
-		return null;
+		return requestExecutor.execute(new Delete(key), LONG)
+				.get();
 	}
 
 	@Override

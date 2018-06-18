@@ -19,15 +19,64 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * @author zhangyancheng
  */
 class NetWorker extends PeriodicService implements EventListener<ConnectionEvent> {
+
+	private interface TimeoutChecker {
+
+		void put(Connection connection);
+
+		void remove(Connection connection);
+
+		void check();
+	}
+
+	private static TimeoutChecker NON_CHECKER = new TimeoutChecker() {
+
+		@Override
+		public void put(Connection connection) {
+		}
+
+		@Override
+		public void remove(Connection connection) {
+		}
+
+		@Override
+		public void check() {
+		}
+	};
+
 	private static final Logger LOGGER = LoggerFactory.getLogger(NetWorker.class);
 
-	private final long requestTimeout;
 	private final Selector selector = Selector.open();
 	private final AtomicBoolean wakeUp = new AtomicBoolean();
-	private final Map<Connection, Long> requestingConnectionMap = new LinkedHashMap<>();
+	private final TimeoutChecker timeoutChecker;
 
-	NetWorker(long requestTimeout) throws IOException {
-		this.requestTimeout = requestTimeout;
+	NetWorker(final int requestTimeout) throws IOException {
+		timeoutChecker = requestTimeout <= 0 ? NON_CHECKER : new TimeoutChecker() {
+
+			private final Map<Connection, Long> requestingConnectionMap = new LinkedHashMap<>();
+
+			@Override
+			public void put(Connection connection) {
+				requestingConnectionMap.put(connection, TimeMillis.get() + requestTimeout);
+			}
+
+			@Override
+			public void remove(Connection connection) {
+				requestingConnectionMap.remove(connection);
+			}
+
+			@Override
+			public void check() {
+				Iterator<Map.Entry<Connection, Long>> iterator = requestingConnectionMap.entrySet().iterator();
+				while (iterator.hasNext()) {
+					Map.Entry<Connection, Long> entry = iterator.next();
+					if (entry.getValue() < TimeMillis.get()) {
+						entry.getKey().timeout();
+						iterator.remove();
+					}
+				}
+			}
+		};
 	}
 
 	@Override
@@ -47,18 +96,17 @@ class NetWorker extends PeriodicService implements EventListener<ConnectionEvent
 		Connection connection = event.getSource();
 		switch (event.eventType) {
 			case REQUEST_SET:
-				updateInterestOps(keyFor(connection), SelectionKey.OP_WRITE);
+				enableWrite(connection);
 				wakeUp();
 				break;
 			case REQUEST_SEND:
-				updateInterestOps(keyFor(connection), SelectionKey.OP_READ);
-				requestingConnectionMap.put(connection, TimeMillis.get() + requestTimeout);
+				disableWrite(connection);
+				timeoutChecker.put(connection);
 				break;
 			case RESPONSE_RECEIVED:
-				requestingConnectionMap.remove(connection);
-				break;
 			case CONNECTION_CLOSED:
-				keyFor(connection).cancel();
+			case EXCEPTION_CAUGHT:
+				timeoutChecker.remove(connection);
 				break;
 			default:
 				LOGGER.debug("OnEvent: {}", event);
@@ -70,26 +118,25 @@ class NetWorker extends PeriodicService implements EventListener<ConnectionEvent
 	}
 
 	private void checkTimeoutConnection() {
-		Iterator<Map.Entry<Connection, Long>> iterator = requestingConnectionMap.entrySet().iterator();
-		while (iterator.hasNext()) {
-			Map.Entry<Connection, Long> entry = iterator.next();
-			if (entry.getValue() < TimeMillis.get()) {
-				entry.getKey().timeout();
-				iterator.remove();
-			}
-		}
+		timeoutChecker.check();
 	}
 
 	void register(Connection connection) throws IOException {
-		connection.addListener(this);
 		synchronized (this) {
 			wakeUp();
 			connection.channel.register(selector, SelectionKey.OP_READ, connection);
 		}
+		LOGGER.debug("{} registered.", connection);
 	}
 
-	private static void updateInterestOps(SelectionKey sk, int interestOps) {
-		sk.interestOps(interestOps);
+	private void enableWrite(Connection connection) {
+		SelectionKey sk = keyFor(connection);
+		sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
+	}
+
+	private void disableWrite(Connection connection) {
+		SelectionKey sk = keyFor(connection);
+		sk.interestOps(sk.interestOps() & (~SelectionKey.OP_WRITE));
 	}
 
 	private void wakeUp() {

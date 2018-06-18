@@ -1,16 +1,16 @@
 package pers.zyc.tools.redis.client;
 
 
+import pers.zyc.tools.lifecycle.Lifecycle;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
- * 方法声明与JedisCommands完全相同(不从JedisCommands继承是因为提供了完整的实现, 可不依赖jedis lib)
- *
  * @author zhangyancheng
  */
-public interface RedisClient {
+public interface RedisClient extends Lifecycle {
 
 	/**
 	 * 将字符串值设置到键, 如果键已存在则覆盖就值, 且无视类型

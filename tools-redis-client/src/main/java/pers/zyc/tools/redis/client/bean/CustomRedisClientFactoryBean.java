@@ -8,9 +8,9 @@ import pers.zyc.tools.redis.client.CustomRedisClient;
  */
 public class CustomRedisClientFactoryBean extends RedisClientFactoryBean<CustomRedisClient> {
 	private String connectStr;
-	private int connectionTimeout;
-	private int requestTimeout;
-	private int netWorkers;
+	private int connectionTimeout = CustomRedisClient.DEFAULT_CONNECTION_TIMEOUT;
+	private int requestTimeout = CustomRedisClient.DEFAULT_REQUEST_TIMEOUT;
+	private int netWorkers = CustomRedisClient.DEFAULT_NET_WORKERS;
 	private GenericObjectPoolConfig poolConfig;
 
 	private CustomRedisClient redisClient;
@@ -27,12 +27,16 @@ public class CustomRedisClientFactoryBean extends RedisClientFactoryBean<CustomR
 
 	@Override
 	public void afterPropertiesSet() throws Exception {
+		if (poolConfig == null) {
+			poolConfig = new GenericObjectPoolConfig();
+		}
 		redisClient = new CustomRedisClient(connectStr, connectionTimeout, requestTimeout, netWorkers, poolConfig);
+		redisClient.start();
 	}
 
 	@Override
 	public void destroy() throws Exception {
-		redisClient.close();
+		redisClient.stop();
 	}
 
 	public void setConnectStr(String connectStr) {

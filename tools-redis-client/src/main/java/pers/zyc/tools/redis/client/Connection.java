@@ -37,8 +37,8 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 		multicaster.setExceptionHandler(new MulticastExceptionHandler() {
 			@Override
 			public Void handleException(Throwable cause, MulticastDetail multicastDetail) {
-				LOGGER.error("Event[{}] multicast error on listener[{}], errorMsg[{}]",
-						multicastDetail.args[0], multicastDetail.listener, cause.getMessage());
+				LOGGER.error(String.format("Multicast error: Event[%s], listener[%s]",
+						multicastDetail.args[0], multicastDetail.listener), cause);
 				return null;
 			}
 		});
@@ -67,9 +67,7 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 
 	@Override
 	public String toString() {
-		return "Connection{" +
-				"channel=" + channel +
-				'}';
+		return "Connection{channel=" + channel + "}";
 	}
 
 	private void publishEvent(ConnectionEvent event) {
@@ -104,6 +102,7 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 				LOGGER.debug("Response received.");
 				publishEvent(new ConnectionEvent.ResponseReceived(this, response));
 			} catch (ResponseIncompleteException ignored) {
+				LOGGER.debug("Response incomplete", ignored);
 			}
 		} catch (Exception e) {
 			publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
