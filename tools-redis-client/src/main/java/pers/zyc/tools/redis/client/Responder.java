@@ -1,6 +1,7 @@
 package pers.zyc.tools.redis.client;
 
 import pers.zyc.tools.event.EventListener;
+import pers.zyc.tools.redis.client.exception.RedisClientException;
 
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -9,14 +10,8 @@ import java.util.concurrent.CountDownLatch;
 /**
  * @author zhangyancheng
  */
-class RequestExecutor implements EventListener<ConnectionEvent> {
-
-	private final ConnectionPool connectionPool;
-	private final ConcurrentMap<Connection, Responder> responderMap = new ConcurrentHashMap<>();
-
-	RequestExecutor(ConnectionPool connectionPool) {
-		this.connectionPool = connectionPool;
-	}
+class Responder implements EventListener<ConnectionEvent> {
+	private final ConcurrentMap<Connection, Promise<?>> respondingMap = new ConcurrentHashMap<>();
 
 	@Override
 	public void onEvent(ConnectionEvent event) {
@@ -36,44 +31,34 @@ class RequestExecutor implements EventListener<ConnectionEvent> {
 				return;
 		}
 
-		final Responder responder = responderMap.remove(event.getSource());
-		if (responder != null) {
-			responder.respond(response);
+		final Promise promise = respondingMap.remove(event.getSource());
+		if (promise != null) {
+			promise.response(response);
 		}
 	}
 
-	private static class Responder extends CountDownLatch {
+	<R> Future<R> respond(final Connection connection, final ResponseCast<R> responseCast) {
+		return new Promise<R>() {
 
-		private Object response;
+			{
+				respondingMap.put(connection, this);
+			}
 
-		Responder() {
-			super(1);
-		}
+			final CountDownLatch responseLatch = new CountDownLatch(1);
 
-		void respond(Object response) {
-			this.response = response;
-			countDown();
-		}
+			Object response;
 
-		Object ask() throws InterruptedException {
-			await();
-			return response;
-		}
-	}
-
-	<R> ResponseFuture<R> execute(Request request, final ResponseCast<R> responseCast) {
-		final Responder responder = new Responder();
-		final Connection connection = connectionPool.getConnection();
-
-		responderMap.put(connection, responder);
-		connection.sendRequest(request);
-
-		return new ResponseFuture<R>() {
+			@Override
+			void response(Object response) {
+				this.response = response;
+				responseLatch.countDown();
+			}
 
 			@Override
 			public R get() {
 				try {
-					Object response = responder.ask();
+
+					responseLatch.await();
 
 					if (response instanceof Throwable) {
 						if (response instanceof RedisClientException) {

@@ -1,4 +1,4 @@
-package pers.zyc.tools.redis.client;
+package pers.zyc.tools.redis.client.exception;
 
 /**
  * @author zhangyancheng

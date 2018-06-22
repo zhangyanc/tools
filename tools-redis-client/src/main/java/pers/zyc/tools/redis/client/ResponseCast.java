@@ -1,5 +1,7 @@
 package pers.zyc.tools.redis.client;
 
+import pers.zyc.tools.redis.client.exception.RedisClientException;
+
 import java.util.*;
 
 /**

@@ -1,7 +1,5 @@
 package pers.zyc.tools.redis.client;
 
-import org.apache.commons.pool2.impl.GenericObjectPoolConfig;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -11,20 +9,8 @@ import java.util.Set;
  */
 public class RedisClient extends AsyncClient implements SyncCommands {
 
-	public RedisClient(String connectStr) throws Exception {
-		super(connectStr);
-	}
-
-	public RedisClient(String connectStr, int workers, GenericObjectPoolConfig poolConfig) throws Exception {
-		super(connectStr, workers, poolConfig);
-	}
-
-	public RedisClient(String connectStr, int timeout, int workers) throws Exception {
-		super(connectStr, timeout, workers);
-	}
-
-	public RedisClient(String connectStr, int connectionTimeout, int requestTimeout, int workers, GenericObjectPoolConfig poolConfig) throws Exception {
-		super(connectStr, connectionTimeout, requestTimeout, workers, poolConfig);
+	public RedisClient(ClientConfig config) {
+		super(config);
 	}
 
 	@Override

@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.bean;
 
-import pers.zyc.tools.redis.client.RedisClientException;
+import pers.zyc.tools.redis.client.exception.RedisClientException;
 import redis.clients.jedis.JedisCommands;
 
 import java.lang.reflect.InvocationHandler;

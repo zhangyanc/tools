@@ -3,7 +3,7 @@ package pers.zyc.tools.redis.client.bean;
 import pers.zyc.retry.BaseRetryPolicy;
 import pers.zyc.retry.RetryFailedException;
 import pers.zyc.retry.RetryLoop;
-import pers.zyc.tools.redis.client.RedisClientException;
+import pers.zyc.tools.redis.client.exception.RedisClientException;
 import redis.clients.jedis.JedisCommands;
 import redis.clients.jedis.exceptions.JedisConnectionException;
 
@@ -72,6 +72,7 @@ public abstract class RetryJedisProxyFactoryBean<J extends JedisCommands> extend
 				}
 			}, retryPolicy);
 		} catch (InterruptedException e) {
+			Thread.currentThread().interrupt();
 			throw new RedisClientException("Retry Interrupted!");
 		} catch (RetryFailedException e) {
 			throw (Exception) e.getCause();
