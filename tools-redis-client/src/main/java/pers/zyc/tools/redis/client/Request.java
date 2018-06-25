@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client;
 
-import pers.zyc.tools.redis.client.util.Util;
+import pers.zyc.tools.redis.client.util.ByteUtil;
 
 import java.util.Arrays;
 import java.util.LinkedList;
@@ -43,7 +43,7 @@ public abstract class Request {
 		byte[] getCommandBytes(String command) {
 			byte[] commandBytes = commandBytesCacheMap.get(command);
 			if (commandBytes == null) {
-				commandBytes = Util.toByteArray(command);
+				commandBytes = ByteUtil.toByteArray(command);
 				commandBytesCacheMap.put(command, commandBytes);
 			}
 			return commandBytes;

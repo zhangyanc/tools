@@ -8,11 +8,13 @@ import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.event.EventListener;
-import pers.zyc.tools.redis.client.util.Promise;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 import pers.zyc.tools.redis.client.request.Auth;
 import pers.zyc.tools.redis.client.request.Ping;
 import pers.zyc.tools.redis.client.request.Quit;
+import pers.zyc.tools.redis.client.request.Select;
+import pers.zyc.tools.redis.client.util.Promise;
+import pers.zyc.tools.utils.TimeMillis;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -32,7 +34,7 @@ class ConnectionPool implements Closeable {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionPool.class);
 
 	private final String host, password;
-	private final int port, connectionTimeout, requestTimeout;
+	private final int port, db, connectionTimeout, requestTimeout;
 
 	private final NetWorkGroup netWorkGroup;
 	private final GenericObjectPool<Connection> pool;
@@ -45,6 +47,7 @@ class ConnectionPool implements Closeable {
 		this.host = config.getHost();
 		this.password = config.getPassword();
 		this.port = config.getPort();
+		this.db = config.getDb();
 		this.connectionTimeout = config.getConnectionTimeout();
 		this.requestTimeout = config.getRequestTimeout();
 
@@ -65,6 +68,10 @@ class ConnectionPool implements Closeable {
 			LOGGER.debug("Retriever: {}", event);
 
 			Connection connection = event.getSource();
+			if (!connection.pooled) {
+				return;
+			}
+
 			try {
 				switch (event.eventType) {
 					case REQUEST_TIMEOUT:
@@ -170,19 +177,23 @@ class ConnectionPool implements Closeable {
 
 			connection.addListener(responder);
 			connection.addListener(netWorkerHelper);
+			connection.addListener(connectionRetriever);
 
 			if (password != null && !password.isEmpty()) {
 				connection.send(new Auth(password), STRING).get();
 			}
+			if (db > 0) {
+				connection.send(new Select(db), STRING).get();
+			}
 
-			connection.addListener(connectionRetriever);
-
+			connection.pooled = true;
 			return new DefaultPooledObject<>(connection);
 		}
 
 		@Override
 		public void destroyObject(PooledObject<Connection> p) throws Exception {
 			Connection connection = p.getObject();
+			connection.pooled = false;
 			if (connection.channel.isConnected()) {
 				try {
 					connection.send(new Quit(), STRING).get();
@@ -195,7 +206,13 @@ class ConnectionPool implements Closeable {
 		@Override
 		public boolean validateObject(PooledObject<Connection> p) {
 			Connection connection = p.getObject();
-			return connection.channel.isConnected() && connection.send(new Ping(), STRING).get().equals("PONG");
+			if (connection.channel.isConnected()) {
+				long ping = TimeMillis.get();
+				boolean valid = connection.send(new Ping(), STRING).get().equals("PONG");
+				LOGGER.debug("PING-PONG expend {} ms, {} validate {}", TimeMillis.get() - ping, connection, valid);
+				return valid;
+			}
+			return false;
 		}
 
 		@Override

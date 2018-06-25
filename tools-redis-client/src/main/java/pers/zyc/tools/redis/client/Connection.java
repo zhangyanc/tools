@@ -3,11 +3,11 @@ package pers.zyc.tools.redis.client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.event.*;
+import pers.zyc.tools.redis.client.exception.RedisClientException;
+import pers.zyc.tools.redis.client.exception.ResponseIncompleteException;
 import pers.zyc.tools.redis.client.util.Future;
 import pers.zyc.tools.redis.client.util.Promise;
 import pers.zyc.tools.redis.client.util.ResponsePromise;
-import pers.zyc.tools.redis.client.exception.RedisClientException;
-import pers.zyc.tools.redis.client.exception.ResponseIncompleteException;
 import pers.zyc.tools.utils.TimeMillis;
 import sun.nio.ch.DirectBuffer;
 
@@ -18,26 +18,37 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.Semaphore;
 
-import static pers.zyc.tools.redis.client.util.Util.*;
+import static pers.zyc.tools.redis.client.util.ByteUtil.*;
 
 /**
  * @author zhangyancheng
  */
-class Connection implements Closeable, EventSource<ConnectionEvent> {
+class Connection implements EventSource<ConnectionEvent>, Closeable {
 	private static final Logger LOGGER = LoggerFactory.getLogger(Connection.class);
 	private static final int DEFAULT_BUFFER_SIZE = 8192;
 
 	final int id;
 	final SocketChannel channel;
+	boolean pooled = false;
 
 	private final int requestTimeout;
-	private final Semaphore semaphore = new Semaphore(0);
 	private final ByteBuffer buffer = ByteBuffer.allocateDirect(DEFAULT_BUFFER_SIZE);
 	private final ResponseReceiveBuffer receiveBuffer = new ResponseReceiveBuffer(DEFAULT_BUFFER_SIZE);
-	private final Multicaster<EventListener<ConnectionEvent>>
-			multicaster = new Multicaster<EventListener<ConnectionEvent>>() {};
+	private final Multicaster<EventListener<ConnectionEvent>> multicaster =
+			new Multicaster<EventListener<ConnectionEvent>>() {
+		{
+			setExceptionHandler(new MulticastExceptionHandler() {
+				@Override
+				public Void handleException(Throwable cause, MulticastDetail multicastDetail) {
+					LOGGER.error(String.format("Multicast error: Event[%s], listener[%s]",
+							multicastDetail.args[0], multicastDetail.listener), cause);
+					return null;
+				}
+			});
+		}
+	};
+
 
 	private Request request;
 	private long timeoutLine;
@@ -46,15 +57,13 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 		this.id = id;
 		this.channel = channel;
 		this.requestTimeout = requestTimeout;
+	}
 
-		multicaster.setExceptionHandler(new MulticastExceptionHandler() {
-			@Override
-			public Void handleException(Throwable cause, MulticastDetail multicastDetail) {
-				LOGGER.error(String.format("Multicast error: Event[%s], listener[%s]",
-						multicastDetail.args[0], multicastDetail.listener), cause);
-				return null;
-			}
-		});
+	private static void closeChannel(SocketChannel channel) {
+		try {
+			channel.close();
+		} catch (IOException ignored) {
+		}
 	}
 
 	@Override
@@ -69,10 +78,7 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 
 	@Override
 	public void close() {
-		try {
-			channel.close();
-		} catch (IOException ignored) {
-		}
+		closeChannel(channel);
 		((DirectBuffer) buffer).cleaner().clean();
 		LOGGER.debug("Connection closed.");
 		publishEvent(new ConnectionEvent.ConnectionClosed(this));
@@ -89,11 +95,11 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 
 	<R> Future<R> send(Request request, final ResponseCast<R> responseCast) {
 		this.request = request;
+		LOGGER.debug("Request set.");
 
 		Promise<R> promise = new ResponsePromise<>(responseCast);
-
-		LOGGER.debug("Request set.");
 		publishEvent(new ConnectionEvent.RequestSet(this, promise));
+
 		return promise;
 	}
 
@@ -319,7 +325,7 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 		while (buffer.get() != CR) {
 			len++;
 		}
-		//assert buffer.get() == LF;
+		byte cr = buffer.get(); assert cr == CR;
 		buffer.reset();
 
 		return getContentByte(buffer, len);
@@ -332,8 +338,7 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 	}
 
 	private static void skipCRLF(ByteBuffer buffer) {
-		buffer.get();//assert buffer.get() == CR
-		buffer.get();//assert buffer.get() == LF
+		byte cr = buffer.get(), lf = buffer.get(); assert cr == CR; assert lf == LF;
 	}
 
 	private static class ResponseReceiveBuffer extends ByteArrayOutputStream {

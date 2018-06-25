@@ -1,7 +1,7 @@
 package pers.zyc.tools.redis.client.request;
 
 import pers.zyc.tools.redis.client.Request;
-import pers.zyc.tools.redis.client.util.Util;
+import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
  * @author zhangyancheng
@@ -10,7 +10,7 @@ public class Select extends Request {
 
 	public Select(int index) {
 		super(
-				Util.toByteArray(index)
+				ByteUtil.toByteArray(index)
 		);
 	}
 }

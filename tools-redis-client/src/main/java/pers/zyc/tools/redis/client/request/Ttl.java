@@ -1,7 +1,7 @@
 package pers.zyc.tools.redis.client.request;
 
 import pers.zyc.tools.redis.client.Request;
-import pers.zyc.tools.redis.client.util.Util;
+import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
  * @author zhangyancheng
@@ -10,7 +10,7 @@ public class Ttl extends Request {
 
 	public Ttl(String key) {
 		super(
-				Util.toByteArray(key)
+				ByteUtil.toByteArray(key)
 		);
 	}
 }

@@ -1,7 +1,7 @@
 package pers.zyc.tools.redis.client;
 
 import pers.zyc.tools.redis.client.exception.RedisClientException;
-import pers.zyc.tools.redis.client.util.Util;
+import pers.zyc.tools.redis.client.util.ByteUtil;
 
 import java.util.*;
 
@@ -25,7 +25,7 @@ public abstract class ResponseCast<R> {
 			}
 
 			if (response instanceof byte[]) {
-				return Util.bytesToString((byte[]) response);
+				return ByteUtil.bytesToString((byte[]) response);
 			}
 
 			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to String");
@@ -69,7 +69,7 @@ public abstract class ResponseCast<R> {
 			}
 
 			if (response instanceof byte[]) {
-				Util.byteToDouble((byte[]) response);
+				ByteUtil.byteToDouble((byte[]) response);
 			}
 
 			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to Double");
@@ -90,7 +90,7 @@ public abstract class ResponseCast<R> {
 
 				List<String> result = new ArrayList<>(byteRespList.size());
 				for (byte[] br : byteRespList) {
-					result.add(br == null ? null : Util.bytesToString(br));
+					result.add(br == null ? null : ByteUtil.bytesToString(br));
 				}
 
 				return Collections.unmodifiableList(result);
@@ -114,7 +114,7 @@ public abstract class ResponseCast<R> {
 
 				Set<String> result = new HashSet<>(byteRespList.size());
 				for (byte[] br : byteRespList) {
-					result.add(br == null ? null : Util.bytesToString(br));
+					result.add(br == null ? null : ByteUtil.bytesToString(br));
 				}
 
 				return Collections.unmodifiableSet(result);

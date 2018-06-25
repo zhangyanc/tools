@@ -1,7 +1,7 @@
 package pers.zyc.tools.redis.client.request;
 
 import pers.zyc.tools.redis.client.Request;
-import pers.zyc.tools.redis.client.util.Util;
+import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
  * @author zhangyancheng
@@ -10,25 +10,25 @@ public class Set extends Request {
 
 	public Set(String key, String value) {
 		super(
-				Util.toByteArray(key),
-				Util.toByteArray(value)
+				ByteUtil.toByteArray(key),
+				ByteUtil.toByteArray(value)
 		);
 	}
 
 	public Set(String key, String value, String nxxx, String expx, long time) {
 		super(
-				Util.toByteArray(key),
-				Util.toByteArray(value),
+				ByteUtil.toByteArray(key),
+				ByteUtil.toByteArray(value),
 				NXXX.valueOf(nxxx.toUpperCase()).BS,
 				EXPX.valueOf(expx.toUpperCase()).BS,
-				Util.toByteArray(time)
+				ByteUtil.toByteArray(time)
 		);
 	}
 
 	public Set(String key, String value, String nxxx) {
 		super(
-				Util.toByteArray(key),
-				Util.toByteArray(value),
+				ByteUtil.toByteArray(key),
+				ByteUtil.toByteArray(value),
 				NXXX.valueOf(nxxx.toUpperCase()).BS
 		);
 	}
@@ -40,7 +40,7 @@ public class Set extends Request {
 		final byte[] BS;
 
 		NXXX() {
-			this.BS = Util.toByteArray(name());
+			this.BS = ByteUtil.toByteArray(name());
 		}
 	}
 
@@ -51,7 +51,7 @@ public class Set extends Request {
 		final byte[] BS;
 
 		EXPX() {
-			this.BS = Util.toByteArray(name());
+			this.BS = ByteUtil.toByteArray(name());
 		}
 	}
 }

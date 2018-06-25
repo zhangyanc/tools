@@ -1,7 +1,7 @@
 package pers.zyc.tools.redis.client.request;
 
 import pers.zyc.tools.redis.client.Request;
-import pers.zyc.tools.redis.client.util.Util;
+import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
  * @author zhangyancheng
@@ -9,9 +9,9 @@ import pers.zyc.tools.redis.client.util.Util;
 public class HMGet extends Request {
 
 	public HMGet(String key, String... fields) {
-		parts.add(Util.toByteArray(key));
+		parts.add(ByteUtil.toByteArray(key));
 		for (String field : fields) {
-			parts.add(Util.toByteArray(field));
+			parts.add(ByteUtil.toByteArray(field));
 		}
 	}
 }
