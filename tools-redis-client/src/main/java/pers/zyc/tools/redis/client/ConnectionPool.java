@@ -8,37 +8,43 @@ import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.event.EventListener;
+import pers.zyc.tools.redis.client.util.Promise;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 import pers.zyc.tools.redis.client.request.Auth;
-import pers.zyc.tools.redis.client.request.Select;
+import pers.zyc.tools.redis.client.request.Ping;
+import pers.zyc.tools.redis.client.request.Quit;
 
 import java.io.Closeable;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.channels.SocketChannel;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static pers.zyc.tools.redis.client.ResponseCast.STRING;
 
 /**
  * @author zhangyancheng
  */
-class ConnectionPool implements EventListener<ConnectionEvent>, Closeable {
-
+class ConnectionPool implements Closeable {
 	private static final Logger LOGGER = LoggerFactory.getLogger(ConnectionPool.class);
 
 	private final String host, password;
-	private final int port, db, connectionTimeout, requestTimeout;
+	private final int port, connectionTimeout, requestTimeout;
 
 	private final NetWorkGroup netWorkGroup;
 	private final GenericObjectPool<Connection> pool;
+
 	private final Responder responder = new Responder();
+	private final NetWorkerHelper netWorkerHelper = new NetWorkerHelper();
+	private final ConnectionRetriever connectionRetriever = new ConnectionRetriever();
 
 	ConnectionPool(ClientConfig config) {
 		this.host = config.getHost();
 		this.password = config.getPassword();
 		this.port = config.getPort();
-		this.db = config.getDb();
 		this.connectionTimeout = config.getConnectionTimeout();
 		this.requestTimeout = config.getRequestTimeout();
 
@@ -52,23 +58,86 @@ class ConnectionPool implements EventListener<ConnectionEvent>, Closeable {
 		});
 	}
 
-	@Override
-	public void onEvent(ConnectionEvent event) {
-		Connection connection = event.getSource();
-		try {
+	private class ConnectionRetriever implements EventListener<ConnectionEvent> {
+
+		@Override
+		public void onEvent(ConnectionEvent event) {
+			LOGGER.debug("Retriever: {}", event);
+
+			Connection connection = event.getSource();
+			try {
+				switch (event.eventType) {
+					case REQUEST_TIMEOUT:
+					case EXCEPTION_CAUGHT:
+						pool.invalidateObject(connection);
+						break;
+					case RESPONSE_RECEIVED:
+						pool.returnObject(connection);
+						break;
+				}
+			} catch (Exception e) {
+				LOGGER.error("Connection recycle error", e);
+			}
+		}
+	}
+
+	private class Responder implements EventListener<ConnectionEvent> {
+
+		private final ConcurrentMap<Connection, Promise<?>> respondingMap = new ConcurrentHashMap<>();
+
+		@Override
+		public void onEvent(ConnectionEvent event) {
+			LOGGER.debug("Responder: {}", event);
+
+			final Object response;
 			switch (event.eventType) {
-				case REQUEST_TIMEOUT:
-				case EXCEPTION_CAUGHT:
-					pool.invalidateObject(connection);
+				case REQUEST_SET:
+					Promise<?> promise = (Promise<?>) event.payload();
+					respondingMap.put(event.getSource(), promise);
+					return;
+				case CONNECTION_CLOSED:
+					response = new RedisClientException("Connection closed!");
 					break;
+				case REQUEST_TIMEOUT:
+					response = new RedisClientException("Request timeout!");
+					break;
+				case EXCEPTION_CAUGHT:
 				case RESPONSE_RECEIVED:
-					pool.returnObject(connection);
+					response = event.payload();
 					break;
 				default:
-					LOGGER.debug("OnEvent: {}", event);
+					return;
 			}
-		} catch (Exception e) {
-			LOGGER.error("Connection recycle error", e);
+
+			final Promise promise = respondingMap.remove(event.getSource());
+			if (promise != null) {
+				promise.response(response);
+			}
+		}
+	}
+
+	private class NetWorkerHelper implements EventListener<ConnectionEvent> {
+
+		@Override
+		public void onEvent(ConnectionEvent event) {
+			LOGGER.debug("Helper: {}", event);
+
+			Connection connection = event.getSource();
+			NetWorker netWorker = netWorkGroup.getNetWorker(connection.id);
+
+			switch (event.eventType) {
+				case REQUEST_SET:
+					netWorker.enableWrite(connection);
+					break;
+				case REQUEST_SEND:
+					netWorker.disableWrite(connection);
+					break;
+				case RESPONSE_RECEIVED:
+				case CONNECTION_CLOSED:
+				case EXCEPTION_CAUGHT:
+					netWorker.finishRequest(connection);
+					break;
+			}
 		}
 	}
 
@@ -86,44 +155,47 @@ class ConnectionPool implements EventListener<ConnectionEvent>, Closeable {
 		}
 	}
 
-	private Connection createConnection(SocketChannel channel) throws IOException {
-		Connection connection = new Connection(channel, responder, requestTimeout);
-
-		netWorkGroup.register(connection);
-
-		if (password != null && !password.isEmpty()) {
-			connection.send(new Auth(password), STRING).get();
-		}
-		if (db > 0) {
-			connection.send(new Select(db), STRING).get();
-		}
-
-		connection.addListener(this);
-		return connection;
-	}
-
 	private class ConnectionFactory implements PooledObjectFactory<Connection> {
+
+		private final AtomicInteger connectionIds = new AtomicInteger();
 
 		@Override
 		public PooledObject<Connection> makeObject() throws Exception {
 			SocketChannel channel = createChannel(host, port, connectionTimeout);
-			return new DefaultPooledObject<>(createConnection(channel));
+
+			int connId = connectionIds.getAndIncrement();
+			Connection connection = new Connection(connId, channel, requestTimeout);
+
+			netWorkGroup.getNetWorker(connId).register(connection);
+
+			connection.addListener(responder);
+			connection.addListener(netWorkerHelper);
+
+			if (password != null && !password.isEmpty()) {
+				connection.send(new Auth(password), STRING).get();
+			}
+
+			connection.addListener(connectionRetriever);
+
+			return new DefaultPooledObject<>(connection);
 		}
 
 		@Override
 		public void destroyObject(PooledObject<Connection> p) throws Exception {
 			Connection connection = p.getObject();
-			if (connection.isConnected()) {
-				//TODO quit and close
-				connection.close();
+			if (connection.channel.isConnected()) {
+				try {
+					connection.send(new Quit(), STRING).get();
+				} catch (Exception ignored) {
+				}
 			}
 			connection.close();
 		}
 
 		@Override
 		public boolean validateObject(PooledObject<Connection> p) {
-			//TODO PING-PONG
-			return p.getObject().isConnected();
+			Connection connection = p.getObject();
+			return connection.channel.isConnected() && connection.send(new Ping(), STRING).get().equals("PONG");
 		}
 
 		@Override

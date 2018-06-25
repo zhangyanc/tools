@@ -1,5 +1,7 @@
 package pers.zyc.tools.redis.client;
 
+import pers.zyc.tools.redis.client.util.Future;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;

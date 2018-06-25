@@ -1,20 +1,21 @@
 package pers.zyc.tools.redis.client;
 
 import pers.zyc.tools.redis.client.exception.RedisClientException;
+import pers.zyc.tools.redis.client.util.Util;
 
 import java.util.*;
 
 /**
  * @author zhangyancheng
  */
-abstract class ResponseCast<R> {
+public abstract class ResponseCast<R> {
 
-	abstract R cast(Object response);
+	public abstract R cast(Object response);
 
 	static final ResponseCast<String> STRING = new ResponseCast<String>() {
 
 		@Override
-		String cast(Object response) {
+		public String cast(Object response) {
 			if (response == null) {
 				return null;
 			}
@@ -34,7 +35,7 @@ abstract class ResponseCast<R> {
 	static final ResponseCast<Long> LONG = new ResponseCast<Long>() {
 
 		@Override
-		Long cast(Object response) {
+		public Long cast(Object response) {
 			if (response instanceof String) {
 				throw new RedisClientException((String) response);
 			}
@@ -50,7 +51,7 @@ abstract class ResponseCast<R> {
 	static final ResponseCast<Boolean> BOOLEAN = new ResponseCast<Boolean>() {
 
 		@Override
-		Boolean cast(Object response) {
+		public Boolean cast(Object response) {
 			if (response instanceof Long) {
 				return (Long) response == 1;
 			}
@@ -62,7 +63,7 @@ abstract class ResponseCast<R> {
 	static final ResponseCast<Double> DOUBLE = new ResponseCast<Double>() {
 
 		@Override
-		Double cast(Object response) {
+		public Double cast(Object response) {
 			if (response == null) {
 				return null;
 			}
@@ -79,7 +80,7 @@ abstract class ResponseCast<R> {
 
 		@Override
 		@SuppressWarnings("unchecked")
-		List<String> cast(Object response) {
+		public List<String> cast(Object response) {
 			if (response == null) {
 				return Collections.emptyList();
 			}
@@ -103,7 +104,7 @@ abstract class ResponseCast<R> {
 
 		@Override
 		@SuppressWarnings("unchecked")
-		Set<String> cast(Object response) {
+		public Set<String> cast(Object response) {
 			if (response == null) {
 				return Collections.emptySet();
 			}
@@ -126,7 +127,7 @@ abstract class ResponseCast<R> {
 	static final ResponseCast<Map<String, String>> STRING_MAP = new ResponseCast<Map<String, String>>() {
 
 		@Override
-		Map<String, String> cast(Object response) {
+		public Map<String, String> cast(Object response) {
 			return null;
 		}
 	};
@@ -134,7 +135,7 @@ abstract class ResponseCast<R> {
 	static final ResponseCast<List<Long>> LONG_LIST = new ResponseCast<List<Long>>() {
 
 		@Override
-		List<Long> cast(Object response) {
+		public List<Long> cast(Object response) {
 			return null;
 		}
 	};

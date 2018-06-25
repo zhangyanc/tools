@@ -3,6 +3,9 @@ package pers.zyc.tools.redis.client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.event.*;
+import pers.zyc.tools.redis.client.util.Future;
+import pers.zyc.tools.redis.client.util.Promise;
+import pers.zyc.tools.redis.client.util.ResponsePromise;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 import pers.zyc.tools.redis.client.exception.ResponseIncompleteException;
 import pers.zyc.tools.utils.TimeMillis;
@@ -15,8 +18,9 @@ import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Semaphore;
 
-import static pers.zyc.tools.redis.client.Util.*;
+import static pers.zyc.tools.redis.client.util.Util.*;
 
 /**
  * @author zhangyancheng
@@ -25,21 +29,22 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 	private static final Logger LOGGER = LoggerFactory.getLogger(Connection.class);
 	private static final int DEFAULT_BUFFER_SIZE = 8192;
 
+	final int id;
 	final SocketChannel channel;
 
 	private final int requestTimeout;
-	private final Responder responder;
+	private final Semaphore semaphore = new Semaphore(0);
 	private final ByteBuffer buffer = ByteBuffer.allocateDirect(DEFAULT_BUFFER_SIZE);
 	private final ResponseReceiveBuffer receiveBuffer = new ResponseReceiveBuffer(DEFAULT_BUFFER_SIZE);
 	private final Multicaster<EventListener<ConnectionEvent>>
 			multicaster = new Multicaster<EventListener<ConnectionEvent>>() {};
 
 	private Request request;
-	private long deadLine;
+	private long timeoutLine;
 
-	Connection(SocketChannel channel, Responder responder, int requestTimeout) {
+	Connection(int id, SocketChannel channel, int requestTimeout) {
+		this.id = id;
 		this.channel = channel;
-		this.responder = responder;
 		this.requestTimeout = requestTimeout;
 
 		multicaster.setExceptionHandler(new MulticastExceptionHandler() {
@@ -50,8 +55,6 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 				return null;
 			}
 		});
-
-		addListener(responder);
 	}
 
 	@Override
@@ -77,29 +80,28 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 
 	@Override
 	public String toString() {
-		return "Connection{channel=" + channel + "}";
+		return "Connection{id=" + id + ", channel=" + channel + "}";
 	}
 
 	private void publishEvent(ConnectionEvent event) {
 		multicaster.listeners.onEvent(event);
 	}
 
-	boolean isConnected() {
-		return channel.isConnected();
-	}
-
-	<R> Future<R> send(Request request, ResponseCast<R> responseCast) {
+	<R> Future<R> send(Request request, final ResponseCast<R> responseCast) {
 		this.request = request;
+
+		Promise<R> promise = new ResponsePromise<>(responseCast);
+
 		LOGGER.debug("Request set.");
-		publishEvent(new ConnectionEvent.RequestSet(this));
-		return responder.respond(this, responseCast);
+		publishEvent(new ConnectionEvent.RequestSet(this, promise));
+		return promise;
 	}
 
 	void write() {
 		try {
 			encodeAndWrite();
 			LOGGER.debug("Request send.");
-			deadLine = TimeMillis.get() + requestTimeout;
+			timeoutLine = TimeMillis.get() + requestTimeout;
 			publishEvent(new ConnectionEvent.RequestSend(this));
 		} catch (Exception e) {
 			publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
@@ -122,7 +124,7 @@ class Connection implements Closeable, EventSource<ConnectionEvent> {
 	}
 
 	boolean checkTimeout() {
-		if (deadLine <= TimeMillis.get()) {
+		if (timeoutLine <= TimeMillis.get()) {
 			LOGGER.debug("Request timeout.");
 			publishEvent(new ConnectionEvent.RequestTimeout(this));
 			return true;

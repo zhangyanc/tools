@@ -2,7 +2,8 @@ package pers.zyc.tools.redis.client;
 
 import java.io.Closeable;
 import java.io.IOException;
-import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 /**
  * @author zhangyancheng
@@ -10,7 +11,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 class NetWorkGroup implements Closeable {
 
 	private final NetWorker[] netWorkers;
-	private final AtomicInteger chooseIndexer = new AtomicInteger();
+	private final ConcurrentMap<Integer, NetWorker> netWorkerMap = new ConcurrentHashMap<>();
 
 	NetWorkGroup(int netWorkers) {
 		if (netWorkers <= 0) {
@@ -19,7 +20,7 @@ class NetWorkGroup implements Closeable {
 		this.netWorkers = new NetWorker[netWorkers];
 		try {
 			for (int i = 0; i < netWorkers; i++) {
-				NetWorker netWorker = new NetWorker(1);
+				NetWorker netWorker = new NetWorker();
 				netWorker.start();
 				this.netWorkers[i++] = netWorker;
 			}
@@ -42,11 +43,12 @@ class NetWorkGroup implements Closeable {
 		closeWorkers(this.netWorkers);
 	}
 
-	void register(Connection connection) throws IOException {
-		next().register(connection);
-	}
-
-	private NetWorker next() {
-		return netWorkers[chooseIndexer.getAndIncrement() % netWorkers.length];
+	NetWorker getNetWorker(int connId) {
+		NetWorker netWorker = netWorkerMap.get(connId);
+		if (netWorker == null) {
+			netWorker = netWorkers[connId % netWorkers.length];
+			netWorkerMap.put(connId, netWorker);
+		}
+		return netWorker;
 	}
 }

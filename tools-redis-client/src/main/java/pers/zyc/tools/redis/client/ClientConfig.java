@@ -9,7 +9,6 @@ public class ClientConfig {
 	private String host;
 	private String password;
 	private int port;
-	private int db;
 	private int connectionTimeout;
 	private int requestTimeout;
 	private int netWorkers;
@@ -37,14 +36,6 @@ public class ClientConfig {
 
 	public void setPort(int port) {
 		this.port = port;
-	}
-
-	public int getDb() {
-		return db;
-	}
-
-	public void setDb(int db) {
-		this.db = db;
 	}
 
 	public int getConnectionTimeout() {

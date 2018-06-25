@@ -1,6 +1,7 @@
 package pers.zyc.tools.redis.client;
 
 import pers.zyc.tools.event.SourcedEvent;
+import pers.zyc.tools.redis.client.util.Promise;
 
 /**
  * @author zhangyancheng
@@ -41,8 +42,9 @@ class ConnectionEvent extends SourcedEvent<Connection> {
 
 	static class RequestSet extends ConnectionEvent {
 
-		RequestSet(Connection source) {
+		RequestSet(Connection source, Promise<?> promise) {
 			super(source, EventType.REQUEST_SET);
+			payload(promise);
 		}
 	}
 

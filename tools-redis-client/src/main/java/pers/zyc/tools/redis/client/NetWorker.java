@@ -2,11 +2,11 @@ package pers.zyc.tools.redis.client;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.lifecycle.PeriodicService;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 
 import java.io.IOException;
+import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.util.Iterator;
@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * @author zhangyancheng
  */
-class NetWorker extends PeriodicService implements EventListener<ConnectionEvent> {
+class NetWorker extends PeriodicService {
 	private static final Logger LOGGER = LoggerFactory.getLogger(NetWorker.class);
 
 	private final Selector selector = Selector.open();
@@ -28,37 +28,18 @@ class NetWorker extends PeriodicService implements EventListener<ConnectionEvent
 	}
 
 	@Override
-	protected void doStop() throws Exception {
-		super.doStop();
-		selector.close();
+	protected void onInterrupt() {
+		try {
+			selector.close();
+		} catch (IOException e) {
+			LOGGER.warn("Close selector error!", e);
+		}
 	}
 
 	@Override
 	public void uncaughtException(Thread t, Throwable e) {
 		LOGGER.error("Uncaught exception", e);
-		super.uncaughtException(t, e);
-	}
-
-	@Override
-	public void onEvent(ConnectionEvent event) {
-		Connection connection = event.getSource();
-		switch (event.eventType) {
-			case REQUEST_SET:
-				enableWrite(connection);
-				wakeUp();
-				break;
-			case REQUEST_SEND:
-				disableWrite(connection);
-				timeoutCheckConnections.add(connection);
-				break;
-			case RESPONSE_RECEIVED:
-			case CONNECTION_CLOSED:
-			case EXCEPTION_CAUGHT:
-				timeoutCheckConnections.remove(connection);
-				break;
-			default:
-				LOGGER.debug("OnEvent: {}", event);
-		}
+		stop();
 	}
 
 	private SelectionKey keyFor(Connection connection) {
@@ -75,22 +56,31 @@ class NetWorker extends PeriodicService implements EventListener<ConnectionEvent
 	}
 
 	void register(Connection connection) throws IOException {
-		synchronized (this) {
+		serviceLock.lock();
+		try {
 			wakeUp();
 			connection.channel.register(selector, SelectionKey.OP_READ, connection);
+		} finally {
+			serviceLock.unlock();
 		}
-		connection.addListener(this);
-		LOGGER.debug("{} registered.", connection);
 	}
 
-	private void enableWrite(Connection connection) {
+	void enableWrite(Connection connection) {
 		SelectionKey sk = keyFor(connection);
 		sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
+
+		wakeUp();
 	}
 
-	private void disableWrite(Connection connection) {
+	void disableWrite(Connection connection) {
 		SelectionKey sk = keyFor(connection);
 		sk.interestOps(sk.interestOps() & (~SelectionKey.OP_WRITE));
+
+		timeoutCheckConnections.add(connection);
+	}
+
+	void finishRequest(Connection connection) {
+		timeoutCheckConnections.remove(connection);
 	}
 
 	private void wakeUp() {
@@ -111,8 +101,20 @@ class NetWorker extends PeriodicService implements EventListener<ConnectionEvent
 			if (wakeUp.compareAndSet(true, false)) {
 				selector.selectNow();
 			}
-		} catch (IOException e) {
+		} catch (ClosedSelectorException ignore) {
+		} catch (Exception e) {
 			throw new RedisClientException(e);
+		}
+
+		checkRunning();
+	}
+
+	private Set<SelectionKey> selectKey() throws InterruptedException {
+		serviceLock.lockInterruptibly();
+		try {
+			return selector.selectedKeys();
+		} finally {
+			serviceLock.unlock();
 		}
 	}
 
@@ -120,14 +122,7 @@ class NetWorker extends PeriodicService implements EventListener<ConnectionEvent
 	protected void execute() throws InterruptedException {
 		doSelect();
 
-		if (!isRunning()) {
-			return;
-		}
-
-		Set<SelectionKey> selected;
-		synchronized (this) {
-			selected = selector.selectedKeys();
-		}
+		Set<SelectionKey> selected = selectKey();
 
 		if (selected.isEmpty()) {
 			checkTimeoutConnection();

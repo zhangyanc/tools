@@ -1,5 +1,6 @@
 package pers.zyc.tools.redis.client;
 
+import pers.zyc.tools.redis.client.util.Future;
 import pers.zyc.tools.redis.client.request.*;
 
 import java.io.Closeable;
@@ -13,10 +14,6 @@ import static pers.zyc.tools.redis.client.ResponseCast.*;
  * @author zhangyancheng
  */
 public class AsyncClient implements AsyncCommands, Closeable {
-	public static final int DEFAULT_CONNECTION_TIMEOUT = -1;
-	public static final int DEFAULT_REQUEST_TIMEOUT = -1;
-	public static final int DEFAULT_NET_WORKERS = 1;
-
 	private final ConnectionPool connectionPool;
 
 	public AsyncClient(ClientConfig config) {
