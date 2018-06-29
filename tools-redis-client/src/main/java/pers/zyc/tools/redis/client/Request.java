@@ -37,6 +37,11 @@ public abstract class Request {
 		return parts.poll();
 	}
 
+	@Override
+	public String toString() {
+		return "Request{" + getCommand() + "}";
+	}
+
 	private static class CommandBytesCache {
 		ConcurrentMap<String, byte[]> commandBytesCacheMap = new ConcurrentHashMap<>();
 

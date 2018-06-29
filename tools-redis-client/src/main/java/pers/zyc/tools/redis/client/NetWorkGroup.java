@@ -1,5 +1,7 @@
 package pers.zyc.tools.redis.client;
 
+import pers.zyc.tools.redis.client.exception.RedisClientException;
+
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
@@ -26,7 +28,7 @@ class NetWorkGroup implements Closeable {
 			}
 		} catch (IOException e) {
 			closeWorkers(this.netWorkers);
-			throw new IllegalStateException("Worker start error!");
+			throw new RedisClientException("Worker start error!");
 		}
 	}
 

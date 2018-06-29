@@ -81,6 +81,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		closeChannel(channel);
 		((DirectBuffer) buffer).cleaner().clean();
 		LOGGER.debug("Connection closed.");
+		pooled = false;
 		publishEvent(new ConnectionEvent.ConnectionClosed(this));
 	}
 
@@ -95,7 +96,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 	<R> Future<R> send(Request request, final ResponseCast<R> responseCast) {
 		this.request = request;
-		LOGGER.debug("Request set.");
+		LOGGER.debug("{} set.", request);
 
 		Promise<R> promise = new ResponsePromise<>(responseCast);
 		publishEvent(new ConnectionEvent.RequestSet(this, promise));
@@ -106,7 +107,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	void write() {
 		try {
 			encodeAndWrite();
-			LOGGER.debug("Request send.");
+			LOGGER.debug("{} send.", this.request);
 			timeoutLine = TimeMillis.get() + requestTimeout;
 			publishEvent(new ConnectionEvent.RequestSend(this));
 		} catch (Exception e) {
@@ -119,7 +120,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 			try {
 				Object response = readAndDecode();
 				receiveBuffer.reset();
-				LOGGER.debug("Response received.");
+				LOGGER.debug("{} Response received.", this.request);
 				publishEvent(new ConnectionEvent.ResponseReceived(this, response));
 			} catch (ResponseIncompleteException ignored) {
 				LOGGER.debug("Response incomplete", ignored);
@@ -131,7 +132,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 	boolean checkTimeout() {
 		if (timeoutLine <= TimeMillis.get()) {
-			LOGGER.debug("Request timeout.");
+			LOGGER.debug("{} timeout.", this.request);
 			publishEvent(new ConnectionEvent.RequestTimeout(this));
 			return true;
 		}
@@ -278,7 +279,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		skipCRLF(buffer);
 
 		while (buffer.hasRemaining()) {
-			buffer.get();//assert buffer.get() == DOLLAR;
+			byte $ = buffer.get(); assert $ == DOLLAR;
 			ret.add(readPart(buffer));
 		}
 
@@ -325,7 +326,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		while (buffer.get() != CR) {
 			len++;
 		}
-		byte cr = buffer.get(); assert cr == CR;
+		byte cr = buffer.get(); assert cr == LF;
 		buffer.reset();
 
 		return getContentByte(buffer, len);
@@ -338,7 +339,8 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	}
 
 	private static void skipCRLF(ByteBuffer buffer) {
-		byte cr = buffer.get(), lf = buffer.get(); assert cr == CR; assert lf == LF;
+		byte cr = buffer.get(), lf = buffer.get();
+		assert cr == CR; assert lf == LF;
 	}
 
 	private static class ResponseReceiveBuffer extends ByteArrayOutputStream {

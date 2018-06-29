@@ -21,8 +21,7 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.SocketAddress;
 import java.nio.channels.SocketChannel;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static pers.zyc.tools.redis.client.ResponseCast.STRING;
@@ -43,6 +42,15 @@ class ConnectionPool implements Closeable {
 	private final NetWorkerHelper netWorkerHelper = new NetWorkerHelper();
 	private final ConnectionRetriever connectionRetriever = new ConnectionRetriever();
 
+	private final ConcurrentMap<Connection, Promise<?>> respondingMap = new ConcurrentHashMap<>();
+	private final ExecutorService retrieverExecutor = Executors.newSingleThreadExecutor(new ThreadFactory() {
+
+		@Override
+		public Thread newThread(Runnable r) {
+			return new Thread(r, "ConnectionRetriever");
+		}
+	});
+
 	ConnectionPool(ClientConfig config) {
 		this.host = config.getHost();
 		this.password = config.getPassword();
@@ -52,45 +60,83 @@ class ConnectionPool implements Closeable {
 		this.requestTimeout = config.getRequestTimeout();
 
 		netWorkGroup = new NetWorkGroup(config.getNetWorkers());
-		pool = new GenericObjectPool<>(new ConnectionFactory(), config.getPoolConfig());
+		pool = new GenericObjectPool<>(new ConnectionFactory(), config.createPoolConfig());
+		if (config.isNeedPreparePool()) {
+			try {
+				pool.preparePool();
+			} catch (Exception e) {
+				throw new RedisClientException("Pool prepare error", e);
+			}
+		}
 		pool.setSwallowedExceptionListener(new SwallowedExceptionListener() {
 			@Override
 			public void onSwallowException(Exception e) {
-				LOGGER.error("Pool exception caught", e);
+				LOGGER.error("Pool exception swallowed", e);
 			}
 		});
+	}
+
+	Connection getConnection() {
+		try {
+			return pool.borrowObject();
+		} catch (Exception e) {
+			throw new RedisClientException("Could not get a connection from the pool", e);
+		}
+	}
+
+	@Override
+	public void close() {
+		for (Runnable r : retrieverExecutor.shutdownNow()) {
+			r.run();
+		}
+		pool.close();
+		for (Connection connection : respondingMap.keySet()) {
+			connection.close();
+		}
+		netWorkGroup.close();
 	}
 
 	private class ConnectionRetriever implements EventListener<ConnectionEvent> {
 
 		@Override
-		public void onEvent(ConnectionEvent event) {
+		public void onEvent(final ConnectionEvent event) {
 			LOGGER.debug("Retriever: {}", event);
 
-			Connection connection = event.getSource();
+			final Connection connection = event.getSource();
 			if (!connection.pooled) {
 				return;
 			}
 
-			try {
-				switch (event.eventType) {
-					case REQUEST_TIMEOUT:
-					case EXCEPTION_CAUGHT:
-						pool.invalidateObject(connection);
-						break;
-					case RESPONSE_RECEIVED:
-						pool.returnObject(connection);
-						break;
-				}
-			} catch (Exception e) {
-				LOGGER.error("Connection recycle error", e);
+			switch (event.eventType) {
+				case REQUEST_SET:
+				case REQUEST_SEND:
+				case CONNECTION_CLOSED:
+					return;
 			}
+
+			retrieverExecutor.execute(new Runnable() {
+
+				@Override
+				public void run() {
+					try {
+						switch (event.eventType) {
+							case REQUEST_TIMEOUT:
+							case EXCEPTION_CAUGHT:
+								pool.invalidateObject(connection);
+								break;
+							case RESPONSE_RECEIVED:
+								pool.returnObject(connection);
+								break;
+						}
+					} catch (Exception e) {
+						LOGGER.error("Connection recycle error", e);
+					}
+				}
+			});
 		}
 	}
 
 	private class Responder implements EventListener<ConnectionEvent> {
-
-		private final ConcurrentMap<Connection, Promise<?>> respondingMap = new ConcurrentHashMap<>();
 
 		@Override
 		public void onEvent(ConnectionEvent event) {
@@ -127,7 +173,7 @@ class ConnectionPool implements Closeable {
 
 		@Override
 		public void onEvent(ConnectionEvent event) {
-			LOGGER.debug("Helper: {}", event);
+			LOGGER.debug("NetHelper: {}", event);
 
 			Connection connection = event.getSource();
 			NetWorker netWorker = netWorkGroup.getNetWorker(connection.id);
@@ -145,20 +191,6 @@ class ConnectionPool implements Closeable {
 					netWorker.finishRequest(connection);
 					break;
 			}
-		}
-	}
-
-	@Override
-	public void close() {
-		pool.close();
-		netWorkGroup.close();
-	}
-
-	Connection getConnection() {
-		try {
-			return pool.borrowObject();
-		} catch (Exception e) {
-			throw new RedisClientException("Could not get a connection from the pool", e);
 		}
 	}
 
@@ -192,15 +224,11 @@ class ConnectionPool implements Closeable {
 
 		@Override
 		public void destroyObject(PooledObject<Connection> p) throws Exception {
-			Connection connection = p.getObject();
-			connection.pooled = false;
-			if (connection.channel.isConnected()) {
-				try {
+			try (Connection connection = p.getObject()) {
+				if (connection.channel.isConnected()) {
 					connection.send(new Quit(), STRING).get();
-				} catch (Exception ignored) {
 				}
 			}
-			connection.close();
 		}
 
 		@Override

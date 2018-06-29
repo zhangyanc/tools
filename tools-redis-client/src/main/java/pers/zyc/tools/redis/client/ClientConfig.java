@@ -19,12 +19,23 @@ public class ClientConfig {
 	private int db;
 	private int connectionTimeout;
 	private int requestTimeout;
-	private int netWorkers;
-	private GenericObjectPoolConfig poolConfig;
+	private int netWorkers = 1;
 
-	public ClientConfig(boolean ssl, String host, String password, int port, int db,
-						int connectionTimeout, int requestTimeout, int netWorkers,
-						GenericObjectPoolConfig poolConfig) {
+	private boolean needPreparePool = false;
+	private int maxConnectionTotal = GenericObjectPoolConfig.DEFAULT_MAX_TOTAL;
+	private int minConnectionIdle = GenericObjectPoolConfig.DEFAULT_MIN_IDLE;
+
+	public ClientConfig(boolean ssl,
+						String host,
+						String password,
+						int port,
+						int db,
+						int connectionTimeout,
+						int requestTimeout,
+						int netWorkers,
+						boolean needPreparePool,
+						int maxConnectionTotal,
+						int minConnectionIdle) {
 		this.ssl = ssl;
 		this.host = host;
 		this.password = password;
@@ -33,26 +44,28 @@ public class ClientConfig {
 		this.connectionTimeout = connectionTimeout;
 		this.requestTimeout = requestTimeout;
 		this.netWorkers = netWorkers;
-		this.poolConfig = poolConfig;
+		this.needPreparePool = needPreparePool;
+		this.maxConnectionTotal = maxConnectionTotal;
+		this.minConnectionIdle = minConnectionIdle;
 	}
 
 	public ClientConfig(String connectStr) {
-		this(connectStr, new GenericObjectPoolConfig());
+		this(URI.create(connectStr));
 	}
 
-	public ClientConfig(String connectStr, GenericObjectPoolConfig poolConfig) {
-		this(URI.create(connectStr), poolConfig);
-	}
-
-	public ClientConfig(URI uri, GenericObjectPoolConfig poolConfig) {
+	public ClientConfig(URI uri) {
 		this.ssl = getSsl(uri);
 		this.host = getHost(uri);
 		this.password = getPassword(uri);
 		this.port = getPort(uri);
 		this.db = getDbIndex(uri);
-		this.poolConfig = poolConfig;
 
-		Map<String, String> queries = getQueries(uri);
+		String query = uri.getQuery();
+		if (query == null) {
+			return;
+		}
+
+		Map<String, String> queries = getQueries(query);
 		String val;
 		if ((val = queries.get("connectionTimeout")) != null) {
 			this.connectionTimeout = Integer.parseInt(val);
@@ -63,6 +76,27 @@ public class ClientConfig {
 		if ((val = queries.get("netWorkers")) != null) {
 			this.netWorkers = Integer.parseInt(val);
 		}
+		if ((val = queries.get("needPreparePool")) != null) {
+			this.needPreparePool = Boolean.parseBoolean(val);
+		}
+		if ((val = queries.get("maxConnectionTotal")) != null) {
+			this.maxConnectionTotal = Integer.parseInt(val);
+		}
+		if ((val = queries.get("minConnectionIdle")) != null) {
+			this.minConnectionIdle = Integer.parseInt(val);
+		}
+	}
+
+	protected GenericObjectPoolConfig createPoolConfig() {
+		GenericObjectPoolConfig poolConfig = new GenericObjectPoolConfig();
+		poolConfig.setMaxWaitMillis(getConnectionTimeout());
+		poolConfig.setMaxTotal(getMaxConnectionTotal());
+		poolConfig.setMaxIdle(getMaxConnectionTotal());
+		poolConfig.setMinIdle(getMinConnectionIdle());
+
+		poolConfig.setTestWhileIdle(true);
+		poolConfig.setTimeBetweenEvictionRunsMillis(1000 * 30);
+		return poolConfig;
 	}
 
 	public boolean isSsl() {
@@ -97,8 +131,16 @@ public class ClientConfig {
 		return netWorkers;
 	}
 
-	public GenericObjectPoolConfig getPoolConfig() {
-		return poolConfig;
+	public boolean isNeedPreparePool() {
+		return needPreparePool;
+	}
+
+	public int getMaxConnectionTotal() {
+		return maxConnectionTotal;
+	}
+
+	public int getMinConnectionIdle() {
+		return minConnectionIdle;
 	}
 
 	private static boolean getSsl(URI uri) {
@@ -130,11 +172,7 @@ public class ClientConfig {
 	}
 
 	private static String getPassword(URI uri) {
-		String userInfo = uri.getUserInfo();
-		if (userInfo != null) {
-			return userInfo.split(":", 2)[1];
-		}
-		return null;
+		return uri.getUserInfo();
 	}
 
 	private static int getDbIndex(URI uri) {
@@ -150,14 +188,9 @@ public class ClientConfig {
 		}
 	}
 
-	private static Map<String, String> getQueries(URI uri) {
+	private static Map<String, String> getQueries(String query) {
 		Map<String, String> queries = new HashMap<>();
-
-		if (uri.getQuery() == null) {
-			return queries;
-		}
-
-		Matcher queriesMatcher = Regex.URI_QUERY_PAIR.pattern().matcher(uri.getQuery());
+		Matcher queriesMatcher = Regex.URI_QUERY_PAIR.pattern().matcher(query);
 		while (queriesMatcher.find()) {
 			queries.put(queriesMatcher.group(1), queriesMatcher.group(2));
 		}

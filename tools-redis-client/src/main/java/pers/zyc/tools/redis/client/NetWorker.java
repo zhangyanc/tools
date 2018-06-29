@@ -9,9 +9,7 @@ import java.io.IOException;
 import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.util.Iterator;
-import java.util.LinkedList;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -42,10 +40,6 @@ class NetWorker extends PeriodicService {
 		stop();
 	}
 
-	private SelectionKey keyFor(Connection connection) {
-		return connection.channel.keyFor(selector);
-	}
-
 	private void checkTimeoutConnection() {
 		Iterator<Connection> iterator = timeoutCheckConnections.iterator();
 		while (iterator.hasNext()) {
@@ -63,6 +57,10 @@ class NetWorker extends PeriodicService {
 		} finally {
 			serviceLock.unlock();
 		}
+	}
+
+	private SelectionKey keyFor(Connection connection) {
+		return connection.channel.keyFor(selector);
 	}
 
 	void enableWrite(Connection connection) {
@@ -94,35 +92,41 @@ class NetWorker extends PeriodicService {
 		return 0;
 	}
 
-	private void doSelect() {
+	private List<SelectionKey> doSelect() throws InterruptedException {
+		List<SelectionKey> selected = new ArrayList<>();
 		try {
 			selector.select(1000);
 
-			if (wakeUp.compareAndSet(true, false)) {
+			if (!isRunning()) {
+				return selected;
+			}
+			if (wakeUp.getAndSet(false)) {
 				selector.selectNow();
 			}
-		} catch (ClosedSelectorException ignore) {
+
+			serviceLock.lockInterruptibly();
+			try {
+				Set<SelectionKey> sks = selector.selectedKeys();
+				if (!sks.isEmpty()) {
+					selected.addAll(sks);
+					sks.clear();
+				}
+				return selected;
+			} finally {
+				serviceLock.unlock();
+			}
+		} catch (ClosedSelectorException cse) {
+			return selected;
+		} catch (InterruptedException re) {
+			throw re;
 		} catch (Exception e) {
 			throw new RedisClientException(e);
-		}
-
-		checkRunning();
-	}
-
-	private Set<SelectionKey> selectKey() throws InterruptedException {
-		serviceLock.lockInterruptibly();
-		try {
-			return selector.selectedKeys();
-		} finally {
-			serviceLock.unlock();
 		}
 	}
 
 	@Override
 	protected void execute() throws InterruptedException {
-		doSelect();
-
-		Set<SelectionKey> selected = selectKey();
+		List<SelectionKey> selected = doSelect();
 
 		if (selected.isEmpty()) {
 			checkTimeoutConnection();
