@@ -22,7 +22,7 @@ public class AsyncClient implements AsyncCommands, Closeable {
 
 	@Override
 	public void close() {
-		connectionPool.close();
+		connectionPool.stop();
 	}
 
 	@Override

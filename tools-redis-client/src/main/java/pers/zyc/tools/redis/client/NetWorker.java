@@ -2,6 +2,7 @@ package pers.zyc.tools.redis.client;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.lifecycle.PeriodicService;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 
@@ -15,12 +16,11 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * @author zhangyancheng
  */
-class NetWorker extends PeriodicService {
+class NetWorker extends PeriodicService implements EventListener<ConnectionEvent> {
 	private static final Logger LOGGER = LoggerFactory.getLogger(NetWorker.class);
 
 	private final Selector selector = Selector.open();
 	private final AtomicBoolean wakeUp = new AtomicBoolean();
-	private final LinkedList<Connection> timeoutCheckConnections = new LinkedList<>();
 
 	NetWorker() throws IOException {
 	}
@@ -40,12 +40,19 @@ class NetWorker extends PeriodicService {
 		stop();
 	}
 
-	private void checkTimeoutConnection() {
-		Iterator<Connection> iterator = timeoutCheckConnections.iterator();
-		while (iterator.hasNext()) {
-			if (iterator.next().checkTimeout()) {
-				iterator.remove();
-			}
+	@Override
+	public void onEvent(ConnectionEvent event) {
+		LOGGER.debug("NetWorker: {}", event);
+		Connection connection = event.getSource();
+
+		switch (event.eventType) {
+			case REQUEST_SET:
+				enableWrite(connection);
+				wakeUp();
+				break;
+			case REQUEST_SEND:
+				disableWrite(connection);
+				break;
 		}
 	}
 
@@ -63,22 +70,14 @@ class NetWorker extends PeriodicService {
 		return connection.channel.keyFor(selector);
 	}
 
-	void enableWrite(Connection connection) {
+	private void enableWrite(Connection connection) {
 		SelectionKey sk = keyFor(connection);
 		sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
-
-		wakeUp();
 	}
 
-	void disableWrite(Connection connection) {
+	private void disableWrite(Connection connection) {
 		SelectionKey sk = keyFor(connection);
 		sk.interestOps(sk.interestOps() & (~SelectionKey.OP_WRITE));
-
-		timeoutCheckConnections.add(connection);
-	}
-
-	void finishRequest(Connection connection) {
-		timeoutCheckConnections.remove(connection);
 	}
 
 	private void wakeUp() {
@@ -128,17 +127,7 @@ class NetWorker extends PeriodicService {
 	protected void execute() throws InterruptedException {
 		List<SelectionKey> selected = doSelect();
 
-		if (selected.isEmpty()) {
-			checkTimeoutConnection();
-			return;
-		}
-
-		Iterator<SelectionKey> i = selected.iterator();
-
-		while (i.hasNext()) {
-			SelectionKey sk = i.next();
-			i.remove();
-
+		for (SelectionKey sk : selected) {
 			if (!sk.isValid()) {
 				continue;
 			}

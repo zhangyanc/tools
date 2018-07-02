@@ -8,7 +8,6 @@ import pers.zyc.tools.redis.client.exception.ResponseIncompleteException;
 import pers.zyc.tools.redis.client.util.Future;
 import pers.zyc.tools.redis.client.util.Promise;
 import pers.zyc.tools.redis.client.util.ResponsePromise;
-import pers.zyc.tools.utils.TimeMillis;
 import sun.nio.ch.DirectBuffer;
 
 import java.io.ByteArrayOutputStream;
@@ -28,11 +27,8 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	private static final Logger LOGGER = LoggerFactory.getLogger(Connection.class);
 	private static final int DEFAULT_BUFFER_SIZE = 8192;
 
-	final int id;
 	final SocketChannel channel;
-	boolean pooled = false;
 
-	private final int requestTimeout;
 	private final ByteBuffer buffer = ByteBuffer.allocateDirect(DEFAULT_BUFFER_SIZE);
 	private final ResponseReceiveBuffer receiveBuffer = new ResponseReceiveBuffer(DEFAULT_BUFFER_SIZE);
 	private final Multicaster<EventListener<ConnectionEvent>> multicaster =
@@ -51,12 +47,9 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 
 	private Request request;
-	private long timeoutLine;
 
-	Connection(int id, SocketChannel channel, int requestTimeout) {
-		this.id = id;
+	Connection(SocketChannel channel) {
 		this.channel = channel;
-		this.requestTimeout = requestTimeout;
 	}
 
 	private static void closeChannel(SocketChannel channel) {
@@ -81,13 +74,12 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		closeChannel(channel);
 		((DirectBuffer) buffer).cleaner().clean();
 		LOGGER.debug("Connection closed.");
-		pooled = false;
 		publishEvent(new ConnectionEvent.ConnectionClosed(this));
 	}
 
 	@Override
 	public String toString() {
-		return "Connection{id=" + id + ", channel=" + channel + "}";
+		return "Connection{channel=" + channel + "}";
 	}
 
 	private void publishEvent(ConnectionEvent event) {
@@ -108,7 +100,6 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		try {
 			encodeAndWrite();
 			LOGGER.debug("{} send.", this.request);
-			timeoutLine = TimeMillis.get() + requestTimeout;
 			publishEvent(new ConnectionEvent.RequestSend(this));
 		} catch (Exception e) {
 			publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
@@ -130,15 +121,10 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		}
 	}
 
-	boolean checkTimeout() {
-		if (timeoutLine <= TimeMillis.get()) {
-			LOGGER.debug("{} timeout.", this.request);
-			publishEvent(new ConnectionEvent.RequestTimeout(this));
-			return true;
-		}
-		return false;
+	void timeout() {
+		LOGGER.debug("{} timeout.", this.request);
+		publishEvent(new ConnectionEvent.RequestTimeout(this));
 	}
-
 
 
 
