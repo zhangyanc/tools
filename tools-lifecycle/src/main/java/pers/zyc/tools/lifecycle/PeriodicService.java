@@ -25,6 +25,10 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
 		periodicThread.interrupt();
 	}
 
+	protected Thread getThread() {
+		return periodicThread;
+	}
+
 	/**
 	 * 守护线程异常结束时可在这里记录或关闭服务
 	 *
@@ -54,8 +58,7 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
 	private class PeriodicExecuteThread extends Thread {
 
 		{
-			setName(getName());
-			setDaemon(true);
+			setName(PeriodicService.this.getName());
 			setUncaughtExceptionHandler(PeriodicService.this);
 		}
 
