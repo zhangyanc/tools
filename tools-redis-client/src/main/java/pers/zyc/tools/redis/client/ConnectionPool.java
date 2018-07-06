@@ -30,29 +30,26 @@ class ConnectionPool extends Service {
 
 	private final ClientConfig config;
 	private final NetWorkGroup netWorkGroup;
-	private final TimeoutGuarder timeoutGuarder;
-
+	private final Retriever retriever;
+	private final Responder responder;
 	private final GenericObjectPool<Connection> pool;
-	private final ConnectionRetriever connectionRetriever;
-
-	private final Responder responder = new Responder();
 
 	ConnectionPool(ClientConfig config) {
 		this.config = config;
-		timeoutGuarder = new TimeoutGuarder(config.getRequestTimeout());
+		responder = new Responder(config);
 		netWorkGroup = new NetWorkGroup(config.getNetWorkers());
 
 		pool = new GenericObjectPool<>(new ConnectionFactory(), config.createPoolConfig());
-		connectionRetriever = new ConnectionRetriever(pool);
+		retriever = new Retriever(pool);
 
 		start();
 	}
 
 	@Override
 	protected void doStart() {
+		responder.start();
+		retriever.start();
 		netWorkGroup.start();
-		timeoutGuarder.start();
-		connectionRetriever.start();
 
 		if (config.isNeedPreparePool()) {
 			try {
@@ -71,16 +68,16 @@ class ConnectionPool extends Service {
 
 	@Override
 	protected void doStop() throws Exception {
-		connectionRetriever.stop();
+		retriever.stop();
 		pool.close();
-		responder.close();
+		responder.stop();
 		netWorkGroup.stop();
 	}
 
 	Connection getConnection() {
 		try {
 			Connection connection = pool.borrowObject();
-			connection.addListener(connectionRetriever);
+			connection.addListener(retriever);
 			return connection;
 		} catch (Exception e) {
 			throw new RedisClientException("Could not get a connection from the pool", e);
@@ -92,14 +89,9 @@ class ConnectionPool extends Service {
 		@Override
 		public PooledObject<Connection> makeObject() throws Exception {
 			SocketChannel channel = createChannel(config.getHost(), config.getPort(), config.getConnectionTimeout());
-			Connection connection = new Connection(channel);
+			Connection connection = new Connection(channel, netWorkGroup.next());
 
-			NetWorker netWorker = netWorkGroup.next();
-			netWorker.register(connection);
-
-			connection.addListener(netWorker);
 			connection.addListener(responder);
-			connection.addListener(timeoutGuarder);
 
 			if (config.getPassword() != null) {
 				connection.send(new Auth(config.getPassword()), STRING).get();

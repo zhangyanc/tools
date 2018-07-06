@@ -3,20 +3,59 @@ package pers.zyc.tools.redis.client;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.event.EventListener;
+import pers.zyc.tools.lifecycle.PeriodicService;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 import pers.zyc.tools.redis.client.util.Promise;
+import pers.zyc.tools.utils.Pair;
+import pers.zyc.tools.utils.TimeMillis;
 
-import java.io.Closeable;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
 /**
  * @author zhangyancheng
  */
-public class Responder implements EventListener<ConnectionEvent>, Closeable {
+class Responder extends PeriodicService implements EventListener<ConnectionEvent> {
 	private static final Logger LOGGER = LoggerFactory.getLogger(Responder.class);
 
-	private final ConcurrentMap<Connection, Promise<?>> respondingMap = new ConcurrentHashMap<>();
+	private final int requestTimeout;
+	private final int requestTimeoutDetectInterval;
+	private final ConcurrentMap<Connection, PromiseInfo> respondingMap = new ConcurrentHashMap<>();
+
+	Responder(ClientConfig clientConfig) {
+		this.requestTimeout = clientConfig.getRequestTimeout();
+		this.requestTimeoutDetectInterval = clientConfig.getRequestTimeoutDetectInterval();
+	}
+
+	@Override
+	protected void doStop() throws Exception {
+		super.doStop();
+
+		for (Connection connection : respondingMap.keySet()) {
+			connection.close();
+		}
+	}
+
+	@Override
+	protected long period() {
+		return requestTimeoutDetectInterval;
+	}
+
+	@Override
+	public void uncaughtException(Thread t, Throwable e) {
+		LOGGER.error("Uncaught exception, Responder stopped.", e);
+		super.uncaughtException(t, e);
+	}
+
+	@Override
+	protected void execute() throws InterruptedException {
+		for (Map.Entry<Connection, PromiseInfo> entry : respondingMap.entrySet()) {
+			if (entry.getValue().isTimeout()) {
+				entry.getKey().timeout();
+			}
+		}
+	}
 
 	@Override
 	public void onEvent(ConnectionEvent event) {
@@ -25,8 +64,8 @@ public class Responder implements EventListener<ConnectionEvent>, Closeable {
 		final Object response;
 		switch (event.eventType) {
 			case REQUEST_SET:
-				Promise<?> promise = (Promise<?>) event.payload();
-				respondingMap.put(event.getSource(), promise);
+				long timeoutLine = TimeMillis.get() + requestTimeout;
+				respondingMap.put(event.getSource(), new PromiseInfo((Promise<?>) event.payload(), timeoutLine));
 				return;
 			case CONNECTION_CLOSED:
 				response = new RedisClientException("Connection closed!");
@@ -38,20 +77,26 @@ public class Responder implements EventListener<ConnectionEvent>, Closeable {
 			case RESPONSE_RECEIVED:
 				response = event.payload();
 				break;
+			case REQUEST_SEND:
 			default:
 				return;
 		}
 
-		final Promise promise = respondingMap.remove(event.getSource());
-		if (promise != null) {
-			promise.response(response);
+		final PromiseInfo promiseInfo = respondingMap.remove(event.getSource());
+		if (promiseInfo != null) {
+			promiseInfo.key().response(response);
 		}
 	}
 
-	@Override
-	public void close() {
-		for (Connection connection : respondingMap.keySet()) {
-			connection.close();
+	private static class PromiseInfo extends Pair<Promise<?>, Long> {
+
+		PromiseInfo(Promise<?> promise, long timeoutLine) {
+			key(promise);
+			value(timeoutLine);
+		}
+
+		boolean isTimeout() {
+			return value() <= TimeMillis.get();
 		}
 	}
 }

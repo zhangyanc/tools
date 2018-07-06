@@ -2,7 +2,6 @@ package pers.zyc.tools.redis.client;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.lifecycle.PeriodicService;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 
@@ -10,13 +9,15 @@ import java.io.IOException;
 import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author zhangyancheng
  */
-class NetWorker extends PeriodicService implements EventListener<ConnectionEvent> {
+class NetWorker extends PeriodicService {
 	private static final Logger LOGGER = LoggerFactory.getLogger(NetWorker.class);
 
 	private final Selector selector = Selector.open();
@@ -26,7 +27,9 @@ class NetWorker extends PeriodicService implements EventListener<ConnectionEvent
 	}
 
 	@Override
-	protected void onInterrupt() {
+	protected void doStop() throws Exception {
+		super.doStop();
+
 		try {
 			selector.close();
 		} catch (IOException e) {
@@ -38,22 +41,6 @@ class NetWorker extends PeriodicService implements EventListener<ConnectionEvent
 	public void uncaughtException(Thread t, Throwable e) {
 		LOGGER.error("Uncaught exception", e);
 		stop();
-	}
-
-	@Override
-	public void onEvent(ConnectionEvent event) {
-		LOGGER.debug("NetWorker: {}", event);
-		Connection connection = event.getSource();
-
-		switch (event.eventType) {
-			case REQUEST_SET:
-				enableWrite(connection);
-				wakeUp();
-				break;
-			case REQUEST_SEND:
-				disableWrite(connection);
-				break;
-		}
 	}
 
 	void register(Connection connection) throws IOException {
@@ -70,12 +57,14 @@ class NetWorker extends PeriodicService implements EventListener<ConnectionEvent
 		return connection.channel.keyFor(selector);
 	}
 
-	private void enableWrite(Connection connection) {
+	void enableWrite(Connection connection) {
 		SelectionKey sk = keyFor(connection);
 		sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
+
+		wakeUp();
 	}
 
-	private void disableWrite(Connection connection) {
+	void disableWrite(Connection connection) {
 		SelectionKey sk = keyFor(connection);
 		sk.interestOps(sk.interestOps() & (~SelectionKey.OP_WRITE));
 	}

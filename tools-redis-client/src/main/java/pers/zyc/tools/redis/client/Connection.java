@@ -29,6 +29,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 	final SocketChannel channel;
 
+	private final NetWorker netWorker;
 	private final ByteBuffer buffer = ByteBuffer.allocateDirect(DEFAULT_BUFFER_SIZE);
 	private final ResponseReceiveBuffer receiveBuffer = new ResponseReceiveBuffer(DEFAULT_BUFFER_SIZE);
 	private final Multicaster<EventListener<ConnectionEvent>> multicaster =
@@ -48,8 +49,11 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 	private Request request;
 
-	Connection(SocketChannel channel) {
+	Connection(SocketChannel channel, NetWorker netWorker) throws IOException {
 		this.channel = channel;
+		this.netWorker = netWorker;
+
+		netWorker.register(this);
 	}
 
 	private static void closeChannel(SocketChannel channel) {
@@ -93,12 +97,16 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		Promise<R> promise = new ResponsePromise<>(responseCast);
 		publishEvent(new ConnectionEvent.RequestSet(this, promise));
 
+		netWorker.enableWrite(this);
+
 		return promise;
 	}
 
 	void write() {
 		try {
 			encodeAndWrite();
+			netWorker.disableWrite(this);
+
 			LOGGER.debug("{} send.", this.request);
 			publishEvent(new ConnectionEvent.RequestSend(this));
 		} catch (Exception e) {
@@ -111,6 +119,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 			try {
 				Object response = readAndDecode();
 				receiveBuffer.reset();
+
 				LOGGER.debug("{} Response received.", this.request);
 				publishEvent(new ConnectionEvent.ResponseReceived(this, response));
 			} catch (ResponseIncompleteException ignored) {

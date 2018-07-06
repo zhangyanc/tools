@@ -6,19 +6,33 @@ import org.slf4j.LoggerFactory;
 import pers.zyc.tools.event.EventListener;
 import pers.zyc.tools.lifecycle.PeriodicService;
 
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingDeque;
 
 /**
  * @author zhangyancheng
  */
-class ConnectionRetriever extends PeriodicService implements EventListener<ConnectionEvent> {
-	private final static Logger LOGGER = LoggerFactory.getLogger(ConnectionRetriever.class);
+class Retriever extends PeriodicService implements EventListener<ConnectionEvent> {
+	private final static Logger LOGGER = LoggerFactory.getLogger(Retriever.class);
 
 	private final GenericObjectPool<Connection> pool;
 	private final BlockingQueue<ConnectionEvent> retrieverEventQueue = new LinkedBlockingDeque<>();
 
-	ConnectionRetriever(GenericObjectPool<Connection> pool) {
+	Retriever(GenericObjectPool<Connection> pool) {
 		this.pool = pool;
+	}
+
+	@Override
+	protected void doStop() throws Exception {
+		List<ConnectionEvent> remain = new ArrayList<>();
+		if (retrieverEventQueue.drainTo(remain) == 0) {
+			return;
+		}
+		for (ConnectionEvent event : remain) {
+			retrieve(event);
+		}
 	}
 
 	@Override
@@ -27,8 +41,17 @@ class ConnectionRetriever extends PeriodicService implements EventListener<Conne
 	}
 
 	@Override
+	public void uncaughtException(Thread t, Throwable e) {
+		LOGGER.error("Uncaught exception, ConnectionRetriever stopped.", e);
+		super.uncaughtException(t, e);
+	}
+
+	@Override
 	protected void execute() throws InterruptedException {
-		ConnectionEvent event = retrieverEventQueue.take();
+		retrieve(retrieverEventQueue.take());
+	}
+
+	private void retrieve(ConnectionEvent event) {
 		try {
 			switch (event.eventType) {
 				case REQUEST_TIMEOUT:

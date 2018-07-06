@@ -20,6 +20,7 @@ public class ClientConfig {
 	private int connectionTimeout;
 	private int requestTimeout;
 	private int netWorkers = 1;
+	private int requestTimeoutDetectInterval;
 
 	private boolean needPreparePool = false;
 	private int maxConnectionTotal = GenericObjectPoolConfig.DEFAULT_MAX_TOTAL;
@@ -33,6 +34,7 @@ public class ClientConfig {
 						int connectionTimeout,
 						int requestTimeout,
 						int netWorkers,
+						int requestTimeoutDetectInterval,
 						boolean needPreparePool,
 						int maxConnectionTotal,
 						int minConnectionIdle) {
@@ -44,6 +46,7 @@ public class ClientConfig {
 		this.connectionTimeout = connectionTimeout;
 		this.requestTimeout = requestTimeout;
 		this.netWorkers = netWorkers;
+		this.requestTimeoutDetectInterval = requestTimeoutDetectInterval;
 		this.needPreparePool = needPreparePool;
 		this.maxConnectionTotal = maxConnectionTotal;
 		this.minConnectionIdle = minConnectionIdle;
@@ -75,6 +78,9 @@ public class ClientConfig {
 		}
 		if ((val = queries.get("netWorkers")) != null) {
 			this.netWorkers = Integer.parseInt(val);
+		}
+		if ((val = queries.get("requestTimeoutDetectInterval")) != null) {
+			this.requestTimeoutDetectInterval = Integer.parseInt(val);
 		}
 		if ((val = queries.get("needPreparePool")) != null) {
 			this.needPreparePool = Boolean.parseBoolean(val);
@@ -129,6 +135,10 @@ public class ClientConfig {
 
 	public int getNetWorkers() {
 		return netWorkers;
+	}
+
+	public int getRequestTimeoutDetectInterval() {
+		return requestTimeoutDetectInterval;
 	}
 
 	public boolean isNeedPreparePool() {
