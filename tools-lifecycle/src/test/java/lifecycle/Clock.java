@@ -32,7 +32,7 @@ public class Clock extends PeriodicService {
     }
 
     @Override
-    protected long period() {
+    protected long getInterval() {
         return 1;
     }
 

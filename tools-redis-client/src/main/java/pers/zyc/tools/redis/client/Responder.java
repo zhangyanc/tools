@@ -38,7 +38,7 @@ class Responder extends PeriodicService implements EventListener<ConnectionEvent
 	}
 
 	@Override
-	protected long period() {
+	protected long getInterval() {
 		return requestTimeoutDetectInterval;
 	}
 

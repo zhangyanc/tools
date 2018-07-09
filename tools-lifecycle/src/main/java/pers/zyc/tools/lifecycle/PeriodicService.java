@@ -25,7 +25,7 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
 		periodicThread.interrupt();
 	}
 
-	protected Thread getThread() {
+	public Thread getThread() {
 		return periodicThread;
 	}
 
@@ -41,9 +41,9 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
 	}
 
 	/**
-	 * @return 休眠周期
+	 * @return 间隔
 	 */
-	protected abstract long period();
+	protected abstract long getInterval();
 
 	/**
 	 * 周期执行逻辑
@@ -66,7 +66,7 @@ public abstract class PeriodicService extends Service implements Thread.Uncaught
 		public void run() {
 			while (isRunning() && !isInterrupted()) {
 				try {
-					TimeUnit.MILLISECONDS.sleep(period());
+					TimeUnit.MILLISECONDS.sleep(getInterval());
 					execute();
 				} catch (InterruptedException e) {
 					break;

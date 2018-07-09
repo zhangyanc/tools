@@ -123,7 +123,7 @@ final class ZKConnector extends PeriodicService implements Watcher, Listenable<C
 	}
 
 	@Override
-	protected long period() {
+	protected long getInterval() {
 		return 0;
 	}
 

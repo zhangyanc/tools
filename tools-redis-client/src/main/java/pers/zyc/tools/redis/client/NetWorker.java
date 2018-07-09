@@ -76,7 +76,7 @@ class NetWorker extends PeriodicService {
 	}
 
 	@Override
-	protected long period() {
+	protected long getInterval() {
 		return 0;
 	}
 

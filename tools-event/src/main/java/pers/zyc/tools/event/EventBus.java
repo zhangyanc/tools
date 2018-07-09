@@ -81,7 +81,7 @@ public class EventBus<E> extends PeriodicService implements Listenable<EventList
 	}
 
 	@Override
-	protected long period() {
+	protected long getInterval() {
 		return mergeInterval;
 	}
 
