@@ -25,19 +25,11 @@
 		</dependency>
 		<dependency>
 			<groupId>pers.zyc.tools</groupId>
-			<artifactId>tools-retry</artifactId>
+			<artifactId>tools-utils</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.slf4j</groupId>
 			<artifactId>slf4j-api</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>pers.zyc.tools</groupId>
-			<artifactId>tools-lifecycle</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>pers.zyc.tools</groupId>
-			<artifactId>tools-event</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>junit</groupId>

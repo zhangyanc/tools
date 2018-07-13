@@ -17,10 +17,10 @@ public class ClientConfig {
 	private String password;
 	private int port;
 	private int db;
-	private int connectionTimeout;
-	private int requestTimeout;
+	private int connectionTimeout = 60 * 1000;
+	private int requestTimeout = 60 * 1000;
 	private int netWorkers = 1;
-	private int requestTimeoutDetectInterval;
+	private int requestTimeoutDetectInterval = 1000;
 
 	private boolean needPreparePool = false;
 	private int maxConnectionTotal = GenericObjectPoolConfig.DEFAULT_MAX_TOTAL;
@@ -50,6 +50,8 @@ public class ClientConfig {
 		this.needPreparePool = needPreparePool;
 		this.maxConnectionTotal = maxConnectionTotal;
 		this.minConnectionIdle = minConnectionIdle;
+
+		validate();
 	}
 
 	public ClientConfig(String connectStr) {
@@ -91,9 +93,41 @@ public class ClientConfig {
 		if ((val = queries.get("minConnectionIdle")) != null) {
 			this.minConnectionIdle = Integer.parseInt(val);
 		}
+
+		validate();
 	}
 
-	protected GenericObjectPoolConfig createPoolConfig() {
+	private void validate() {
+		if (host == null) {
+			throw new IllegalArgumentException("host can't be null");
+		}
+		if (port < 0 || port > 0xFFFF) {
+			throw new IllegalArgumentException("port out of range: " + port);
+		}
+		if (db < 0) {
+			throw new IllegalArgumentException("db can't be negative: " + db);
+		}
+		if (connectionTimeout <= 0) {
+			throw new IllegalArgumentException("connectionTimeout must be positive: " + connectionTimeout);
+		}
+		if (requestTimeout <= 0) {
+			throw new IllegalArgumentException("requestTimeout must be positive: " + requestTimeout);
+		}
+		if (netWorkers <= 0) {
+			throw new IllegalArgumentException("netWorkers must be positive: " + netWorkers);
+		}
+		if (requestTimeoutDetectInterval <= 0) {
+			throw new IllegalArgumentException("requestTimeoutDetectInterval must be positive: " + requestTimeoutDetectInterval);
+		}
+		if (maxConnectionTotal <= 0) {
+			throw new IllegalArgumentException("maxConnectionTotal must be positive: " + maxConnectionTotal);
+		}
+		if (minConnectionIdle <= 0) {
+			throw new IllegalArgumentException("minConnectionIdle must be positive: " + minConnectionIdle);
+		}
+	}
+
+	GenericObjectPoolConfig createPoolConfig() {
 		GenericObjectPoolConfig poolConfig = new GenericObjectPoolConfig();
 		poolConfig.setMaxWaitMillis(getConnectionTimeout());
 		poolConfig.setMaxTotal(getMaxConnectionTotal());

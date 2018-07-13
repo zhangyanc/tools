@@ -21,27 +21,12 @@
 			<!--zyc tools-->
 			<dependency>
 				<groupId>pers.zyc.tools</groupId>
-				<artifactId>tools-event</artifactId>
-				<version>${revision}</version>
-			</dependency>
-			<dependency>
-				<groupId>pers.zyc.tools</groupId>
 				<artifactId>tools-jmxclient</artifactId>
 				<version>${revision}</version>
 			</dependency>
 			<dependency>
 				<groupId>pers.zyc.tools</groupId>
-				<artifactId>tools-lifecycle</artifactId>
-				<version>${revision}</version>
-			</dependency>
-			<dependency>
-				<groupId>pers.zyc.tools</groupId>
 				<artifactId>tools-redis-client</artifactId>
-				<version>${revision}</version>
-			</dependency>
-			<dependency>
-				<groupId>pers.zyc.tools</groupId>
-				<artifactId>tools-retry</artifactId>
 				<version>${revision}</version>
 			</dependency>
 			<dependency>

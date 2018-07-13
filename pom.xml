@@ -18,14 +18,10 @@
 
     <modules>
         <module>tools-dependencies-bom</module>
-        <module>tools-event</module>
-        <module>tools-lifecycle</module>
-        <module>tools-retry</module>
+        <module>tools-jmx-client</module>
+        <module>tools-redis-client</module>
         <module>tools-spring-validation-ext</module>
         <module>tools-utils</module>
         <module>tools-zkclient</module>
-        <module>tools-spi-plugin</module>
-        <module>tools-jmx-client</module>
-        <module>tools-redis-client</module>
     </modules>
 </project>

@@ -7,13 +7,14 @@ import org.apache.commons.pool2.impl.DefaultPooledObject;
 import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.lifecycle.Service;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 import pers.zyc.tools.redis.client.request.Auth;
 import pers.zyc.tools.redis.client.request.Ping;
 import pers.zyc.tools.redis.client.request.Quit;
 import pers.zyc.tools.redis.client.request.Select;
 import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.tools.utils.event.EventListener;
+import pers.zyc.tools.utils.lifecycle.Service;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -30,9 +31,9 @@ class ConnectionPool extends Service {
 
 	private final ClientConfig config;
 	private final NetWorkGroup netWorkGroup;
-	private final Retriever retriever;
 	private final Responder responder;
 	private final GenericObjectPool<Connection> pool;
+	private final Retriever retriever = new Retriever();
 
 	ConnectionPool(ClientConfig config) {
 		this.config = config;
@@ -40,15 +41,11 @@ class ConnectionPool extends Service {
 		netWorkGroup = new NetWorkGroup(config.getNetWorkers());
 
 		pool = new GenericObjectPool<>(new ConnectionFactory(), config.createPoolConfig());
-		retriever = new Retriever(pool);
-
 		start();
 	}
 
 	@Override
 	protected void doStart() {
-		responder.start();
-		retriever.start();
 		netWorkGroup.start();
 
 		if (config.isNeedPreparePool()) {
@@ -68,7 +65,6 @@ class ConnectionPool extends Service {
 
 	@Override
 	protected void doStop() throws Exception {
-		retriever.stop();
 		pool.close();
 		responder.stop();
 		netWorkGroup.stop();
@@ -76,11 +72,33 @@ class ConnectionPool extends Service {
 
 	Connection getConnection() {
 		try {
-			Connection connection = pool.borrowObject();
-			connection.addListener(retriever);
-			return connection;
+			return pool.borrowObject();
 		} catch (Exception e) {
 			throw new RedisClientException("Could not get a connection from the pool", e);
+		}
+	}
+
+	private class Retriever implements EventListener<ConnectionEvent> {
+
+		@Override
+		public void onEvent(ConnectionEvent event) {
+			switch (event.eventType) {
+				case REQUEST_SET:
+				case REQUEST_SEND:
+				case CONNECTION_CLOSED:
+					return;
+				case RESPONSE_RECEIVED:
+					pool.returnObject(event.getSource());
+					break;
+				case REQUEST_TIMEOUT:
+				case EXCEPTION_CAUGHT:
+					try {
+						pool.invalidateObject(event.getSource());
+					} catch (Exception e) {
+						LOGGER.error("Invalidate connection exception!", e);
+					}
+					break;
+			}
 		}
 	}
 
@@ -88,9 +106,13 @@ class ConnectionPool extends Service {
 
 		@Override
 		public PooledObject<Connection> makeObject() throws Exception {
-			SocketChannel channel = createChannel(config.getHost(), config.getPort(), config.getConnectionTimeout());
-			Connection connection = new Connection(channel, netWorkGroup.next());
+			if (netWorkGroup.inNetworking()) {
+				throw new RedisClientException("Can't create connection in networking!");
+			}
 
+			SocketChannel channel = createChannel(config.getHost(), config.getPort(), config.getConnectionTimeout());
+
+			Connection connection = new Connection(channel, netWorkGroup.next());
 			connection.addListener(responder);
 
 			if (config.getPassword() != null) {
@@ -100,13 +122,16 @@ class ConnectionPool extends Service {
 				connection.send(new Select(config.getDb()), STRING).get();
 			}
 
+			connection.addListener(retriever);
 			return new DefaultPooledObject<>(connection);
 		}
 
 		@Override
 		public void destroyObject(PooledObject<Connection> p) throws Exception {
 			try (Connection connection = p.getObject()) {
-				if (connection.channel.isConnected()) {
+				connection.removeListener(retriever);
+
+				if (!netWorkGroup.inNetworking() && connection.channel.isConnected()) {
 					connection.send(new Quit(), STRING).get();
 				}
 			}
@@ -116,9 +141,9 @@ class ConnectionPool extends Service {
 		public boolean validateObject(PooledObject<Connection> p) {
 			Connection connection = p.getObject();
 			if (connection.channel.isConnected()) {
-				long ping = TimeMillis.get();
+				long ping = TimeMillis.INSTANCE.get();
 				boolean valid = connection.send(new Ping(), STRING).get().equals("PONG");
-				LOGGER.debug("PING-PONG expend {} ms, {} validate {}", TimeMillis.get() - ping, connection, valid);
+				LOGGER.debug("PING-PONG expend {} ms, {} validate {}", TimeMillis.INSTANCE.get() - ping, connection, valid);
 				return valid;
 			}
 			return false;

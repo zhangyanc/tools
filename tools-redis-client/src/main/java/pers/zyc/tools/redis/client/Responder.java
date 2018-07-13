@@ -2,12 +2,12 @@ package pers.zyc.tools.redis.client;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.event.EventListener;
-import pers.zyc.tools.lifecycle.PeriodicService;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 import pers.zyc.tools.redis.client.util.Promise;
 import pers.zyc.tools.utils.Pair;
 import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.tools.utils.event.EventListener;
+import pers.zyc.tools.utils.lifecycle.ThreadService;
 
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentMap;
 /**
  * @author zhangyancheng
  */
-class Responder extends PeriodicService implements EventListener<ConnectionEvent> {
+class Responder extends ThreadService implements EventListener<ConnectionEvent> {
 	private static final Logger LOGGER = LoggerFactory.getLogger(Responder.class);
 
 	private final int requestTimeout;
@@ -38,23 +38,23 @@ class Responder extends PeriodicService implements EventListener<ConnectionEvent
 	}
 
 	@Override
-	protected long getInterval() {
-		return requestTimeoutDetectInterval;
-	}
+	protected Runnable getRunnable() {
+		return new ServiceRunnable() {
 
-	@Override
-	public void uncaughtException(Thread t, Throwable e) {
-		LOGGER.error("Uncaught exception, Responder stopped.", e);
-		super.uncaughtException(t, e);
-	}
-
-	@Override
-	protected void execute() throws InterruptedException {
-		for (Map.Entry<Connection, PromiseInfo> entry : respondingMap.entrySet()) {
-			if (entry.getValue().isTimeout()) {
-				entry.getKey().timeout();
+			@Override
+			protected long getInterval() {
+				return requestTimeoutDetectInterval;
 			}
-		}
+
+			@Override
+			protected void execute() throws InterruptedException {
+				for (Map.Entry<Connection, PromiseInfo> entry : respondingMap.entrySet()) {
+					if (entry.getValue().isTimeout()) {
+						entry.getKey().timeout();
+					}
+				}
+			}
+		};
 	}
 
 	@Override
@@ -64,7 +64,7 @@ class Responder extends PeriodicService implements EventListener<ConnectionEvent
 		final Object response;
 		switch (event.eventType) {
 			case REQUEST_SET:
-				long timeoutLine = TimeMillis.get() + requestTimeout;
+				long timeoutLine = TimeMillis.INSTANCE.get() + requestTimeout;
 				respondingMap.put(event.getSource(), new PromiseInfo((Promise<?>) event.payload(), timeoutLine));
 				return;
 			case CONNECTION_CLOSED:
@@ -96,7 +96,7 @@ class Responder extends PeriodicService implements EventListener<ConnectionEvent
 		}
 
 		boolean isTimeout() {
-			return value() <= TimeMillis.get();
+			return value() <= TimeMillis.INSTANCE.get();
 		}
 	}
 }

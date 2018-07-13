@@ -2,8 +2,8 @@ package pers.zyc.tools.redis.client;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.lifecycle.PeriodicService;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
+import pers.zyc.tools.utils.lifecycle.ThreadService;
 
 import java.io.IOException;
 import java.nio.channels.ClosedSelectorException;
@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * @author zhangyancheng
  */
-class NetWorker extends PeriodicService {
+class NetWorker extends ThreadService {
 	private static final Logger LOGGER = LoggerFactory.getLogger(NetWorker.class);
 
 	private final Selector selector = Selector.open();
@@ -38,46 +38,37 @@ class NetWorker extends PeriodicService {
 	}
 
 	@Override
-	public void uncaughtException(Thread t, Throwable e) {
-		LOGGER.error("Uncaught exception", e);
-		stop();
+	protected Runnable getRunnable() {
+		return new ServiceRunnable() {
+
+			@Override
+			protected long getInterval() {
+				return 0;
+			}
+
+			@Override
+			protected void execute() throws InterruptedException {
+				select();
+			}
+		};
 	}
 
-	void register(Connection connection) throws IOException {
-		serviceLock.lock();
-		try {
-			wakeUp();
-			connection.channel.register(selector, SelectionKey.OP_READ, connection);
-		} finally {
-			serviceLock.unlock();
+	private void select() throws InterruptedException {
+		List<SelectionKey> selected = doSelect();
+
+		for (SelectionKey sk : selected) {
+			if (!sk.isValid()) {
+				continue;
+			}
+
+			Connection connection = (Connection) sk.attachment();
+			if (sk.isWritable()) {
+				connection.write();
+			}
+			if (sk.isReadable()) {
+				connection.read();
+			}
 		}
-	}
-
-	private SelectionKey keyFor(Connection connection) {
-		return connection.channel.keyFor(selector);
-	}
-
-	void enableWrite(Connection connection) {
-		SelectionKey sk = keyFor(connection);
-		sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
-
-		wakeUp();
-	}
-
-	void disableWrite(Connection connection) {
-		SelectionKey sk = keyFor(connection);
-		sk.interestOps(sk.interestOps() & (~SelectionKey.OP_WRITE));
-	}
-
-	private void wakeUp() {
-		if (wakeUp.compareAndSet(false, true)) {
-			selector.wakeup();
-		}
-	}
-
-	@Override
-	protected long getInterval() {
-		return 0;
 	}
 
 	private List<SelectionKey> doSelect() throws InterruptedException {
@@ -112,22 +103,35 @@ class NetWorker extends PeriodicService {
 		}
 	}
 
-	@Override
-	protected void execute() throws InterruptedException {
-		List<SelectionKey> selected = doSelect();
+	void register(Connection connection) throws IOException {
+		serviceLock.lock();
+		try {
+			wakeUp();
+			connection.channel.register(selector, SelectionKey.OP_READ, connection);
+		} finally {
+			serviceLock.unlock();
+		}
+	}
 
-		for (SelectionKey sk : selected) {
-			if (!sk.isValid()) {
-				continue;
-			}
+	private SelectionKey keyFor(Connection connection) {
+		return connection.channel.keyFor(selector);
+	}
 
-			Connection connection = (Connection) sk.attachment();
-			if (sk.isWritable()) {
-				connection.write();
-			}
-			if (sk.isReadable()) {
-				connection.read();
-			}
+	void enableWrite(Connection connection) {
+		SelectionKey sk = keyFor(connection);
+		sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
+
+		wakeUp();
+	}
+
+	void disableWrite(Connection connection) {
+		SelectionKey sk = keyFor(connection);
+		sk.interestOps(sk.interestOps() & (~SelectionKey.OP_WRITE));
+	}
+
+	private void wakeUp() {
+		if (wakeUp.compareAndSet(false, true)) {
+			selector.wakeup();
 		}
 	}
 }

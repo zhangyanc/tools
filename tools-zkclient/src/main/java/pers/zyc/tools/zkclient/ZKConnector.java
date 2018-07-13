@@ -5,10 +5,11 @@ import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.event.Listenable;
-import pers.zyc.tools.event.MulticastExceptionHandler;
-import pers.zyc.tools.event.Multicaster;
-import pers.zyc.tools.lifecycle.PeriodicService;
+import pers.zyc.tools.utils.GeneralThreadFactory;
+import pers.zyc.tools.utils.event.Listenable;
+import pers.zyc.tools.utils.event.MulticastExceptionHandler;
+import pers.zyc.tools.utils.event.Multicaster;
+import pers.zyc.tools.utils.lifecycle.ThreadService;
 import pers.zyc.tools.zkclient.listener.ConnectionListener;
 
 import java.io.IOException;
@@ -23,7 +24,7 @@ import static org.apache.zookeeper.Watcher.Event.KeeperState.SyncConnected;
  *
  * @author zhangyancheng
  */
-final class ZKConnector extends PeriodicService implements Watcher, Listenable<ConnectionListener> {
+final class ZKConnector extends ThreadService implements Watcher, Listenable<ConnectionListener> {
 	private final static Logger LOGGER = LoggerFactory.getLogger(ZKConnector.class);
 
 	/**
@@ -34,7 +35,12 @@ final class ZKConnector extends PeriodicService implements Watcher, Listenable<C
 	/**
 	 * 连接事件广播器, listener回调的阻塞将影响connector线程对新连接事件的处理
 	 */
-	private final Multicaster<ConnectionListener> multicaster;
+	private final Multicaster<ConnectionListener> multicaster = new Multicaster<ConnectionListener>() {
+		{
+			setExceptionHandler(EXCEPTION_HANDLER);
+		}
+	};
+
 
 	/**
 	 * 连接事件锁, 用于ZK连接事件的等待和唤醒
@@ -72,8 +78,15 @@ final class ZKConnector extends PeriodicService implements Watcher, Listenable<C
 		this.sessionTimeout = sessionTimeout;
 		this.eventWaitTimeout = sessionTimeout;
 
-		multicaster = new Multicaster<ConnectionListener>() {};
-		multicaster.setExceptionHandler(EXCEPTION_HANDLER);
+		GeneralThreadFactory threadFactory = new GeneralThreadFactory(getName());
+		threadFactory.setExceptionHandler(new Thread.UncaughtExceptionHandler() {
+			@Override
+			public void uncaughtException(Thread t, Throwable e) {
+				LOGGER.error("Uncaught exception", e);
+				stop();
+			}
+		});
+		setThreadFactory(threadFactory);
 	}
 
 	@Override
@@ -87,50 +100,10 @@ final class ZKConnector extends PeriodicService implements Watcher, Listenable<C
 	}
 
 	@Override
-	public String getName() {
-		return "ZKConnector";
-	}
-
-	@Override
 	protected void doStop() throws Exception {
 		super.doStop();
 		closeZooKeeper();
 		multicaster.removeAllListeners();
-	}
-
-	/**
-	 * @return 是否连通ZooKeeper Server
-	 */
-	boolean isConnected() {
-		serviceLock.lock();
-		try {
-			return isRunning() && currentState == SyncConnected;
-		} finally {
-			serviceLock.unlock();
-		}
-	}
-
-	/**
-	 * @return 当前ZooKeeper实例
-	 */
-	ZooKeeper getZooKeeper() {
-		serviceLock.lock();
-		try {
-			return zooKeeper;
-		} finally {
-			serviceLock.unlock();
-		}
-	}
-
-	@Override
-	protected long getInterval() {
-		return 0;
-	}
-
-	@Override
-	public void uncaughtException(Thread t, Throwable e) {
-		LOGGER.error("Uncaught exception: ", e);
-		super.uncaughtException(t, e);
 	}
 
 	@Override
@@ -150,7 +123,22 @@ final class ZKConnector extends PeriodicService implements Watcher, Listenable<C
 	}
 
 	@Override
-	protected void execute() throws InterruptedException {
+	protected ServiceRunnable getRunnable() {
+		return new ServiceRunnable() {
+
+			@Override
+			protected long getInterval() {
+				return 0;
+			}
+
+			@Override
+			protected void execute() throws InterruptedException {
+				execute0();
+			}
+		};
+	}
+
+	private void execute0() throws InterruptedException {
 		Publisher publisher;
 
 		serviceLock.lockInterruptibly();
@@ -224,6 +212,30 @@ final class ZKConnector extends PeriodicService implements Watcher, Listenable<C
 
 		//发布事件
 		publisher.publish();
+	}
+
+	/**
+	 * @return 是否连通ZooKeeper Server
+	 */
+	boolean isConnected() {
+		serviceLock.lock();
+		try {
+			return isRunning() && currentState == SyncConnected;
+		} finally {
+			serviceLock.unlock();
+		}
+	}
+
+	/**
+	 * @return 当前ZooKeeper实例
+	 */
+	ZooKeeper getZooKeeper() {
+		serviceLock.lock();
+		try {
+			return zooKeeper;
+		} finally {
+			serviceLock.unlock();
+		}
 	}
 
 	interface Publisher {

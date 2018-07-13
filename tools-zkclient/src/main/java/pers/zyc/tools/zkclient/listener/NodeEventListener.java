@@ -1,6 +1,7 @@
 package pers.zyc.tools.zkclient.listener;
 
-import pers.zyc.tools.event.Listener;
+
+import pers.zyc.tools.utils.event.Listener;
 
 /**
  * 节点事件监听器(不同于ZooKeeper Watcher, 此监听是持续性的)

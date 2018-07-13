@@ -2,9 +2,9 @@ package pers.zyc.tools.zkclient;
 
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
-import pers.zyc.tools.event.EventBus;
-import pers.zyc.tools.event.EventListener;
-import pers.zyc.tools.lifecycle.Service;
+import pers.zyc.tools.utils.event.EventBus;
+import pers.zyc.tools.utils.event.EventListener;
+import pers.zyc.tools.utils.lifecycle.Service;
 import pers.zyc.tools.zkclient.listener.ConnectionListener;
 
 import static org.apache.zookeeper.Watcher.Event.EventType.None;
@@ -46,12 +46,11 @@ abstract class BaseReactor extends Service implements ConnectionListener, Watche
 		//注册连接监听器, 重连成功后注册watcher
 		zkClient.addListener(this);
 
+		watchedEventBus.name(getName()).addListeners(new WatchedEventListener()).start();
 		if (zkClient.isConnected()) {
 			//当前已经连接注册watcher
 			enqueueEvent(CONNECTED_EVENT);
 		}
-
-		watchedEventBus.name(getName()).addListeners(new WatchedEventListener()).start();
 	}
 
 	@Override

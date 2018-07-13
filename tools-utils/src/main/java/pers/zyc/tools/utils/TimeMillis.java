@@ -1,7 +1,7 @@
 package pers.zyc.tools.utils;
 
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import pers.zyc.tools.utils.lifecycle.ThreadService;
+
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -9,26 +9,50 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * @author zhangyancheng
  */
-public final class TimeMillis {
+public class TimeMillis extends ThreadService {
 
-	private static final AtomicLong TIME_MILLIS = new AtomicLong(System.currentTimeMillis());
+	public static final TimeMillis INSTANCE;
 
 	static {
-		Executors.newSingleThreadScheduledExecutor(new NameThreadFactory("TIME_MILLIS", true))
-				 .scheduleAtFixedRate(new Runnable() {
-
-					 @Override
-					 public void run() {
-						 TIME_MILLIS.set(System.currentTimeMillis());
-					 }
-				 }, 0, 1, TimeUnit.MILLISECONDS);
+		INSTANCE = new TimeMillis();
+		INSTANCE.start();
 	}
 
-	public static long get() {
-		return TIME_MILLIS.get();
+	private TimeMillis() {
+		setThreadFactory(new GeneralThreadFactory("TIME_MILLIS") {
+			{
+				setDaemon(true);
+				setPriority(Thread.MIN_PRIORITY);
+			}
+		});
 	}
 
-	public static long now() {
+	private final AtomicLong timeMillis = new AtomicLong(System.currentTimeMillis());
+
+	@Override
+	protected Runnable getRunnable() {
+		return new ServiceRunnable() {
+
+			@Override
+			protected long getInterval() {
+				return 1;
+			}
+
+			@Override
+			protected void execute() throws InterruptedException {
+				timeMillis.set(current());
+			}
+		};
+	}
+
+	public long get() {
+		if (isRunning()) {
+			return timeMillis.get();
+		}
+		return current();
+	}
+
+	public long current() {
 		return System.currentTimeMillis();
 	}
 }

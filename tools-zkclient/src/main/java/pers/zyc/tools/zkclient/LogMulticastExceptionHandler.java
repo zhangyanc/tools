@@ -1,8 +1,8 @@
 package pers.zyc.tools.zkclient;
 
 import org.slf4j.Logger;
-import pers.zyc.tools.event.MulticastDetail;
-import pers.zyc.tools.event.MulticastExceptionHandler;
+import pers.zyc.tools.utils.event.MulticastDetail;
+import pers.zyc.tools.utils.event.MulticastExceptionHandler;
 
 import java.util.Objects;
 

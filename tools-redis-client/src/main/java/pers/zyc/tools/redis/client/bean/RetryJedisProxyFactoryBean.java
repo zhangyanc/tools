@@ -1,9 +1,9 @@
 package pers.zyc.tools.redis.client.bean;
 
-import pers.zyc.retry.BaseRetryPolicy;
-import pers.zyc.retry.RetryFailedException;
-import pers.zyc.retry.RetryLoop;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
+import pers.zyc.tools.utils.retry.BaseRetryPolicy;
+import pers.zyc.tools.utils.retry.RetryFailedException;
+import pers.zyc.tools.utils.retry.RetryLoop;
 import redis.clients.jedis.JedisCommands;
 import redis.clients.jedis.exceptions.JedisConnectionException;
 

@@ -80,9 +80,9 @@ public class ZKClientTest extends BaseClientTest {
 			}
 		}.start();
 		barrier.await();
-		long beforeTime = TimeMillis.get();
+		long beforeTime = TimeMillis.INSTANCE.get();
 		zkClient.start();
-		long endTime = TimeMillis.get();
+		long endTime = TimeMillis.INSTANCE.get();
 
 		Assert.assertTrue(zkClient.isConnected());
 		//ZooKeeper Server进程启动需要时间, 使用2000ms容错

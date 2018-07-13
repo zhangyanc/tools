@@ -2,7 +2,7 @@ package pers.zyc.tools.zkclient;
 
 import org.apache.zookeeper.*;
 import org.apache.zookeeper.data.Stat;
-import pers.zyc.tools.lifecycle.Service;
+import pers.zyc.tools.utils.lifecycle.Service;
 import pers.zyc.tools.zkclient.listener.*;
 
 import java.lang.reflect.Proxy;

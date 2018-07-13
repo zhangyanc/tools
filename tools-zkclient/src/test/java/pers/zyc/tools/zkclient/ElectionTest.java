@@ -3,7 +3,7 @@ package pers.zyc.tools.zkclient;
 import org.apache.zookeeper.*;
 import org.junit.Assert;
 import org.junit.Test;
-import pers.zyc.tools.event.EventListener;
+import pers.zyc.tools.utils.event.EventListener;
 
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
