@@ -43,14 +43,13 @@ abstract class BaseReactor extends Service implements ConnectionListener, Watche
 
 	@Override
 	protected void doStart() {
-		//注册连接监听器, 重连成功后注册watcher
-		zkClient.addListener(this);
-
 		watchedEventBus.name(getName()).addListeners(new WatchedEventListener()).start();
 		if (zkClient.isConnected()) {
 			//当前已经连接注册watcher
 			enqueueEvent(CONNECTED_EVENT);
 		}
+		//注册连接监听器, 重连成功后注册watcher
+		zkClient.addListener(this);
 	}
 
 	@Override

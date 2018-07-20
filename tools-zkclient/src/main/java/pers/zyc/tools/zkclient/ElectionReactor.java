@@ -92,22 +92,23 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 	public void onConnected(boolean newSession) {
 		if (newSession) {
 			enqueueEvent(CONNECTED_EVENT);
-			return;
-		}
-
-		serviceLock.lock();
-		try {
-			if (isQuitting()) {
-				quitCondition.signal();
+		} else if (isQuitting()) {
+			serviceLock.lock();
+			try {
+				if (isQuitting()) {
+					quitCondition.signal();
+				}
+			} finally {
+				serviceLock.unlock();
 			}
-		} finally {
-			serviceLock.unlock();
 		}
 	}
 
 	@Override
 	public void onDisconnected(boolean sessionClosed) {
-		enqueueEvent(SESSION_CLOSED_EVENT);
+		if (sessionClosed) {
+			enqueueEvent(SESSION_CLOSED_EVENT);
+		}
 	}
 
 	@Override
@@ -115,15 +116,15 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 		ElectionEvent electionEvent = null;
 		serviceLock.lock();
 		try {
-			if (isQuitting()) {
+			if (isQuitting() || event == SESSION_CLOSED_EVENT) {
+				//member已经不存在
 				member = leader = null;
-				quitCondition.signal();
-
 				if (isLeader) {
 					isLeader = false;
 					electionEvent = ElectionEvent.LOST;
 				}
-			} else {
+				quitCondition.signal();
+			} else if (zkClient.isConnected()) {
 				if (member == null) {
 					member = zkClient.createEphemeral(path + "/" + elector.getElectorMode().prefix(),
 							elector.getMemberData(), true).substring(path.length() + 1);
@@ -144,6 +145,10 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 		}
 	}
 
+	private void clean() {
+		member = leader = null;
+	}
+
 	private ElectionEvent elect() throws KeeperException, InterruptedException {
 		List<String> children = zkClient.getChildren(path, this);
 
@@ -152,30 +157,28 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 		}
 
 		if (isLeader) {
-			//已经是主节点则无需再处理是否变更
+			//主节点不用处理变更(其他member的新增、删除事件)
 			return null;
 		}
 
 		String leastSeqNode = getLeastSeqNode(children);
 
 		if (isObserver(leastSeqNode)) {
-			//全部是observer节点
 			LOGGER.warn("All member is observer, no leader elected!");
 
 			if (leader != null) {
 				leader = null;
+				return ElectionEvent.LEADER_CHANGED;
 			}
+			return null;
+		} else if (leastSeqNode.equals(leader)) {
+			//主节点未变更
 			return null;
 		}
 
-		String lastLeader = leader;
-		//由最小序列号节点获取主角色, 如果是当前节点则发布TAKE事件
 		leader = leastSeqNode;
-		isLeader = member.equals(leader);
-		//当前不是leader判断是否leader变更, 否则无需发布事件
-		boolean leaderChanged = !isLeader && !leader.equals(lastLeader);
-
-		return isLeader ? ElectionEvent.TAKE : leaderChanged ? ElectionEvent.LEADER_CHANGED : null;
+		isLeader = leader.equals(member);
+		return isLeader ? ElectionEvent.TAKE : ElectionEvent.LEADER_CHANGED;
 	}
 
 	@Override
