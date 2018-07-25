@@ -32,6 +32,11 @@ public interface LeaderElection extends EventSource<ElectionEvent> {
 	String leader();
 
 	/**
+	 * @return 当前是否已选为leader
+	 */
+	boolean isLeader();
+
+	/**
 	 * 重新选举(如果当前是主节点则发布LOST事件)
 	 */
 	void reelect();

@@ -42,11 +42,6 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 	private String leader;
 
 	/**
-	 * 当前是否已选为主
-	 */
-	private boolean isLeader;
-
-	/**
 	 * 选举人
 	 */
 	private Elector elector;
@@ -116,14 +111,16 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 		ElectionEvent electionEvent = null;
 		serviceLock.lock();
 		try {
-			if (isQuitting() || event == SESSION_CLOSED_EVENT) {
+			boolean isQuitting = isQuitting();
+			if (isQuitting || event == SESSION_CLOSED_EVENT) {
 				//member已经不存在
-				member = leader = null;
-				if (isLeader) {
-					isLeader = false;
+				if (isLeader()) {
 					electionEvent = ElectionEvent.LOST;
 				}
-				quitCondition.signal();
+				member = leader = null;
+				if (isQuitting) {
+					quitCondition.signal();
+				}
 			} else if (zkClient.isConnected()) {
 				if (member == null) {
 					member = zkClient.createEphemeral(path + "/" + elector.getElectorMode().prefix(),
@@ -145,18 +142,13 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 		}
 	}
 
-	private void clean() {
-		member = leader = null;
-	}
-
 	private ElectionEvent elect() throws KeeperException, InterruptedException {
 		List<String> children = zkClient.getChildren(path, this);
 
 		if (!children.contains(member)) {
 			throw new IllegalStateException(member + " not in children list!");
 		}
-
-		if (isLeader) {
+		if (isLeader()) {
 			//主节点不用处理变更(其他member的新增、删除事件)
 			return null;
 		}
@@ -177,8 +169,7 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 		}
 
 		leader = leastSeqNode;
-		isLeader = leader.equals(member);
-		return isLeader ? ElectionEvent.TAKE : ElectionEvent.LEADER_CHANGED;
+		return isLeader() ? ElectionEvent.TAKE : ElectionEvent.LEADER_CHANGED;
 	}
 
 	@Override
@@ -213,6 +204,16 @@ class ElectionReactor extends BaseReactor implements LeaderElection {
 		serviceLock.lock();
 		try {
 			return leader;
+		} finally {
+			serviceLock.unlock();
+		}
+	}
+
+	@Override
+	public boolean isLeader() {
+		serviceLock.lock();
+		try {
+			return member != null && member.equals(leader);
 		} finally {
 			serviceLock.unlock();
 		}
