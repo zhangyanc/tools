@@ -4,6 +4,7 @@ import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 import org.junit.After;
+import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
@@ -75,8 +76,8 @@ public class BaseClientTest {
 
 	@After
 	public void tearDown() {
-		if (zkClient != null && zkClient.isRunning()) {
-			zkClient.stop();
+		if (zkClient != null) {
+			zkClient.destroy();
 		}
 		cli.close();
 		zkSwitch.close();
@@ -109,33 +110,30 @@ public class BaseClientTest {
 		zkSwitch.open();
 
 		ClientConfig config = new ClientConfig();
-		config.setSyncStart(true);
 		createZKClient(config);
-
-		zkClient.start();
 
 		final CountDownLatch newSessionLatch = new CountDownLatch(2);
 
-		zkClient.addListener(new DebugConnectionListener(new ConnectionListener() {
+		zkClient.addConnectionListener(new DebugConnectionListener(new ConnectionListener() {
 
 			@Override
 			public void onConnected(boolean newSession) {
-				if (newSession) {
-					newSessionLatch.countDown();
-				}
 			}
 
 			@Override
 			public void onDisconnected(boolean sessionClosed) {
-				if (sessionClosed) {
-					newSessionLatch.countDown();
-				}
+				newSessionLatch.countDown();
 			}
 		}));
+
+		if (!zkClient.waitToConnected(1000)) {
+			Assert.fail("Can't connect to ZooKeeper: " + CONNECT_STRING);
+		}
 
 		logger.info("Make session expire");
 		makeCurrentZkClientSessionExpire();
 
 		newSessionLatch.await();
+		Assert.assertFalse(zkClient.isConnected());
 	}
 }

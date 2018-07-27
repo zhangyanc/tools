@@ -1,8 +1,9 @@
 package pers.zyc.tools.zkclient;
 
-import org.apache.zookeeper.*;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.Watcher;
+import org.apache.zookeeper.ZooKeeper;
+import org.apache.zookeeper.ZooKeeperMain;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -12,13 +13,10 @@ import java.io.IOException;
  */
 class ZKCli extends ZooKeeperMain implements Closeable {
 
-	private static final Logger logger = LoggerFactory.getLogger(ZKCli.class);
-
 	ZKCli(String connectString) throws IOException {
 		super(new ZooKeeper(connectString, 30000, new Watcher() {
 			@Override
 			public void process(WatchedEvent event) {
-				logger.debug(event.toString());
 			}
 		}));
 	}

@@ -32,31 +32,19 @@ public class ElectionTest extends BaseClientTest {
 
 	private static final String ELECTION_PATH = "/election";
 
-	@Test
-	public void case_UnElect() throws Exception {
-		prepare();
-
-		LeaderElection election = zkClient.getElection(ELECTION_PATH);
-
-		Assert.assertNull(election.leader());
-		Assert.assertNull(election.member());
-	}
-
 	private void prepare() throws InterruptedException, IOException, KeeperException {
 		ClientConfig config = new ClientConfig();
-		config.setSyncStart(true);
 		config.setConnectStr(CONNECT_STRING);
 
 		createZKClient(config);
 
 		zkSwitch.open();
-		zkClient.start();
 
 		cli.executeLine("rmr " + ELECTION_PATH);
 		cli.executeLine("create " + ELECTION_PATH + " a");
 	}
 
-	private TestMember addMember(ElectorMode electorMode) throws Exception {
+	private TestMember addMember(Elector.Mode electorMode) throws Exception {
 		ZooKeeper session = new ZooKeeper(CONNECT_STRING, 30000, new Watcher() {
 			@Override
 			public void process(WatchedEvent event) {
@@ -73,25 +61,31 @@ public class ElectionTest extends BaseClientTest {
 	public void case_Elect_FirstFollowerTakeLeader() throws Exception {
 		prepare();
 
-		addMember(ElectorMode.OBSERVER);
+		addMember(Elector.Mode.OBSERVER);
 
-		LeaderElection election = zkClient.getElection(ELECTION_PATH);
-		Elector elector = new DefaultElector(new byte[0], ElectorMode.FOLLOWER);
+		Election election = zkClient.createElection(ELECTION_PATH);
+
+		Assert.assertEquals(election.electionPath(), ELECTION_PATH);
+		Assert.assertTrue(election.mode() == Elector.Mode.FOLLOWER);
+		Assert.assertArrayEquals(election.memberData(), new byte[0]);
 
 		final CountDownLatch cdl = new CountDownLatch(1);
 		election.addListener(new EventListener<ElectionEvent>() {
 			@Override
 			public void onEvent(ElectionEvent event) {
-				logger.info("Leader " + event);
-				if (event == ElectionEvent.TAKE) {
+				logger.info("ElectionEvent " + event.eventType);
+				if (event.eventType == Election.EventType.LEADER_TOOK) {
 					cdl.countDown();
 				}
 			}
 		});
 
-		election.elect(elector);
+		//添加监听器前已经启动election, 有可能错过TOOK事件(如果添加后未选为主, 则必需收到事件)
+		if (!election.isLeader() && !cdl.await(2000, TimeUnit.MILLISECONDS)) {
+			Assert.fail("Wait event timeout!");
+		}
 
-		cdl.await(2000, TimeUnit.MILLISECONDS);
+		Assert.assertTrue(election.isLeader());
 		Assert.assertTrue(election.leader().equals(election.member()));
 	}
 
@@ -99,29 +93,32 @@ public class ElectionTest extends BaseClientTest {
 	public void case_Elect_SecondFollowerTakeLeaderAfterFirstFollowerDeleted() throws Exception {
 		prepare();
 
-		TestMember firstFollower = addMember(ElectorMode.FOLLOWER);
+		TestMember firstFollower = addMember(Elector.Mode.FOLLOWER);
 
-		LeaderElection election = zkClient.getElection(ELECTION_PATH);
-		Elector elector = new DefaultElector(new byte[0], ElectorMode.FOLLOWER);
+		Election election = zkClient.createElection(ELECTION_PATH, Elector.Mode.FOLLOWER, new byte[0]);
+
+		Thread.sleep(2000);
+		Assert.assertTrue(election.leader().equals(firstFollower.member));
+		Assert.assertFalse(election.isLeader());
+
 
 		final CountDownLatch cdl = new CountDownLatch(1);
 		election.addListener(new EventListener<ElectionEvent>() {
 			@Override
 			public void onEvent(ElectionEvent event) {
-				logger.info("Leader " + event);
-				if (event == ElectionEvent.TAKE) {
+				logger.info("ElectionEvent " + event.eventType);
+				if (event.eventType == Election.EventType.LEADER_TOOK) {
 					cdl.countDown();
 				}
 			}
 		});
 
-		election.elect(elector);
+		firstFollower.exit();//触发选举
 
-		Assert.assertFalse(cdl.await(2000, TimeUnit.MILLISECONDS));
-		Assert.assertTrue(election.leader().equals(firstFollower.member));
-
-		firstFollower.exit();
-		cdl.await(2000, TimeUnit.MILLISECONDS);
+		if (!cdl.await(2000, TimeUnit.MILLISECONDS)) {
+			Assert.fail("Wait event timeout!");
+		}
+		Assert.assertTrue(election.isLeader());
 		Assert.assertTrue(election.leader().equals(election.member()));
 	}
 
@@ -129,63 +126,75 @@ public class ElectionTest extends BaseClientTest {
 	public void case_Elect_Reelect() throws Exception {
 		prepare();
 
-		addMember(ElectorMode.OBSERVER);
+		addMember(Elector.Mode.OBSERVER);
 
-		LeaderElection election = zkClient.getElection(ELECTION_PATH);
-		Elector elector = new DefaultElector(new byte[0], ElectorMode.FOLLOWER);
+		final Election election = zkClient.createElection(ELECTION_PATH, Elector.Mode.FOLLOWER, new byte[0]);
 
 		final Semaphore semaphore = new Semaphore(0);
-		final AtomicReference<ElectionEvent> electionEvent = new AtomicReference<>();
+		final AtomicReference<Election.EventType> electionEvent = new AtomicReference<>();
 		election.addListener(new EventListener<ElectionEvent>() {
 
 			@Override
 			public void onEvent(ElectionEvent event) {
-				logger.info("Leader " + event);
-				electionEvent.set(event);
+				logger.info("ElectionEvent " + event.eventType);
+				electionEvent.set(event.eventType);
 				semaphore.release();
 			}
 		});
 
 		{//第一个follower, 被选为leader
-			election.elect(elector);
-			semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS);
-			Assert.assertTrue(electionEvent.get() == ElectionEvent.TAKE);
-			Assert.assertTrue(election.leader().equals(election.member()));
+			//添加监听器前已经启动election, 有可能错过TOOK事件(如果添加后未选为主, 则必需收到事件)
+			if (!election.isLeader() && !semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS)) {
+				Assert.fail("Wait event timeout!");
+			}
+			Assert.assertTrue(election.isLeader());
+			Assert.assertTrue(electionEvent.get() == null || electionEvent.get() == Election.EventType.LEADER_TOOK);
 		}
 
-		TestMember secondFollower = addMember(ElectorMode.FOLLOWER);
-		TestMember thirdFollower = addMember(ElectorMode.FOLLOWER);
+		TestMember secondFollower = addMember(Elector.Mode.FOLLOWER);
+		TestMember thirdFollower = addMember(Elector.Mode.FOLLOWER);
 
-		{//重新选, 发布LOST事件, 将作为最后一个follower加入
+		{//重新选, 发布LOST事件, 将作为最后一个follower重新加入
 			election.reelect();
-			semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS);
-			Assert.assertTrue(electionEvent.get() == ElectionEvent.LOST);
+			if (!semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS)) {
+				Assert.fail("Wait event timeout!");
+			}
+			Assert.assertTrue(electionEvent.get() == Election.EventType.LEADER_LOST);
 		}
 
 		{//重选后, 第二个follower被选为leader
-			semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS);
-			Assert.assertTrue(electionEvent.get() == ElectionEvent.LEADER_CHANGED);
+			if (!semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS)) {
+				Assert.fail("Wait event timeout!");
+			}
+			Assert.assertTrue(electionEvent.get() == Election.EventType.LEADER_CHANGED);
 			Assert.assertTrue(election.leader().equals(secondFollower.member));
 		}
 
 		{//第二个follower(leader)退出, 第三个follower被选为leader
 			secondFollower.exit();
-			semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS);
-			Assert.assertTrue(electionEvent.get() == ElectionEvent.LEADER_CHANGED);
+			if (!semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS)) {
+				Assert.fail("Wait event timeout!");
+			}
+			Assert.assertTrue(electionEvent.get() == Election.EventType.LEADER_CHANGED);
 			Assert.assertTrue(election.leader().equals(thirdFollower.member));
 		}
 
 		{//第三个follower(leader)退出, elector将被重新选为leader
 			thirdFollower.exit();
-			semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS);
-			Assert.assertTrue(electionEvent.get() == ElectionEvent.TAKE);
-			Assert.assertTrue(election.leader().equals(election.member()));
+			if (!semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS)) {
+				Assert.fail("Wait event timeout!");
+			}
+			Assert.assertTrue(electionEvent.get() == Election.EventType.LEADER_TOOK);
+			Assert.assertTrue(election.isLeader());
 		}
 
 		{//退出选举, 作为leader退出发布LOST事件
 			election.quit();
-			semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS);
-			Assert.assertTrue(electionEvent.get() == ElectionEvent.LOST);
+			if (!semaphore.tryAcquire(2000, TimeUnit.MILLISECONDS)) {
+				Assert.fail("Wait event timeout!");
+			}
+			Assert.assertTrue(electionEvent.get() == Election.EventType.LEADER_LOST);
+			Assert.assertFalse(election.isLeader());
 		}
 
 		Assert.assertNull(election.leader());

@@ -7,7 +7,6 @@ public class ClientConfig {
 	private String connectStr = "localhost:2181";
 	private int sessionTimeout = 30000;
 	private boolean canByReadOnly;
-	private boolean syncStart = true;
 
 	private boolean useRetry = false;
 	private int retryTimes = 1;//重试次数
@@ -35,14 +34,6 @@ public class ClientConfig {
 
 	public void setCanByReadOnly(boolean canByReadOnly) {
 		this.canByReadOnly = canByReadOnly;
-	}
-
-	public boolean isSyncStart() {
-		return syncStart;
-	}
-
-	public void setSyncStart(boolean syncStart) {
-		this.syncStart = syncStart;
 	}
 
 	public boolean isUseRetry() {

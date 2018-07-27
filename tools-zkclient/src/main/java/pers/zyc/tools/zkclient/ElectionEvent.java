@@ -1,22 +1,16 @@
 package pers.zyc.tools.zkclient;
 
+import pers.zyc.tools.utils.event.SourcedEvent;
+
 /**
  * @author zhangyancheng
  */
-public enum ElectionEvent {
+public class ElectionEvent extends SourcedEvent<Elector> {
 
-	/**
-	 * 获取主
-	 */
-	TAKE,
+	public final Election.EventType eventType;
 
-	/**
-	 * 失去主
-	 */
-	LOST,
-
-	/**
-	 * 主发生变更(变更非当前elector)
-	 */
-	LEADER_CHANGED
+	ElectionEvent(Elector source, Election.EventType eventType) {
+		super(source);
+		this.eventType = eventType;
+	}
 }

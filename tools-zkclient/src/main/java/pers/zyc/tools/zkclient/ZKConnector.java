@@ -15,6 +15,9 @@ import pers.zyc.tools.zkclient.listener.ConnectionListener;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import static org.apache.zookeeper.Watcher.Event.KeeperState.Disconnected;
 import static org.apache.zookeeper.Watcher.Event.KeeperState.SyncConnected;
@@ -41,6 +44,7 @@ final class ZKConnector extends ThreadService implements Watcher, Listenable<Con
 		}
 	};
 
+	private Lock readLock;
 
 	/**
 	 * 连接事件锁, 用于ZK连接事件的等待和唤醒
@@ -64,7 +68,7 @@ final class ZKConnector extends ThreadService implements Watcher, Listenable<Con
 	/**
 	 * ZooKeeper实例
 	 */
-	private ZooKeeper zooKeeper;
+	volatile ZooKeeper zooKeeper;
 
 	private final String connectStr;
 	private final int sessionTimeout;
@@ -80,6 +84,7 @@ final class ZKConnector extends ThreadService implements Watcher, Listenable<Con
 
 		GeneralThreadFactory threadFactory = new GeneralThreadFactory(getName());
 		threadFactory.setExceptionHandler(new Thread.UncaughtExceptionHandler() {
+
 			@Override
 			public void uncaughtException(Thread t, Throwable e) {
 				LOGGER.error("Uncaught exception", e);
@@ -87,6 +92,15 @@ final class ZKConnector extends ThreadService implements Watcher, Listenable<Con
 			}
 		});
 		setThreadFactory(threadFactory);
+
+		createZooKeeper();
+	}
+
+	@Override
+	protected Lock initServiceLock() {
+		ReadWriteLock rwLock = new ReentrantReadWriteLock(true);
+		this.readLock = rwLock.readLock();
+		return rwLock.writeLock();
 	}
 
 	@Override
@@ -107,11 +121,56 @@ final class ZKConnector extends ThreadService implements Watcher, Listenable<Con
 	}
 
 	@Override
+	public boolean isRunning() {
+		readLock.lock();
+		try {
+			return super.isRunning();
+		} finally {
+			readLock.unlock();
+		}
+	}
+
+	boolean isConnected() {
+		readLock.lock();
+		try {
+			return currentState == SyncConnected;
+		} finally {
+			readLock.unlock();
+		}
+	}
+
+	/**
+	 * 关闭ZooKeeper及自身的重连机制
+	 */
+	private void closeZooKeeper() throws InterruptedException {
+		LOGGER.info("Closing zookeeper: {}", zooKeeper);
+		try {
+			zooKeeper.close();
+		} finally {
+			zooKeeperSessionId = 0;
+			currentState = incomeState = null;
+			eventWaitTimeout = sessionTimeout;
+		}
+	}
+
+	private void createZooKeeper() {
+		try {
+			zooKeeper = new ZooKeeper(connectStr, sessionTimeout, this);
+		} catch (IOException e) {
+			throw new RuntimeException(e);
+		}
+	}
+
+	@Override
 	public void process(WatchedEvent event) {
 		//只处理连接事件
 		if (event.getPath() == null) {
 			serviceLock.lock();
 			try {
+				if (!isRunning()) {
+					return;
+				}
+
 				currentState = incomeState = event.getState();
 				LOGGER.debug("Watched connection event[{}]",  incomeState);
 
@@ -147,15 +206,6 @@ final class ZKConnector extends ThreadService implements Watcher, Listenable<Con
 				return;
 			}
 
-			//初始以及会话关闭后的下轮, 创建ZooKeeper
-			if (zooKeeper == null) {
-				try {
-					zooKeeper = new ZooKeeper(connectStr, sessionTimeout, this);
-				} catch (IOException e) {
-					throw new RuntimeException("Creating ZooKeeper instance error!", e);
-				}
-			}
-
 			long timeout = TimeUnit.MILLISECONDS.toNanos(eventWaitTimeout);
 			while (this.incomeState == null && timeout > 0) {
 				//等待新事件
@@ -171,94 +221,56 @@ final class ZKConnector extends ThreadService implements Watcher, Listenable<Con
 			 *      1. 未收到事件且当前处于连通状态, 表示正常连通无需发布事件
 			 *      2. 收到SyncConnected事件, 判断是否是同一个ZooKeeper实例重连成功, 发布connected并指示是否为新会话
 			 *      3. 收到Disconnected事件, 发布Disconnected事件, 然后等待ZooKeeper的自动重连
-			 *      4. 其他均为错误(未支持)状态, 主动关闭ZooKeeper, 发布会话Disconnected事件, 并指示session 关闭
+			 *      4. 其他均为错误(未支持)状态, 主动关闭ZooKeeper, 发布会话Disconnected事件, 并指示会话关闭
 			 */
 			if (incomeState == null &&
 			   (currentState == null || currentState == SyncConnected)) {
 				return;
 			}
+			long sessionId = zooKeeper.getSessionId();
 			LOGGER.info("Publish incoming event[{}], session id: 0x{}",
-					incomeState, Long.toHexString(zooKeeperSessionId));
+					incomeState, Long.toHexString(sessionId));
 
-			publisher = new Publisher() {
-
-				@Override
-				public void publish() throws InterruptedException {
-					if (incomeState == SyncConnected) {
-						boolean newSession = zooKeeperSessionId != zooKeeper.getSessionId();
-						if (newSession) {
-							//更新协商后真正的超时时间
-							eventWaitTimeout = zooKeeper.getSessionTimeout();
-							//保存新会话id, 用于收到SyncConnected后判断是否为新会话
-							zooKeeperSessionId = zooKeeper.getSessionId();
-						}
-						multicaster.listeners.onConnected(newSession);
-					} else {
-						/*
-						 * 断连后只需要等待自动重连,
-						 * 如果下轮未收到事件(SyncConnected), 则在ZooKeeper Server端实际上已经会话超时了
-						 */
-						boolean sessionClosed = incomeState != Disconnected;
-						if (sessionClosed) {
-							closeZooKeeper();
-						}
-						multicaster.listeners.onDisconnected(sessionClosed);
-					}
+			if (incomeState == SyncConnected) {
+				final boolean newSession = zooKeeperSessionId != sessionId;
+				if (newSession) {
+					//保存新会话id, 用于收到SyncConnected后判断是否为新会话
+					zooKeeperSessionId = sessionId;
+					//更新协商后真正的超时时间
+					eventWaitTimeout = zooKeeper.getSessionTimeout();
 				}
-			};
+				publisher = new Publisher() {
+					@Override
+					public void run() {
+						multicaster.listeners.onConnected(newSession);
+					}
+				};
+			} else {
+				/*
+				 * 断连后只需要等待自动重连,
+				 * 如果下轮未收到事件(SyncConnected), 则在ZooKeeper Server端实际上已经会话超时了
+				 */
+				final boolean sessionExpired = incomeState != Disconnected;
+				if (sessionExpired) {
+					LOGGER.warn("Session expired: {}", zooKeeper);
+					closeZooKeeper();
+					createZooKeeper();
+				}
+				publisher = new Publisher() {
+					@Override
+					public void run() {
+						multicaster.listeners.onDisconnected(sessionExpired);
+					}
+				};
+			}
 		} finally {
 			serviceLock.unlock();
 		}
 
 		//发布事件
-		publisher.publish();
+		publisher.run();
 	}
 
-	/**
-	 * @return 是否连通ZooKeeper Server
-	 */
-	boolean isConnected() {
-		serviceLock.lock();
-		try {
-			return isRunning() && currentState == SyncConnected;
-		} finally {
-			serviceLock.unlock();
-		}
-	}
-
-	/**
-	 * @return 当前ZooKeeper实例
-	 */
-	ZooKeeper getZooKeeper() {
-		serviceLock.lock();
-		try {
-			return zooKeeper;
-		} finally {
-			serviceLock.unlock();
-		}
-	}
-
-	interface Publisher {
-		void publish() throws InterruptedException;
-	}
-
-	/**
-	 * 关闭ZooKeeper及自身的重连机制
-	 */
-	private void closeZooKeeper() throws InterruptedException {
-		if (zooKeeper != null) {
-			LOGGER.info("Closing zookeeper: {}", zooKeeper);
-			try {
-				zooKeeper.close();
-			} catch (InterruptedException interrupted) {
-				throw interrupted;
-			} catch (Exception ignore) {
-			} finally {
-				zooKeeper = null;
-				zooKeeperSessionId = 0;
-				currentState = incomeState = null;
-				eventWaitTimeout = sessionTimeout;
-			}
-		}
+	interface Publisher extends Runnable {
 	}
 }

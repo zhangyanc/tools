@@ -5,6 +5,7 @@ import org.apache.zookeeper.Watcher;
 import pers.zyc.tools.utils.event.EventBus;
 import pers.zyc.tools.utils.event.EventListener;
 import pers.zyc.tools.utils.lifecycle.Service;
+import pers.zyc.tools.zkclient.listener.ClientDestroyListener;
 import pers.zyc.tools.zkclient.listener.ConnectionListener;
 
 import static org.apache.zookeeper.Watcher.Event.EventType.None;
@@ -14,7 +15,7 @@ import static org.apache.zookeeper.Watcher.Event.EventType.None;
  *
  * @author zhangyancheng
  */
-abstract class BaseReactor extends Service implements ConnectionListener, Watcher {
+abstract class Reactor extends Service implements ConnectionListener, Watcher {
 
 	/**
 	 * 连接成功(包括启动时已连接、自动重连成功、session切换)后的watcher注册事件
@@ -36,9 +37,17 @@ abstract class BaseReactor extends Service implements ConnectionListener, Watche
 	 */
 	private final EventBus<WatchedEvent> watchedEventBus = new EventBus<>();
 
-	BaseReactor(String path, ZKClient zkClient) {
+	Reactor(String path, ZKClient zkClient) {
 		this.path = path;
 		this.zkClient = zkClient;
+
+		zkClient.addListener(new ClientDestroyListener() {
+
+			@Override
+			public void onDestroy() {
+				stop();
+			}
+		});
 	}
 
 	@Override
@@ -49,18 +58,22 @@ abstract class BaseReactor extends Service implements ConnectionListener, Watche
 			enqueueEvent(CONNECTED_EVENT);
 		}
 		//注册连接监听器, 重连成功后注册watcher
-		zkClient.addListener(this);
+		zkClient.addConnectionListener(this);
 	}
 
 	@Override
 	protected void doStop() {
-		zkClient.removeListener(this);
 		watchedEventBus.stop();
+		zkClient.removeConnectionListener(this);
 	}
 
 	@Override
 	public String getName() {
 		return super.getName() + "-" + path;
+	}
+
+	public String getPath() {
+		return path;
 	}
 
 	@Override

@@ -64,15 +64,6 @@ public class ZKConnectorTest {
 	}
 
 	/**
-	 * 测试未启动状态
-	 */
-	@Test
-	public void case_unStarted() throws Exception {
-		Assert.assertNull(connector.getZooKeeper());
-		Assert.assertFalse(connector.isConnected());
-	}
-
-	/**
 	 * 测试事件发布主流程
 	 *
 	 * 测试步骤:
@@ -98,7 +89,7 @@ public class ZKConnectorTest {
 		Assert.assertEquals(ConnectionEvent.SUSPEND, testListener.acquireEvent());
 		Assert.assertFalse(connector.isConnected());
 
-		Thread.sleep(Math.abs((long) (Math.random() * SESSION_TIMEOUT) - 1000));
+		Thread.sleep(Math.abs((long) (Math.random() * SESSION_TIMEOUT) - 3000));
 		zkSwitch.open();
 		Assert.assertEquals(ConnectionEvent.RECONNECTED, testListener.acquireEvent());
 		Assert.assertTrue(connector.isConnected());

@@ -2,6 +2,7 @@ package pers.zyc.tools.zkclient;
 
 import org.apache.zookeeper.KeeperException;
 import pers.zyc.tools.utils.retry.*;
+import pers.zyc.tools.zkclient.listener.ConnectionListener;
 
 import java.lang.reflect.Method;
 import java.util.concurrent.Callable;
@@ -13,20 +14,21 @@ import static org.apache.zookeeper.KeeperException.*;
  *
  * @author zhangyancheng
  */
-class RetryAbleZookeeper extends DefaultZookeeper implements RetryCondition {
+class RetryAbleZookeeper extends DefaultZookeeper implements ConnectionListener, RetryCondition {
 
 	/**
 	 * 重试策略
 	 */
 	private final BaseRetryPolicy retryPolicy;
 
-	RetryAbleZookeeper(ZKClient zkClient) {
-		super(zkClient);
+	RetryAbleZookeeper(ZKConnector connector, ClientConfig config) {
+		super(connector);
 
-		ClientConfig config = zkClient.getConfig();
 		retryPolicy = new AwaitConnectedRetryPolicy(this);
 		retryPolicy.setMaxRetryTimes(config.getRetryTimes());
 		retryPolicy.setRetryDelay(config.getRetryPerWaitTimeout());
+
+		connector.addListener(this);
 	}
 
 	/**
@@ -36,12 +38,14 @@ class RetryAbleZookeeper extends DefaultZookeeper implements RetryCondition {
 	 */
 	@Override
 	public void onConnected(boolean newSession) {
-		super.onConnected(newSession);
-
 		synchronized (this) {
 			//唤醒所有的重试等待线程
 			this.notifyAll();
 		}
+	}
+
+	@Override
+	public void onDisconnected(boolean sessionClosed) {
 	}
 
 	@Override
@@ -52,7 +56,7 @@ class RetryAbleZookeeper extends DefaultZookeeper implements RetryCondition {
 	@Override
 	public boolean check() {
 		//重试条件检查, 连接成功才重试
-		return zkClient.isConnected();
+		return connector.isConnected();
 	}
 
 	/**

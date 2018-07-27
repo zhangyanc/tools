@@ -9,10 +9,7 @@ import pers.zyc.tools.utils.Pair;
 import pers.zyc.tools.utils.event.Listenable;
 import pers.zyc.tools.utils.event.MulticastExceptionHandler;
 import pers.zyc.tools.utils.event.Multicaster;
-import pers.zyc.tools.zkclient.listener.ChildrenEventListener;
-import pers.zyc.tools.zkclient.listener.DataEventListener;
-import pers.zyc.tools.zkclient.listener.ExistsEventListener;
-import pers.zyc.tools.zkclient.listener.NodeEventListener;
+import pers.zyc.tools.zkclient.listener.*;
 
 import java.util.Arrays;
 import java.util.List;
@@ -21,12 +18,12 @@ import java.util.Objects;
 import static org.apache.zookeeper.Watcher.Event.EventType.*;
 
 /**
- * 节点事件反应器, 通过连续watcher实现事件持续发布
+ * 节点事件监听器, 通过连续watch实现事件持续发布
  *
  * @author zhangyancheng
  */
-class NodeEventReactor extends BaseReactor {
-	private static final Logger LOGGER = LoggerFactory.getLogger(NodeEventReactor.class);
+class NodeEventDurableWatcher extends Reactor implements NodeEventWatcher {
+	private static final Logger LOGGER = LoggerFactory.getLogger(NodeEventDurableWatcher.class);
 
 	/**
 	 * 异常处理器, 所有事件发布异常都将记录日志
@@ -36,25 +33,62 @@ class NodeEventReactor extends BaseReactor {
 	/**
 	 * 节点存在状态reactor, 状态变更(节点新增、删除)后发布事件
 	 */
-	final ExistsEventReactor existsEventReactor = new ExistsEventReactor();
+	private final ExistsEventReWatcher existsEventReWatcher = new ExistsEventReWatcher();
 
 	/**
 	 * 节点数据reactor, 数据变更后发布事件
 	 */
-	final DataEventReactor dataEventReactor = new DataEventReactor();
+	private final DataEventReWatcher dataEventReWatcher = new DataEventReWatcher();
 
 	/**
 	 * 节点子节点reactor, 子节点变更后发布事件
 	 */
-	final ChildrenEventReactor childrenEventReactor = new ChildrenEventReactor();
+	private final ChildrenEventReWatcher childrenEventReWatcher = new ChildrenEventReWatcher();
 
 	/**
 	 * 每次exists后的节点存在状态
 	 */
 	private boolean nodeExists;
 
-	NodeEventReactor(String path, ZKClient zkClient) {
+	NodeEventDurableWatcher(String path, ZKClient zkClient) {
 		super(path, zkClient);
+
+		start();
+	}
+
+	@Override
+	public String getWatchedNodePath() {
+		return getPath();
+	}
+
+	@Override
+	public void addListener(ExistsEventListener existsEventListener) {
+		existsEventReWatcher.addListener(existsEventListener);
+	}
+
+	@Override
+	public void removeListener(ExistsEventListener existsEventListener) {
+		existsEventReWatcher.removeListener(existsEventListener);
+	}
+
+	@Override
+	public void addListener(DataEventListener dataEventListener) {
+		dataEventReWatcher.addListener(dataEventListener);
+	}
+
+	@Override
+	public void removeListener(DataEventListener dataEventListener) {
+		dataEventReWatcher.removeListener(dataEventListener);
+	}
+
+	@Override
+	public void addListener(ChildrenEventListener childrenEventListener) {
+		childrenEventReWatcher.addListener(childrenEventListener);
+	}
+
+	@Override
+	public void removeListener(ChildrenEventListener childrenEventListener) {
+		childrenEventReWatcher.removeListener(childrenEventListener);
 	}
 
 	@Override
@@ -69,21 +103,21 @@ class NodeEventReactor extends BaseReactor {
 	 *
 	 * <p>
 	 *     1.当为连接成功事件、节点创建和删除事件时, 节点上没有watcher, 因此
-	 * 	 	 无法确定节点、数据、子节点的"当前"状态, 所以需要exists-react确认存在状态,
-	 * 	 	 如果存在则再进行data、children-react, 否则监听NodeCreated
+	 * 	 	 无法确定节点、数据、子节点的"当前"状态, 所以需要exists-watch确认存在状态,
+	 * 	 	 如果存在则再进行data、children-watch, 否则监听NodeCreated
 	 * <p>
-	 *     2.节点数据变更, 此时节点上仍有children watcher, 只需react数据变更
-	 *       如果react失败, 则表明已经发生了NodeDeleted(在队列中等待处理), 则忽略此次节点数据变更
+	 *     2.节点数据变更, 此时节点上仍有children watcher, 只需watch数据变更
+	 *       如果watch失败, 则表明已经发生了NodeDeleted(在队列中等待处理), 则忽略此次节点数据变更
 	 * <p>
 	 *     3.子节点变更, 此时节点上仍有data watcher, 只需react子节点变更
-	 *       如果react失败, 则表明已经发生了NodeDeleted(在队列中等待处理), 则忽略此次子节点变更
+	 *       如果watch失败, 则表明已经发生了NodeDeleted(在队列中等待处理), 则忽略此次子节点变更
 	 * <p>
 	 *     以上情况处理完后, 保证watcher按照当前状态被正确添加
 	 *     如果节点被创建一定收到NodeCreated
 	 *     如果节点被删除一定收到NodeDeleted
 	 *     如果节点数据及子节点变更则一定可以发布最终的变更
 	 *
-	 *     如果连接异常react失败, 则连接恢复后仍可根据最新状态发布变更(如果在断连期间有变更)
+	 *     如果连接异常watch失败, 则连接恢复后仍可根据最新状态发布变更(如果在断连期间有变更)
 	 *
 	 * @param event 监听到的节点状态变更事件或者CONNECTED_EVENT
 	 */
@@ -94,25 +128,25 @@ class NodeEventReactor extends BaseReactor {
 					event.getType() == NodeCreated ||
 					event.getType() == NodeDeleted) {
 
-				existsEventReactor.react();
-				dataEventReactor.react();
-				childrenEventReactor.react();
+				existsEventReWatcher.watch();
+				dataEventReWatcher.watch();
+				childrenEventReWatcher.watch();
 			} else if (event.getType() == NodeDataChanged) {
-				dataEventReactor.react();
+				dataEventReWatcher.watch();
 			} else if (event.getType() == NodeChildrenChanged) {
-				childrenEventReactor.react();
+				childrenEventReWatcher.watch();
 			}
 		} catch (Exception e) {
-			LOGGER.warn("Node event[{}] react error: {}", event, e.getMessage());
+			LOGGER.warn("Node event[ " + event + "] watch error", e);
 		}
 	}
 
-	private abstract class EventReactor<D, L extends NodeEventListener> implements Listenable<L> {
+	private abstract class EventReWatcher<D, L extends NodeEventListener> implements Listenable<L> {
 
 		/**
 		 * 共用同一个watcher可避免重复处理事件
 		 */
-		final Watcher watcher = NodeEventReactor.this;
+		final Watcher watcher = NodeEventDurableWatcher.this;
 
 		/**
 		 * 监听到的数据(用于判断变更后发布事件)
@@ -124,7 +158,7 @@ class NodeEventReactor extends BaseReactor {
 		 */
 		final Multicaster<L> multicaster;
 
-		EventReactor(Multicaster<L> multicaster) {
+		EventReWatcher(Multicaster<L> multicaster) {
 			this.multicaster = multicaster;
 			//listener回调异常处理器, 所有回调异常都将被记录日志
 			multicaster.setExceptionHandler(EXCEPTION_HANDLER);
@@ -145,7 +179,7 @@ class NodeEventReactor extends BaseReactor {
 		 *
 		 * @throws Exception ZooKeeper调用异常
 		 */
-		void react() throws Exception {
+		void watch() throws Exception {
 			D oldData = data;
 
 			if (!nodeExists) {
@@ -181,9 +215,9 @@ class NodeEventReactor extends BaseReactor {
 		}
 	}
 
-	class ExistsEventReactor extends EventReactor<Stat, ExistsEventListener> {
+	private class ExistsEventReWatcher extends EventReWatcher<Stat, ExistsEventListener> {
 
-		ExistsEventReactor() {
+		ExistsEventReWatcher() {
 			super(new Multicaster<ExistsEventListener>() {});
 		}
 
@@ -193,7 +227,7 @@ class NodeEventReactor extends BaseReactor {
 		boolean firstWatch = true;
 
 		@Override
-		void react() throws Exception {
+		void watch() throws Exception {
 			Stat oldData = data;
 			data = reWatch();
 
@@ -222,7 +256,7 @@ class NodeEventReactor extends BaseReactor {
 		}
 	}
 
-	class DataEventReactor extends EventReactor<DataEventReactor.PathData, DataEventListener> {
+	private class DataEventReWatcher extends EventReWatcher<DataEventReWatcher.PathData, DataEventListener> {
 
 		class PathData extends Pair<Stat, byte[]> {
 
@@ -246,7 +280,7 @@ class NodeEventReactor extends BaseReactor {
 			}
 		}
 
-		DataEventReactor() {
+		DataEventReWatcher() {
 			super(new Multicaster<DataEventListener>() {});
 		}
 
@@ -265,9 +299,9 @@ class NodeEventReactor extends BaseReactor {
 		}
 	}
 
-	class ChildrenEventReactor extends EventReactor<List<String>, ChildrenEventListener> {
+	private class ChildrenEventReWatcher extends EventReWatcher<List<String>, ChildrenEventListener> {
 
-		ChildrenEventReactor() {
+		ChildrenEventReWatcher() {
 			super(new Multicaster<ChildrenEventListener>() {});
 		}
 
