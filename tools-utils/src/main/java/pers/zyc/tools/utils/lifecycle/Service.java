@@ -53,7 +53,7 @@ public abstract class Service implements Lifecycle, Stateful<ServiceState> {
 	 */
 	public void checkRunning() {
 		if (!isRunning()) {
-			throw new ServiceException.NotRunningException();
+			throw new ServiceException.NotRunningException(getName());
 		}
 	}
 

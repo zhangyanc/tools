@@ -5,19 +5,27 @@ package pers.zyc.tools.utils.lifecycle;
  */
 public class ServiceException extends RuntimeException {
 
-    public ServiceException() {
+	public ServiceException() {
+	}
+
+    public ServiceException(String message) {
+        super(message);
     }
 
     public ServiceException(Throwable cause) {
-        super(cause);
-    }
+		super(cause);
+	}
 
-    public static class StartException extends ServiceException {
-        public StartException(Throwable cause) {
-            super(cause);
+	public static class StartException extends ServiceException {
+		public StartException(Throwable cause) {
+			super(cause);
+		}
+	}
+
+	public static class NotRunningException extends ServiceException {
+
+        public NotRunningException(String service) {
+            super(service + " not running!");
         }
-    }
-
-    public static class NotRunningException extends ServiceException {
     }
 }
