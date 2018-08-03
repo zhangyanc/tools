@@ -68,7 +68,7 @@ final class ZKConnector extends ThreadService implements Watcher, Listenable<Con
 	/**
 	 * ZooKeeper实例
 	 */
-	volatile ZooKeeper zooKeeper;
+	private ZooKeeper zooKeeper;
 
 	private final String connectStr;
 	private final int sessionTimeout;
@@ -120,20 +120,25 @@ final class ZKConnector extends ThreadService implements Watcher, Listenable<Con
 		multicaster.removeAllListeners();
 	}
 
-	@Override
-	public boolean isRunning() {
+	boolean isConnected() {
 		readLock.lock();
 		try {
-			return super.isRunning();
+			/*
+			 * zookeeper发布Disconnected: 由于事件异步发布(EventThread), 可能收到Disconnected后
+			 * 内部状态(SendThread维护)仍然是连通的(zooKeeper.getState().isConnected()为真),
+			 * 因此这里先检查一下currentState是否已经变更
+			 */
+			return currentState == SyncConnected && zooKeeper.getState().isConnected();
 		} finally {
 			readLock.unlock();
 		}
 	}
 
-	boolean isConnected() {
+	ZooKeeper getZooKeeper() {
 		readLock.lock();
 		try {
-			return currentState == SyncConnected;
+			checkRunning();
+			return zooKeeper;
 		} finally {
 			readLock.unlock();
 		}
@@ -221,7 +226,7 @@ final class ZKConnector extends ThreadService implements Watcher, Listenable<Con
 			 *      1. 未收到事件且当前处于连通状态, 表示正常连通无需发布事件
 			 *      2. 收到SyncConnected事件, 判断是否是同一个ZooKeeper实例重连成功, 发布connected并指示是否为新会话
 			 *      3. 收到Disconnected事件, 发布Disconnected事件, 然后等待ZooKeeper的自动重连
-			 *      4. 其他均为错误(未支持)状态, 主动关闭ZooKeeper, 发布会话Disconnected事件, 并指示会话关闭
+			 *      4. 其他均为错误(未支持)状态, 主动关闭ZooKeeper, 发布disconnected事件, 并指示会话关闭
 			 */
 			if (incomeState == null &&
 			   (currentState == null || currentState == SyncConnected)) {

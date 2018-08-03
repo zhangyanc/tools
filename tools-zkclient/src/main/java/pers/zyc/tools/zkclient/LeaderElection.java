@@ -1,5 +1,6 @@
 package pers.zyc.tools.zkclient;
 
+import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
 import org.slf4j.Logger;
@@ -147,8 +148,8 @@ class LeaderElection extends Reactor implements Election {
 				}
 			} else if (zkClient.isConnected()) {
 				if (member == null) {
-					member = zkClient.createEphemeral(path + "/" + electorMode.prefix(),
-							memberData, true).substring(path.length() + 1);
+					member = zkClient.create(path + "/" + electorMode.prefix(),
+							memberData, CreateMode.EPHEMERAL_SEQUENTIAL).substring(path.length() + 1);
 					LOGGER.info("{} joined election {}", member, path);
 				}
 

@@ -12,7 +12,6 @@ import pers.zyc.tools.zkclient.listener.ConnectionListener;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -20,7 +19,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * @author zhangyancheng
  */
-public class ZKClient implements IZookeeper, Listenable<ClientDestroyListener> {
+public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyListener> {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(ZKClient.class);
 
@@ -31,7 +30,7 @@ public class ZKClient implements IZookeeper, Listenable<ClientDestroyListener> {
 	/**
 	 * 代理IZookeeper操作
 	 */
-	private final IZookeeper delegate;
+	private final ZooKeeperOperations delegate;
 
 	/**
 	 * 连接器, 连接状态维护以及发布状态变更事件
@@ -56,8 +55,8 @@ public class ZKClient implements IZookeeper, Listenable<ClientDestroyListener> {
 
 		connector = new ZKConnector(config.getConnectStr(), config.getSessionTimeout());
 
-		delegate = (IZookeeper) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[] {IZookeeper.class},
-				config.isUseRetry() ? new RetryAbleZookeeper(connector, config) : new DefaultZookeeper(connector));
+		delegate = (ZooKeeperOperations) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[] {ZooKeeperOperations.class},
+				config.isUseRetry() ? new RetryAbleZooKeeper(this) : new DefaultZooKeeper(this));
 
 		connector.start();
 	}
@@ -121,7 +120,7 @@ public class ZKClient implements IZookeeper, Listenable<ClientDestroyListener> {
 	 * @return ZooKeeper实例
 	 */
 	public ZooKeeper getZooKeeper() {
-		return connector.zooKeeper;
+		return connector.getZooKeeper();
 	}
 
 	/**
@@ -176,125 +175,58 @@ public class ZKClient implements IZookeeper, Listenable<ClientDestroyListener> {
 	}
 
 	@Override
-	public String createPersistent(String path, byte[] data, boolean sequential) throws
-			KeeperException, InterruptedException, ClientException {
+	public String create(String path, byte[] data, CreateMode createMode) throws KeeperException, InterruptedException {
+		return delegate.create(path, data, createMode);
+	}
 
-		return delegate.createPersistent(path, Objects.requireNonNull(data), sequential);
+	public void delete(String path) throws KeeperException, InterruptedException {
+		delegate.delete(path, -1);
 	}
 
 	@Override
-	public String createEphemeral(String path, byte[] data, boolean sequential) throws
-			KeeperException, InterruptedException, ClientException {
-
-		return delegate.createEphemeral(path, Objects.requireNonNull(data), sequential);
-	}
-
-	@Override
-	public void delete(String path) throws KeeperException, InterruptedException, ClientException {
-		delegate.delete(path);
-	}
-
-	@Override
-	public void delete(String path, int version) throws KeeperException, InterruptedException, ClientException {
+	public void delete(String path, int version) throws KeeperException, InterruptedException {
 		delegate.delete(path, version);
 	}
 
-	@Override
-	public void delete(String path, int version, AsyncCallback.VoidCallback cb, Object ctx) throws ClientException {
-		delegate.delete(path, version, cb, ctx);
+	public boolean exists(String path) throws KeeperException, InterruptedException {
+		return delegate.exists(path, null) != null;
 	}
 
 	@Override
-	public boolean exists(String path) throws KeeperException, InterruptedException, ClientException {
-		return delegate.exists(path);
-	}
-
-	@Override
-	public Stat exists(String path, Watcher watcher) throws KeeperException, InterruptedException, ClientException {
+	public Stat exists(String path, Watcher watcher) throws KeeperException, InterruptedException {
 		return delegate.exists(path, watcher);
 	}
 
-	@Override
-	public void exists(String path, Watcher watcher, AsyncCallback.StatCallback cb, Object ctx) throws ClientException {
-		delegate.exists(path, watcher, cb, ctx);
+	public byte[] getData(String path) throws KeeperException, InterruptedException {
+		return delegate.getData(path, null);
 	}
 
 	@Override
-	public byte[] getData(String path) throws KeeperException, InterruptedException, ClientException {
-		return delegate.getData(path);
-	}
-
-	@Override
-	public byte[] getData(String path, Watcher watcher) throws KeeperException, InterruptedException, ClientException {
+	public byte[] getData(String path, Watcher watcher) throws KeeperException, InterruptedException {
 		return delegate.getData(path, watcher);
 	}
 
 	@Override
-	public byte[] getData(String path, Watcher watcher, Stat stat) throws
-			KeeperException, InterruptedException, ClientException {
-
+	public byte[] getData(String path, Watcher watcher, Stat stat) throws KeeperException, InterruptedException {
 		return delegate.getData(path, watcher, stat);
 	}
 
 	@Override
-	public void getData(String path, Watcher watcher, AsyncCallback.DataCallback cb, Object ctx)
-			throws ClientException {
+	public Stat setData(String path, byte[] data, int version) throws KeeperException, InterruptedException {
+		return delegate.setData(path, data, version);
+	}
 
-		delegate.getData(path, watcher, cb, ctx);
+	public List<String> getChildren(String path) throws KeeperException, InterruptedException {
+		return delegate.getChildren(path, null);
 	}
 
 	@Override
-	public Stat setData(String path, byte[] data, int version) throws
-			KeeperException, InterruptedException, ClientException {
-
-		return delegate.setData(path, Objects.requireNonNull(data), version);
-	}
-
-	@Override
-	public void setData(String path, byte[] data, int version, AsyncCallback.StatCallback cb, Object ctx)
-			throws ClientException {
-
-		delegate.setData(path, Objects.requireNonNull(data), version, cb, ctx);
-	}
-
-	@Override
-	public List<String> getChildren(String path) throws KeeperException, InterruptedException, ClientException {
-		return delegate.getChildren(path);
-	}
-
-	@Override
-	public List<String> getChildren(String path, Watcher watcher) throws
-			KeeperException, InterruptedException, ClientException {
-
+	public List<String> getChildren(String path, Watcher watcher) throws KeeperException, InterruptedException {
 		return delegate.getChildren(path, watcher);
 	}
 
 	@Override
-	public void getChildren(String path, Watcher watcher, AsyncCallback.ChildrenCallback cb, Object ctx)
-			throws ClientException {
-
-		delegate.getChildren(path, watcher, cb, ctx);
-	}
-
-	@Override
-	public void getChildren(String path, Watcher watcher, AsyncCallback.Children2Callback cb, Object ctx)
-			throws ClientException {
-
-		delegate.getChildren(path, watcher, cb, ctx);
-	}
-
-	@Override
-	public void sync(String path, AsyncCallback.VoidCallback cb, Object ctx) throws ClientException {
-		delegate.sync(path, cb, ctx);
-	}
-
-	@Override
-	public Transaction transaction() throws ClientException {
-		return delegate.transaction();
-	}
-
-	@Override
-	public List<OpResult> multi(Iterable<Op> ops) throws InterruptedException, KeeperException, ClientException {
+	public List<OpResult> multi(Iterable<Op> ops) throws InterruptedException, KeeperException {
 		return delegate.multi(ops);
 	}
 }
