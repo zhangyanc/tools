@@ -14,11 +14,15 @@ interface ZooKeeperOperations {
 
 	String create(final String path, byte data[], CreateMode createMode)  throws KeeperException, InterruptedException;
 
+	void delete(String path) throws KeeperException, InterruptedException;
+
 	void delete(String path, int version) throws KeeperException, InterruptedException;
 
 	boolean exists(String path) throws KeeperException, InterruptedException;
 
 	Stat exists(String path, Watcher watcher) throws KeeperException, InterruptedException;
+
+	byte[] getData(String path) throws KeeperException, InterruptedException;
 
 	byte[] getData(String path, Watcher watcher) throws KeeperException, InterruptedException;
 

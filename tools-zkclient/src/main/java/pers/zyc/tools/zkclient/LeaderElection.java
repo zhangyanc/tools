@@ -308,8 +308,9 @@ class LeaderElection extends Reactor implements Election {
 			} else if (isObserver(m2)) {
 				return -1;
 			} else {
-				return Integer.parseInt(m1.substring(Mode.FOLLOWER.prefix().length())) -
-						Integer.parseInt(m2.substring(Mode.FOLLOWER.prefix().length()));
+				//截取末尾10位序号数组判断大小
+				return Integer.parseInt(m1.substring(m1.length() - 10)) -
+						Integer.parseInt(m2.substring(m2.length() - 10));
 			}
 		}
 	};
