@@ -137,7 +137,7 @@ class NodeEventDurableWatcher extends Reactor implements NodeEventWatcher {
 				childrenEventReWatcher.watch();
 			}
 		} catch (Exception e) {
-			LOGGER.warn("Node event[ " + event + "] watch error", e);
+			LOGGER.warn("Node event[" + event + "] watch error", e);
 		}
 	}
 

@@ -53,12 +53,12 @@ abstract class Reactor extends Service implements ConnectionListener, Watcher {
 	@Override
 	protected void doStart() {
 		watchedEventBus.name(getName()).addListeners(new WatchedEventListener()).start();
+		//注册连接监听器, 重连成功后注册watcher
+		zkClient.addConnectionListener(this);
 		if (zkClient.isConnected()) {
 			//当前已经连接注册watcher
 			enqueueEvent(CONNECTED_EVENT);
 		}
-		//注册连接监听器, 重连成功后注册watcher
-		zkClient.addConnectionListener(this);
 	}
 
 	@Override
