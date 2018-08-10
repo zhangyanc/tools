@@ -33,10 +33,7 @@ public class ElectionTest extends BaseClientTest {
 	private static final String ELECTION_PATH = "/election";
 
 	private void prepare() throws InterruptedException, IOException, KeeperException {
-		ClientConfig config = new ClientConfig();
-		config.setConnectStr(CONNECT_STRING);
-
-		createZKClient(config);
+		createZKClient();
 
 		zkSwitch.open();
 

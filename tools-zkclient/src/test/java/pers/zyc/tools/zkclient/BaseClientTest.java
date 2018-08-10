@@ -5,13 +5,13 @@ import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 import org.junit.After;
 import org.junit.Assert;
-import org.junit.Before;
 import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.zkclient.listener.ConnectionListener;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author zhangyancheng
@@ -61,6 +61,10 @@ public class BaseClientTest {
 	 * 需要预先创建/test节点, 否则无法执行测试
 	 */
 	static final String CONNECT_STRING = "localhost:2181/test";
+	static final int SESSION_TIMEOUT = 30000;
+
+	//ZooKeeper Server进程启动需要时间, 使用3000ms容错
+	static final int ZK_SERVER_START_TIMEOUT = 3000;
 
 	final Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -68,23 +72,24 @@ public class BaseClientTest {
 	ZKClient zkClient;
 	ZKCli cli;
 
-	@Before
-	public void setUp() throws Exception {
-		zkSwitch = new ZKSwitch("E:/Tools/zookeeper-3.4.10");
-		cli = new ZKCli(CONNECT_STRING);
+	void createZKClient() {
+		zkClient = new ZKClient(CONNECT_STRING, SESSION_TIMEOUT);
 	}
 
-	@After
-	public void tearDown() {
-		if (zkClient != null) {
-			zkClient.destroy();
-		}
-		cli.close();
-		zkSwitch.close();
+	void createZKClient(String connectStr, int sessionTimeout) {
+		zkClient = new ZKClient(connectStr, sessionTimeout);
 	}
 
-	void createZKClient(ClientConfig config) {
-		zkClient = new ZKClient(config);
+	void createZKClient(String connectStr, int sessionTimeout, int retryTimes, int retryPerWaitTimeout) {
+		zkClient = new ZKClient(connectStr, sessionTimeout, retryTimes, retryPerWaitTimeout);
+	}
+
+	void createSwitch() throws InterruptedException {
+		createSwitch("E:/Tools/zookeeper-3.4.10");
+	}
+
+	void createSwitch(String zkDir) throws InterruptedException {
+		zkSwitch = new ZKSwitch(zkDir);
 	}
 
 	static void makeZooKeeperSessionExpire(ZooKeeper zooKeeper) throws Exception {
@@ -105,12 +110,39 @@ public class BaseClientTest {
 		makeZooKeeperSessionExpire(zkClient.getZooKeeper());
 	}
 
+	@After
+	public void tearDown() {
+		if (zkClient != null) {
+			zkClient.destroy();
+		}
+		if (cli != null) {
+			cli.close();
+		}
+		if (zkSwitch != null) {
+			zkSwitch.close();
+		}
+	}
+
 	@Test
-	public void case_mockSessionExpire() throws Exception {
+	public void case0_waitToConnected() throws Exception {
+		createZKClient();
+
+		Assert.assertFalse(zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS));
+
+		createSwitch();
 		zkSwitch.open();
 
-		ClientConfig config = new ClientConfig();
-		createZKClient(config);
+		Assert.assertTrue(zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS));
+	}
+
+	@Test
+	public void case0_mockSessionExpire() throws Exception {
+		createSwitch();
+		zkSwitch.open();
+
+		createZKClient();
+		Assert.assertTrue(zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS));
+
 
 		final CountDownLatch newSessionLatch = new CountDownLatch(2);
 
@@ -125,10 +157,6 @@ public class BaseClientTest {
 				newSessionLatch.countDown();
 			}
 		}));
-
-		if (!zkClient.waitToConnected(1000)) {
-			Assert.fail("Can't connect to ZooKeeper: " + CONNECT_STRING);
-		}
 
 		logger.info("Make session expire");
 		makeCurrentZkClientSessionExpire();

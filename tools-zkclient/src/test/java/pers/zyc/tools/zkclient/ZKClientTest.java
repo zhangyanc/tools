@@ -1,9 +1,10 @@
 package pers.zyc.tools.zkclient;
 
+import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Stat;
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Test;
-import pers.zyc.tools.utils.TimeMillis;
 import pers.zyc.tools.zkclient.listener.*;
 
 import java.util.ArrayList;
@@ -18,59 +19,25 @@ import java.util.concurrent.*;
 public class ZKClientTest extends BaseClientTest {
 
 	private static final String BASE_PATH = "/zkclient";
-	private final String listenerTestPath = BASE_PATH + "/listenerTest" + (long) (Math.random() * 10000);
+	private final String listenerTestPath = BASE_PATH + "/listenerTest" + (long) (Math.random() * 100000);
 
-	@Test
-	public void case_UnConnectedClient() throws Exception {
-		ClientConfig clientConfig = new ClientConfig();
-		clientConfig.setConnectStr(CONNECT_STRING);
-		createZKClient(clientConfig);
-
-		try {
-			zkClient.exists(BASE_PATH);
-			Assert.fail();
-		} catch (ClientException e) {
-			Assert.assertEquals("ZooKeeper is not connected!", e.getMessage());
-		}
+	@Before
+	public void setUp() throws Exception {
+		zkSwitch = new ZKSwitch("E:/Tools/zookeeper-3.4.10");
+		cli = new ZKCli(CONNECT_STRING);
 	}
 
-	@Test
-	public void case_syncStart() throws Exception {
-		ClientConfig clientConfig = new ClientConfig();
-		createZKClient(clientConfig);
+	@Test(expected = KeeperException.ConnectionLossException.class)
+	public void case_UnConnectedClient() throws Exception {
+		createZKClient("localhost:2181", SESSION_TIMEOUT);
 
-		final CyclicBarrier barrier = new CyclicBarrier(2);
-		final int sleep = 8000;
-		new Thread() {
-			@Override
-			public void run() {
-				try {
-					barrier.await();
-					sleep(sleep);
-
-					logger.debug("Launching zookeeper server");
-					zkSwitch.open();
-				} catch (InterruptedException | BrokenBarrierException e) {
-					e.printStackTrace();
-				}
-			}
-		}.start();
-		barrier.await();
-		long beforeTime = TimeMillis.INSTANCE.get();
-		//zkClient.start();
-		long endTime = TimeMillis.INSTANCE.get();
-
-		Assert.assertTrue(zkClient.isConnected());
-		//ZooKeeper Server进程启动需要时间, 使用5000ms容错
-		Assert.assertTrue((endTime - beforeTime - sleep) < 5000);
+		zkClient.exists(BASE_PATH);
+		Assert.fail();
 	}
 
 	@Test
 	public void case_stop_StopEventPublish() throws Exception {
-		zkSwitch.open();
-
-		ClientConfig clientConfig = new ClientConfig();
-		createZKClient(clientConfig);
+		createZKClient();
 
 		final CountDownLatch cdl = new CountDownLatch(1);
 
@@ -83,7 +50,7 @@ public class ZKClientTest extends BaseClientTest {
 		});
 		zkClient.destroy();
 
-		if (!cdl.await(2000, TimeUnit.MILLISECONDS)) {
+		if (!cdl.await(1000, TimeUnit.MILLISECONDS)) {
 			Assert.fail("Not stopped!");
 		}
 	}
@@ -92,14 +59,13 @@ public class ZKClientTest extends BaseClientTest {
 	public void case_AddConnectionListener() throws Exception {
 		zkSwitch.open();
 
-		ClientConfig clientConfig = new ClientConfig();
-		createZKClient(clientConfig);
+		createZKClient();
+		zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS);
 
 		final Semaphore events = new Semaphore(0);
+		final Set<Integer> set = new HashSet<>();
 
 		zkClient.addConnectionListener(new DebugConnectionListener(new ConnectionListener() {
-
-			Set<Integer> set = new HashSet<>();
 
 			@Override
 			public void onConnected(boolean newSession) {
@@ -117,12 +83,12 @@ public class ZKClientTest extends BaseClientTest {
 		}));
 
 		makeCurrentZkClientSessionExpire();
-		events.acquire(3);
-		Assert.assertTrue(events.drainPermits() == 0);
+		events.acquire(3);//disconnected、expire、new-session
+		Assert.assertTrue(events.availablePermits() == 0);
 
 		zkSwitch.close();
 		zkSwitch.open();
-		events.acquire(1);
+		events.acquire(1);//re-connected
 
 		Assert.assertTrue(events.availablePermits() == 0);
 	}
@@ -134,10 +100,7 @@ public class ZKClientTest extends BaseClientTest {
 	public void case_ExistsListener() throws Exception {
 		zkSwitch.open();
 
-		ClientConfig clientConfig = new ClientConfig();
-		clientConfig.setConnectStr(CONNECT_STRING);
-
-		createZKClient(clientConfig);
+		createZKClient();
 
 		cli.executeLine("rmr " + BASE_PATH);//清空测试目录
 		cli.executeLine("create " + BASE_PATH + " a");
@@ -159,8 +122,9 @@ public class ZKClientTest extends BaseClientTest {
 			}
 		});
 
-		//等待内部线程启动
-		Thread.sleep(200);
+		zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS);
+		//等待NodeEventWatcher内部线程启动
+		Thread.sleep(500);
 
 		String[] opts = {
 				"create " + listenerTestPath + " a",
@@ -182,19 +146,15 @@ public class ZKClientTest extends BaseClientTest {
 	public void case_DataListener() throws Exception {
 		zkSwitch.open();
 
-		ClientConfig clientConfig = new ClientConfig();
-		clientConfig.setConnectStr(CONNECT_STRING);
-
-		createZKClient(clientConfig);
+		createZKClient();
 
 		cli.executeLine("rmr " + BASE_PATH);//清空测试目录
 		cli.executeLine("create " + BASE_PATH + " a");
 
-		final SynchronousQueue<String> events = new SynchronousQueue<>();
-
 		NodeEventWatcher nodeEventWatcher = zkClient.createNodeEventWatcher(listenerTestPath);
 		Assert.assertEquals(listenerTestPath, nodeEventWatcher.getWatchedNodePath());
 
+		final SynchronousQueue<String> events = new SynchronousQueue<>();
 		nodeEventWatcher.addListener(new DataEventListener() {
 
 			@Override
@@ -216,11 +176,13 @@ public class ZKClientTest extends BaseClientTest {
 			}
 		});
 
-		//等待reactor内部线程启动
-		Thread.sleep(200);
+		zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS);
+		//等待NodeEventWatcher内部线程启动
+		Thread.sleep(500);
+
 		cli.executeLine("create " + listenerTestPath + " F");
-		//等待reactor内部线程获取到初始值后才能触发后续变更
-		Thread.sleep(200);
+		//等待NodeEventWatcher内部线程获取到初始值后才能触发后续变更
+		Thread.sleep(500);
 
 		String[] datas = {"dataA", "dataB", "dataB"};
 
@@ -237,19 +199,16 @@ public class ZKClientTest extends BaseClientTest {
 	public void case_ChildrenListener() throws Exception {
 		zkSwitch.open();
 
-		ClientConfig clientConfig = new ClientConfig();
-		clientConfig.setConnectStr(CONNECT_STRING);
-
-		createZKClient(clientConfig);
+		createZKClient();
 
 		cli.executeLine("rmr " + BASE_PATH);//清空测试目录
 		cli.executeLine("create " + BASE_PATH + " a");
 
-		final SynchronousQueue<List<String>> childrenEvents = new SynchronousQueue<>();
 
 		NodeEventWatcher nodeEventWatcher = zkClient.createNodeEventWatcher(listenerTestPath);
 		Assert.assertEquals(listenerTestPath, nodeEventWatcher.getWatchedNodePath());
 
+		final SynchronousQueue<List<String>> childrenEvents = new SynchronousQueue<>();
 		nodeEventWatcher.addListener(new ChildrenEventListener() {
 
 			@Override
@@ -270,11 +229,13 @@ public class ZKClientTest extends BaseClientTest {
 				}
 			}
 		});
+
+		zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS);
 		//等待reactor内部线程启动
-		Thread.sleep(200);
+		Thread.sleep(500);
 		cli.executeLine("create " + listenerTestPath + " a");
 		//等待reactor内部线程获取到初始值后才能触发后续变更
-		Thread.sleep(200);
+		Thread.sleep(500);
 
 		final List<String> children = new ArrayList<String>() {
 			{
@@ -319,13 +280,4 @@ public class ZKClientTest extends BaseClientTest {
 
 		zkSwitch.close();*/
 	}
-
-	private class RetryTestableZKClient extends ZKClient {
-
-		public RetryTestableZKClient(ClientConfig config) {
-			super(config);
-		}
-
-	}
-
 }
