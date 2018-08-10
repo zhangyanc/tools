@@ -21,7 +21,7 @@ public class ConditionalRetryPolicy extends BaseRetryPolicy {
 		synchronized (retryCondition.getMutex()) {
 			while (!retryCondition.check() && awaitTime > 0) {
 				long now = System.currentTimeMillis();
-				retryCondition.wait(awaitTime);
+				retryCondition.getMutex().wait(awaitTime);
 				awaitTime -= System.currentTimeMillis() - now;
 			}
 			//条件到达或者已到retry time
