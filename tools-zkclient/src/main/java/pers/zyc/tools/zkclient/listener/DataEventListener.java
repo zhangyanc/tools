@@ -5,7 +5,7 @@ import org.apache.zookeeper.data.Stat;
 /**
  * 节点数据监听器, 注册后可持续监听节点数据变更
  *
- * @see pers.zyc.tools.zkclient.NodeEventReactor.DataEventReactor
+ * @see pers.zyc.tools.zkclient.NodeEventDurableWatcher.DataEventReWatcher
  * @author zhangyancheng
  */
 public interface DataEventListener extends NodeEventListener {

@@ -5,7 +5,7 @@ import java.util.List;
 /**
  * 节点子节点监听器, 注册后可持续监听子节点变更
  *
- * @see pers.zyc.tools.zkclient.NodeEventReactor.ChildrenEventReactor
+ * @see pers.zyc.tools.zkclient.NodeEventDurableWatcher.ChildrenEventReWatcher
  * @author zhangyancheng
  */
 public interface ChildrenEventListener extends NodeEventListener {
