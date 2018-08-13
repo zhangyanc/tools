@@ -93,6 +93,7 @@ class LeaderElection extends Reactor implements Election {
 	protected void doStop() {
 		while (member != null) {
 			deleteSelf();
+			LOGGER.info("Quiting election {}, wait last react", path);
 			quitCondition.awaitUninterruptibly();
 		}
 		super.doStop();
@@ -138,6 +139,7 @@ class LeaderElection extends Reactor implements Election {
 		try {
 			boolean isQuitting = isQuitting();
 			if (isQuitting || event == SESSION_CLOSED_EVENT) {
+				LOGGER.info("{} quit election {}", member, path);
 				//member已经不存在
 				if (isLeader()) {
 					electionEvent = new ElectionEvent(this, EventType.LEADER_LOST);
@@ -150,7 +152,7 @@ class LeaderElection extends Reactor implements Election {
 				if (member == null) {
 					member = zkClient.create(path + "/" + electorMode.prefix(),
 							memberData, CreateMode.EPHEMERAL_SEQUENTIAL).substring(path.length() + 1);
-					LOGGER.info("{} joined election {}", member, path);
+					LOGGER.info("{} join election {}", member, path);
 				}
 
 				electionEvent = elect();
