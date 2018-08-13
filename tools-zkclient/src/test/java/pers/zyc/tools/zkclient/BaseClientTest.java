@@ -4,14 +4,12 @@ import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
 import org.junit.After;
-import org.junit.Assert;
-import org.junit.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.zkclient.listener.ConnectionListener;
 
+import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
 /**
  * @author zhangyancheng
@@ -61,6 +59,11 @@ public class BaseClientTest {
 	 * 需要预先创建/test节点, 否则无法执行测试
 	 */
 	static final String CONNECT_STRING = "localhost:2181/test";
+	/**
+	 * 本机zookeeper安装目录
+	 */
+	static final String ZK_DIR = "E:/Tools/zookeeper-3.4.10";
+
 	static final int SESSION_TIMEOUT = 30000;
 
 	//ZooKeeper Server进程启动需要时间, 使用3000ms容错
@@ -84,8 +87,16 @@ public class BaseClientTest {
 		zkClient = new ZKClient(connectStr, sessionTimeout, retryTimes, retryPerWaitTimeout);
 	}
 
+	void createCli() throws IOException {
+		createCli(CONNECT_STRING);
+	}
+
+	void createCli(String connectStr) throws IOException {
+		cli = new ZKCli(connectStr);
+	}
+
 	void createSwitch() throws InterruptedException {
-		createSwitch("E:/Tools/zookeeper-3.4.10");
+		createSwitch(ZK_DIR);
 	}
 
 	void createSwitch(String zkDir) throws InterruptedException {
@@ -121,47 +132,5 @@ public class BaseClientTest {
 		if (zkSwitch != null) {
 			zkSwitch.close();
 		}
-	}
-
-	@Test
-	public void case0_waitToConnected() throws Exception {
-		createZKClient();
-
-		Assert.assertFalse(zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS));
-
-		createSwitch();
-		zkSwitch.open();
-
-		Assert.assertTrue(zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS));
-	}
-
-	@Test
-	public void case0_mockSessionExpire() throws Exception {
-		createSwitch();
-		zkSwitch.open();
-
-		createZKClient();
-		Assert.assertTrue(zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS));
-
-
-		final CountDownLatch newSessionLatch = new CountDownLatch(2);
-
-		zkClient.addConnectionListener(new DebugConnectionListener(new ConnectionListener() {
-
-			@Override
-			public void onConnected(boolean newSession) {
-			}
-
-			@Override
-			public void onDisconnected(boolean sessionClosed) {
-				newSessionLatch.countDown();
-			}
-		}));
-
-		logger.info("Make session expire");
-		makeCurrentZkClientSessionExpire();
-
-		newSessionLatch.await();
-		Assert.assertFalse(zkClient.isConnected());
 	}
 }

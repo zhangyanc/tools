@@ -21,10 +21,15 @@ class ZKCli extends ZooKeeperMain implements Closeable {
 		}));
 	}
 
+	@Override
 	public void close() {
 		try {
 			zk.close();
 		} catch (InterruptedException ignored) {
 		}
+	}
+
+	ZooKeeper getZooKeeper() {
+		return zk;
 	}
 }

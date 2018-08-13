@@ -1,5 +1,6 @@
 package pers.zyc.tools.zkclient;
 
+import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.data.Stat;
 import org.junit.Assert;
@@ -7,11 +8,12 @@ import org.junit.Before;
 import org.junit.Test;
 import pers.zyc.tools.zkclient.listener.*;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.*;
+import java.nio.ByteBuffer;
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author zhangyancheng
@@ -23,8 +25,8 @@ public class ZKClientTest extends BaseClientTest {
 
 	@Before
 	public void setUp() throws Exception {
-		zkSwitch = new ZKSwitch("E:/Tools/zookeeper-3.4.10");
-		cli = new ZKCli(CONNECT_STRING);
+		createSwitch();
+		createCli();
 	}
 
 	@Test(expected = KeeperException.ConnectionLossException.class)
@@ -33,6 +35,47 @@ public class ZKClientTest extends BaseClientTest {
 
 		zkClient.exists(BASE_PATH);
 		Assert.fail();
+	}
+
+	@Test
+	public void case0_waitToConnected() throws Exception {
+		createZKClient();
+
+		Assert.assertFalse(zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS));
+
+		createSwitch();
+		zkSwitch.open();
+
+		Assert.assertTrue(zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS));
+	}
+
+	@Test
+	public void case0_mockSessionExpire() throws Exception {
+		zkSwitch.open();
+
+		createZKClient();
+		Assert.assertTrue(zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS));
+
+
+		final CountDownLatch newSessionLatch = new CountDownLatch(2);
+
+		zkClient.addConnectionListener(new DebugConnectionListener(new ConnectionListener() {
+
+			@Override
+			public void onConnected(boolean newSession) {
+			}
+
+			@Override
+			public void onDisconnected(boolean sessionClosed) {
+				newSessionLatch.countDown();
+			}
+		}));
+
+		logger.info("Make session expire");
+		makeCurrentZkClientSessionExpire();
+
+		newSessionLatch.await();
+		Assert.assertFalse(zkClient.isConnected());
 	}
 
 	@Test
@@ -263,21 +306,133 @@ public class ZKClientTest extends BaseClientTest {
 		Assert.assertTrue(childrenEvents.take().isEmpty());
 	}
 
-	/**
-	 * TODO: 待补充
-	 */
+
+
 	@Test
-	public void case_retry_unRetry() throws Exception {
-		/*zkSwitch.open();
+	public void case_create_unRetryCreatePERSISTENT_created() throws Exception {
+		{
+			zkSwitch.open();
+			createZKClient();
+			cli.executeLine("rmr " + BASE_PATH);//清空测试目录
+			cli.executeLine("create " + BASE_PATH + " a");
+			zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS);
+		}
 
-		ClientConfig clientConfig = new ClientConfig();
-		clientConfig.setConnectStr(CONNECT_STRING);
-		clientConfig.setUseRetry(false);
-		clientConfig.setSyncStart(true);
+		String testPath = BASE_PATH + "/test_create";
+		zkClient.create(testPath, new byte[0], CreateMode.PERSISTENT);
 
-		createZKClient(clientConfig);
-		zkClient.start();
+		Stat stat = cli.getZooKeeper().exists(testPath, false);
+		Assert.assertTrue(0 == stat.getEphemeralOwner());
+	}
 
-		zkSwitch.close();*/
+	@Test
+	public void case_create_unRetryCreateEPHEMERAL_created() throws Exception {
+		{
+			zkSwitch.open();
+			createZKClient();
+			cli.executeLine("rmr " + BASE_PATH);//清空测试目录
+			cli.executeLine("create " + BASE_PATH + " a");
+			zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS);
+		}
+
+		long clientSessionId = zkClient.getZooKeeper().getSessionId();
+
+		String testPath = BASE_PATH + "/test_create";
+		zkClient.create(testPath, new byte[0], CreateMode.EPHEMERAL);
+
+		Stat stat = cli.getZooKeeper().exists(testPath, false);
+		Assert.assertTrue(clientSessionId == stat.getEphemeralOwner());
+	}
+
+	@Test
+	public void case_create_retryCreateSEQUENTIAL_idAppend() throws Exception {
+		{
+			zkSwitch.open();
+			createZKClient(CONNECT_STRING, SESSION_TIMEOUT, 2, 3000);
+			cli.executeLine("rmr " + BASE_PATH);//清空测试目录
+			cli.executeLine("create " + BASE_PATH + " a");
+			zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS);
+		}
+
+		String testPath = BASE_PATH + "/test_create";
+		String created = zkClient.create(testPath, new byte[0], CreateMode.PERSISTENT_SEQUENTIAL);
+
+		String expected = testPath + zkClient.getClientId() + "0000000000";//第一个序列号是0
+		Assert.assertEquals(expected, created);
+	}
+
+	@Test
+	public void case_create_retryCreateSEQUENTIAL_idBytesAppend() throws Exception {
+		{
+			zkSwitch.open();
+			createZKClient(CONNECT_STRING, SESSION_TIMEOUT, 2, 3000);
+			cli.executeLine("rmr " + BASE_PATH);//清空测试目录
+			cli.executeLine("create " + BASE_PATH + " a");
+			zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS);
+		}
+
+		String testPath = BASE_PATH + "/test_create";
+		String created = zkClient.create(testPath, new byte[0], CreateMode.PERSISTENT_SEQUENTIAL);
+
+		Stat stat = cli.getZooKeeper().exists(created, false);
+		Assert.assertTrue(21 == stat.getDataLength());
+	}
+
+	private static byte[] appendIdentityData(byte[] idBytes, byte[] data, int rId) {
+		byte[] appendedData = new byte[21 + data.length];
+		ByteBuffer buf = ByteBuffer.wrap(appendedData);
+		buf.put((byte) '^');//1 字节魔数
+		buf.put(idBytes);	//16字节id
+		buf.putInt(rId);	//4 字节请求id
+		buf.put(data);
+		return appendedData;
+	}
+
+	@Test
+	public void case_setData_retrySetData_idBytesAppend() throws Exception {
+		String testPath = BASE_PATH + "/test_setData";
+
+		byte[] clientIdBytes;
+		{
+			zkSwitch.open();
+			createZKClient(CONNECT_STRING, SESSION_TIMEOUT, 2, 3000);
+			cli.executeLine("rmr " + BASE_PATH);//清空测试目录
+			cli.executeLine("create " + BASE_PATH + " a");
+			zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS);
+			cli.executeLine("create " + testPath + " a");
+
+			UUID uuid = UUID.fromString(zkClient.getClientId());
+			ByteBuffer buffer = ByteBuffer.allocate(16);
+			buffer.putLong(uuid.getMostSignificantBits()).putLong(uuid.getLeastSignificantBits());
+			clientIdBytes = buffer.array();
+		}
+
+		byte[] testData = new byte[4];
+		ByteBuffer.wrap(testData).putInt(new Random().nextInt());
+		zkClient.setData(testPath, testData, -1);
+
+		byte[] expected = appendIdentityData(clientIdBytes, testData, 1);//第一个请求id是1
+
+		byte[] data = cli.getZooKeeper().getData(testPath, null, null);
+		Assert.assertArrayEquals(expected, data);
+	}
+
+	@Test
+	public void case_getData_getData_idBytesRemoved() throws Exception {
+		String testPath = BASE_PATH + "/test_getData";
+
+		String realData = "realData.";
+		String createdData = "^1111#1111#1111#1111#" + realData;//模拟前21字节身份数据
+		{
+			zkSwitch.open();
+			createZKClient();
+			cli.executeLine("rmr " + BASE_PATH);//清空测试目录
+			cli.executeLine("create " + BASE_PATH + " a");
+			zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS);
+			cli.executeLine("create " + testPath + " " + createdData);
+		}
+
+		byte[] data = zkClient.getData(testPath, null, null);
+		Assert.assertEquals(realData, new String(data));
 	}
 }
