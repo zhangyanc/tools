@@ -1,5 +1,6 @@
 package pers.zyc.tools.redis.client;
 
+import pers.zyc.tools.redis.client.exception.RedisClientException;
 import pers.zyc.tools.redis.client.util.Promise;
 import pers.zyc.tools.utils.event.SourcedEvent;
 
@@ -59,6 +60,7 @@ class ConnectionEvent extends SourcedEvent<Connection> {
 
 		RequestTimeout(Connection source) {
 			super(source, EventType.REQUEST_TIMEOUT);
+			payload(new RedisClientException("Request timeout!"));
 		}
 	}
 
