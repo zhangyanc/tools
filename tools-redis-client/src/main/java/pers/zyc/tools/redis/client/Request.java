@@ -6,15 +6,17 @@ import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * @author zhangyancheng
  */
 public abstract class Request {
 
-	private final CommandBytesCache commandBytesCache = new CommandBytesCache();
+	private static final CommandBytesCache COMMAND_BYTES_CACHE = new CommandBytesCache();
 
 	protected final LinkedList<byte[]> parts;
+	private final AtomicBoolean finished = new AtomicBoolean();
 
 	protected Request(byte[]... args) {
 		parts = new LinkedList<>(Arrays.asList(args));
@@ -22,7 +24,7 @@ public abstract class Request {
 	}
 
 	private byte[] getCmd() {
-		return commandBytesCache.getCommandBytes(getCommand());
+		return COMMAND_BYTES_CACHE.getCommandBytes(getCommand());
 	}
 
 	protected String getCommand() {
@@ -53,5 +55,9 @@ public abstract class Request {
 			}
 			return commandBytes;
 		}
+	}
+
+	boolean finish() {
+		return !finished.get() && finished.compareAndSet(false, true);
 	}
 }
