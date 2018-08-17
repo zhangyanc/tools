@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.nio.channels.ClosedSelectorException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -48,12 +49,16 @@ class NetWorker extends ThreadService {
 
 			@Override
 			protected void execute() throws InterruptedException {
-				select();
+				try {
+					select();
+				} catch (IOException e) {
+					throw new RedisClientException(e);
+				}
 			}
 		};
 	}
 
-	private void select() throws InterruptedException {
+	private void select() throws InterruptedException, IOException {
 		List<SelectionKey> selected = doSelect();
 
 		for (SelectionKey sk : selected) {
@@ -62,16 +67,19 @@ class NetWorker extends ThreadService {
 			}
 
 			Connection connection = (Connection) sk.attachment();
-			if (sk.isWritable()) {
-				connection.write();
-			}
-			if (sk.isReadable()) {
-				connection.read();
+			try {
+				if (sk.isWritable()) {
+					connection.write();
+				}
+				if (sk.isReadable()) {
+					connection.read();
+				}
+			} catch (Exception ignored) {
 			}
 		}
 	}
 
-	private List<SelectionKey> doSelect() throws InterruptedException {
+	private List<SelectionKey> doSelect() throws InterruptedException, IOException {
 		List<SelectionKey> selected = new ArrayList<>();
 		try {
 			selector.select(1000);
@@ -79,6 +87,7 @@ class NetWorker extends ThreadService {
 			if (!isRunning()) {
 				return selected;
 			}
+
 			if (wakeUp.getAndSet(false)) {
 				selector.selectNow();
 			}
@@ -96,40 +105,15 @@ class NetWorker extends ThreadService {
 			}
 		} catch (ClosedSelectorException cse) {
 			return selected;
-		} catch (InterruptedException re) {
-			throw re;
-		} catch (Exception e) {
-			throw new RedisClientException(e);
 		}
 	}
 
-	void register(Connection connection) throws IOException {
-		serviceLock.lock();
-		try {
-			wakeUp();
-			connection.channel.register(selector, SelectionKey.OP_READ, connection);
-		} finally {
-			serviceLock.unlock();
-		}
-	}
-
-	private SelectionKey keyFor(Connection connection) {
-		return connection.channel.keyFor(selector);
-	}
-
-	void enableWrite(Connection connection) {
-		SelectionKey sk = keyFor(connection);
-		sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
-
+	SelectionKey register(SocketChannel channel) throws IOException {
 		wakeUp();
+		return channel.register(selector, SelectionKey.OP_READ);
 	}
 
-	void disableWrite(Connection connection) {
-		SelectionKey sk = keyFor(connection);
-		sk.interestOps(sk.interestOps() & (~SelectionKey.OP_WRITE));
-	}
-
-	private void wakeUp() {
+	void wakeUp() {
 		if (wakeUp.compareAndSet(false, true)) {
 			selector.wakeup();
 		}

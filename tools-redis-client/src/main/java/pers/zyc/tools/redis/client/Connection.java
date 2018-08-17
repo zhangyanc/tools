@@ -4,18 +4,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 import pers.zyc.tools.redis.client.exception.ResponseIncompleteException;
-import pers.zyc.tools.redis.client.util.Future;
 import pers.zyc.tools.redis.client.util.Promise;
 import pers.zyc.tools.redis.client.util.ResponsePromise;
 import pers.zyc.tools.utils.event.*;
 import sun.nio.ch.DirectBuffer;
 
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import static pers.zyc.tools.redis.client.util.ByteUtil.*;
@@ -25,13 +25,11 @@ import static pers.zyc.tools.redis.client.util.ByteUtil.*;
  */
 class Connection implements EventSource<ConnectionEvent>, Closeable {
 	private static final Logger LOGGER = LoggerFactory.getLogger(Connection.class);
-	private static final int DEFAULT_BUFFER_SIZE = 8192;
 
-	final SocketChannel channel;
-
+	private final SelectionKey sk;
 	private final NetWorker netWorker;
-	private final ByteBuffer buffer = ByteBuffer.allocateDirect(DEFAULT_BUFFER_SIZE);
-	private final ResponseReceiveBuffer receiveBuffer = new ResponseReceiveBuffer(DEFAULT_BUFFER_SIZE);
+	private final SocketChannel channel;
+	private final ByteBuffer buffer;
 	private final Multicaster<EventListener<ConnectionEvent>> multicaster =
 			new Multicaster<EventListener<ConnectionEvent>>() {
 		{
@@ -46,14 +44,23 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		}
 	};
 
-
+	private boolean activated;
 	private Request request;
+	private byte[] responseBuffer;
+	private int responseBytesCount;
 
 	Connection(SocketChannel channel, NetWorker netWorker) throws IOException {
 		this.channel = channel;
 		this.netWorker = netWorker;
 
-		netWorker.register(this);
+		try {
+			sk = netWorker.register(channel);
+			sk.attach(this);
+		} catch (IOException e) {
+			channel.close();
+			throw e;
+		}
+		buffer = ByteBuffer.allocateDirect(8192);
 	}
 
 	private static void closeChannel(SocketChannel channel) {
@@ -75,10 +82,23 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 	@Override
 	public void close() {
+		sk.cancel();
 		closeChannel(channel);
 		((DirectBuffer) buffer).cleaner().clean();
-		LOGGER.debug("Connection closed.");
 		publishEvent(new ConnectionEvent.ConnectionClosed(this));
+		LOGGER.debug("{} closed.", this);
+	}
+
+	boolean isConnected() {
+		return channel.isConnected();
+	}
+
+	boolean isActivated() {
+		return activated;
+	}
+
+	void setActivated(boolean activated) {
+		this.activated = activated;
 	}
 
 	@Override
@@ -90,51 +110,77 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		multicaster.listeners.onEvent(event);
 	}
 
-	<R> Future<R> send(Request request, final ResponseCast<R> responseCast) {
-		this.request = request;
-		LOGGER.debug("{} set.", request);
-
+	/**
+	 * 异步发送请求, 返回响应Future
+	 *
+	 * @param request 请求
+	 * @param responseCast 响应转换
+	 * @param <R> 响应泛型
+	 * @return 响应Future
+	 */
+	<R> Promise<R> send(Request request, final ResponseCast<R> responseCast) {
 		Promise<R> promise = new ResponsePromise<>(responseCast);
 		publishEvent(new ConnectionEvent.RequestSet(this, promise));
 
-		netWorker.enableWrite(this);
+		this.request = request;
+		enableWrite();
 
+		LOGGER.debug("{} set.", request);
 		return promise;
 	}
 
+	private void enableWrite() {
+		sk.interestOps(sk.interestOps() | SelectionKey.OP_WRITE);
+		netWorker.wakeUp();
+	}
+
+	private void disableWrite() {
+		sk.interestOps(sk.interestOps() & (~SelectionKey.OP_WRITE));
+	}
+
+	/**
+	 * NetWorker调用, 写出请求, 在Request数据全部写出后才返回
+	 */
 	void write() {
 		try {
 			encodeAndWrite();
-			netWorker.disableWrite(this);
+			disableWrite();
 
 			LOGGER.debug("{} send.", this.request);
 			publishEvent(new ConnectionEvent.RequestSend(this));
 		} catch (Exception e) {
-			publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
+			if (request.finish()) {
+				publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
+			}
 		}
 	}
 
+	/**
+	 * NetWorker调用, 读取响应, 单个响应可能有多次read调用
+	 */
 	void read() {
 		try {
-			try {
-				Object response = readAndDecode();
-				receiveBuffer.reset();
+			Object response = readAndDecode();
+			responseBuffer = null;
 
-				LOGGER.debug("{} Response received.", this.request);
+			LOGGER.debug("{} Response received.", this.request);
+			if (request.finish()) {
 				publishEvent(new ConnectionEvent.ResponseReceived(this, response));
-			} catch (ResponseIncompleteException ignored) {
-				LOGGER.debug("Response incomplete", ignored);
 			}
+		} catch (ResponseIncompleteException ignored) {
 		} catch (Exception e) {
-			publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
+			if (request.finish()) {
+				publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
+			}
 		}
 	}
 
 	void timeout() {
 		LOGGER.debug("{} timeout.", this.request);
-		publishEvent(new ConnectionEvent.RequestTimeout(this));
+		if (request.finish()) {
+			publishEvent(new ConnectionEvent.RequestTimeout(this));
+		}
 	}
-
 
 
 
@@ -217,28 +263,37 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		buffer.clear();
 	}
 
-	private Object readAndDecode() throws IOException {
+	private void readToResponseBuffer() throws IOException {
+		if (responseBuffer == null) {
+			responseBuffer = new byte[256];
+			responseBytesCount = 0;
+		}
+
 		int read;
 		while ((read = channel.read(buffer)) > 0) {
-			buffer.flip();
-			while (buffer.hasRemaining()) {
-				receiveBuffer.write(buffer.get());
+			int needCapacity = read + responseBytesCount;
+			if (needCapacity > responseBuffer.length) {
+				responseBuffer = Arrays.copyOf(responseBuffer, Math.max(responseBuffer.length * 2, needCapacity));
 			}
+			buffer.flip();
+			buffer.get(responseBuffer, responseBytesCount, read);
 			buffer.clear();
+			responseBytesCount += read;
 		}
 
 		if (read == -1) {
 			throw new IOException("End of stream");
 		}
+	}
 
-		byte[] respBytes = receiveBuffer.reserveArray();
-		int c = receiveBuffer.size();
+	private Object readAndDecode() throws IOException {
+		readToResponseBuffer();
 
-		if (respBytes[c - 2] != CR || respBytes[c - 1] != LF) {
+		if (responseBuffer[responseBytesCount - 2] != CR || responseBuffer[responseBytesCount - 1] != LF) {
 			throw new ResponseIncompleteException("Response packet not end with \\r\\n");
 		}
 
-		ByteBuffer respBuffer = ByteBuffer.wrap(respBytes, 0, c);
+		ByteBuffer respBuffer = ByteBuffer.wrap(responseBuffer, 0, responseBytesCount);
 		byte bType = respBuffer.get();
 		switch (bType) {
 			case PLUS:
@@ -336,22 +391,5 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	private static void skipCRLF(ByteBuffer buffer) {
 		byte cr = buffer.get(), lf = buffer.get();
 		assert cr == CR; assert lf == LF;
-	}
-
-	private static class ResponseReceiveBuffer extends ByteArrayOutputStream {
-
-		ResponseReceiveBuffer(int size) {
-			super(size);
-		}
-
-		byte[] reserveArray() {
-			return buf;
-		}
-
-		@Override
-		public synchronized void reset() {
-			//TODO shrink buf capacity
-			super.reset();
-		}
 	}
 }
