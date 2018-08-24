@@ -2,6 +2,7 @@ package pers.zyc.tools.redis.client.util;
 
 import pers.zyc.tools.redis.client.ResponseCast;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
+import pers.zyc.tools.utils.TimeMillis;
 
 import java.util.concurrent.CountDownLatch;
 
@@ -11,12 +12,17 @@ import java.util.concurrent.CountDownLatch;
 public class ResponsePromise<R> extends CountDownLatch implements Promise<R> {
 
 	private final ResponseCast<R> responseCast;
+	private final long createTime = TimeMillis.INSTANCE.get();
 
 	private Object response;
 
 	public ResponsePromise(ResponseCast<R> responseCast) {
 		super(1);
 		this.responseCast = responseCast;
+	}
+
+	public long getCreateTime() {
+		return createTime;
 	}
 
 	@Override
