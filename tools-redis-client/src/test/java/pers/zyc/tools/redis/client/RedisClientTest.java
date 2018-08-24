@@ -85,4 +85,12 @@ public class RedisClientTest {
 		String key = "TestKey-SET_normal";
 		Assert.assertEquals("string", redisClient.type(key));
 	}
+
+	@Test
+	public void case_SocketClose() throws Exception {
+		String key = "TestKey-SocketClose-" + System.currentTimeMillis() + "_" + Math.random();
+		Assert.assertFalse(redisClient.exists(key));
+
+		Thread.currentThread().join();
+	}
 }
