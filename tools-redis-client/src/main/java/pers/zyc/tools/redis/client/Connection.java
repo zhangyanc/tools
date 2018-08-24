@@ -44,7 +44,8 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		}
 	};
 
-	private boolean activated;
+	boolean allocated;
+	boolean broken;
 	private Request request;
 	private byte[] responseBuffer;
 	private int responseBytesCount;
@@ -87,18 +88,6 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		((DirectBuffer) buffer).cleaner().clean();
 		publishEvent(new ConnectionEvent.ConnectionClosed(this));
 		LOGGER.debug("{} closed.", this);
-	}
-
-	boolean isConnected() {
-		return channel.isConnected();
-	}
-
-	boolean isActivated() {
-		return activated;
-	}
-
-	void setActivated(boolean activated) {
-		this.activated = activated;
 	}
 
 	@Override
@@ -148,7 +137,8 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 			LOGGER.debug("{} send.", this.request);
 			publishEvent(new ConnectionEvent.RequestSend(this));
-		} catch (Exception e) {
+		} catch (IOException e) {
+			broken = true;
 			if (request.finish()) {
 				publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
 			}
@@ -168,8 +158,9 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 				publishEvent(new ConnectionEvent.ResponseReceived(this, response));
 			}
 		} catch (ResponseIncompleteException ignored) {
-		} catch (Exception e) {
-			if (request.finish()) {
+		} catch (IOException e) {
+			broken = true;
+			if (!allocated || request.finish()) {
 				publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
 			}
 		}

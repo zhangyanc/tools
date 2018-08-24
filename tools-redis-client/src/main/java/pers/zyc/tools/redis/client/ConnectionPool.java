@@ -13,7 +13,7 @@ import pers.zyc.tools.redis.client.request.Ping;
 import pers.zyc.tools.redis.client.request.Quit;
 import pers.zyc.tools.redis.client.request.Select;
 import pers.zyc.tools.redis.client.util.Promise;
-import pers.zyc.tools.utils.Pair;
+import pers.zyc.tools.redis.client.util.ResponsePromise;
 import pers.zyc.tools.utils.TimeMillis;
 import pers.zyc.tools.utils.event.EventListener;
 import pers.zyc.tools.utils.lifecycle.ThreadService;
@@ -26,7 +26,6 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Condition;
 
 import static pers.zyc.tools.redis.client.ResponseCast.STRING;
 
@@ -39,8 +38,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 	private final ClientConfig config;
 	private final NetWorkGroup netWorkGroup;
 	private final GenericObjectPool<Connection> pool;
-	private final Condition stopCondition = serviceLock.newCondition();
-	private final ConcurrentMap<Connection, PromiseInfo> respondingMap = new ConcurrentHashMap<>();
+	private final ConcurrentMap<Connection, ResponsePromise<?>> requestingMap = new ConcurrentHashMap<>();
 
 	ConnectionPool(ClientConfig config) {
 		this.config = config;
@@ -72,8 +70,10 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 	@Override
 	protected void doStop() throws Exception {
 		pool.close();
+		//如果仍有请求中的连接, 则等待请求结束
 		while (pool.getNumActive() > 0) {
-			stopCondition.await(1000, TimeUnit.MILLISECONDS);
+			//等待一个超时清理周期, 则所有请求必定都结束了
+			TimeUnit.MILLISECONDS.sleep(config.getRequestTimeoutDetectInterval());
 		}
 		netWorkGroup.stop();
 		super.doStop();
@@ -90,8 +90,8 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 
 			@Override
 			protected void execute() throws InterruptedException {
-				for (Map.Entry<Connection, PromiseInfo> entry : respondingMap.entrySet()) {
-					if (entry.getValue().isTimeout()) {
+				for (Map.Entry<Connection, ResponsePromise<?>> entry : requestingMap.entrySet()) {
+					if (entry.getValue().getCreateTime() + config.getRequestTimeout() <= TimeMillis.INSTANCE.get()) {
 						entry.getKey().timeout();
 					}
 				}
@@ -101,9 +101,23 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 
 	Connection getConnection() {
 		try {
-			return pool.borrowObject();
+			Connection connection = pool.borrowObject();
+			connection.allocated = true;
+			return connection;
 		} catch (Exception e) {
 			throw new RedisClientException("Could not get a connection from the pool", e);
+		}
+	}
+
+	private void recycleConnection(Connection connection, boolean invalid) {
+		if (invalid) {
+			try {
+				pool.invalidateObject(connection);
+			} catch (Exception e) {
+				LOGGER.error("Invalidate connection exception!", e);
+			}
+		} else {
+			pool.returnObject(connection);
 		}
 	}
 
@@ -114,11 +128,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 
 		switch (event.eventType) {
 			case REQUEST_SET:
-				long timeoutLine = TimeMillis.INSTANCE.get() + config.getRequestTimeout();
-				respondingMap.put(connection, new PromiseInfo((Promise<?>) event.payload(), timeoutLine));
-				return;
-			case REQUEST_SEND:
-			case CONNECTION_CLOSED:
+				requestingMap.put(connection, (ResponsePromise<?>) event.payload());
 				return;
 			case EXCEPTION_CAUGHT:
 			case RESPONSE_RECEIVED:
@@ -126,20 +136,17 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 				response = event.payload();
 				break;
 			default:
-				throw new Error();
+				return;
 		}
+		Promise<?> responsePromise = requestingMap.remove(connection);
+		if (responsePromise == null) {
+			recycleConnection(connection, false);
+		} else {
+			responsePromise.response(response);
 
-		respondingMap.remove(connection).key().response(response);
-
-		if (connection.isActivated()) {
-			if (response instanceof Exception) {
-				try {
-					pool.invalidateObject(connection);
-				} catch (Exception e) {
-					LOGGER.error("Invalidate connection exception!", e);
-				}
-			} else {
-				pool.returnObject(connection);
+			if (connection.allocated) {
+				connection.allocated = false;
+				recycleConnection(connection, response instanceof Exception);
 			}
 		}
 	}
@@ -151,16 +158,14 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 		}
 		SocketChannel channel = createChannel(config.getHost(), config.getPort(), config.getConnectionTimeout());
 		Connection connection = new Connection(channel, netWorkGroup.next());
+		connection.addListener(this);
 		try {
-			connection.addListener(this);
-
 			if (config.getPassword() != null) {
 				connection.send(new Auth(config.getPassword()), STRING).get();
 			}
 			if (config.getDb() > 0) {
 				connection.send(new Select(config.getDb()), STRING).get();
 			}
-			connection.setActivated(true);
 			LOGGER.info("Created new {}", connection);
 			return new DefaultPooledObject<>(connection);
 		} catch (Exception e) {
@@ -172,8 +177,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 	@Override
 	public void destroyObject(PooledObject<Connection> p) throws Exception {
 		try (Connection connection = p.getObject()) {
-			connection.setActivated(false);
-			if (!netWorkGroup.inNetworking() && connection.isConnected()) {
+			if (!netWorkGroup.inNetworking() && !connection.broken) {
 				connection.send(new Quit(), STRING).get();
 			}
 		}
@@ -182,11 +186,12 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 	@Override
 	public boolean validateObject(PooledObject<Connection> p) {
 		Connection connection = p.getObject();
-		if (connection.isConnected()) {
-			long ping = TimeMillis.INSTANCE.get();
-			boolean valid = connection.send(new Ping(), STRING).get().equals("PONG");
-			LOGGER.debug("PING-PONG expend {} ms, {} validate {}", TimeMillis.INSTANCE.get() - ping, connection, valid);
-			return valid;
+		if (!connection.broken) {
+			try {
+				return connection.send(new Ping(), STRING).get().equals("PONG");
+			} catch (Exception e) {
+				LOGGER.warn("PING-PONG failed.", e.getCause());
+			}
 		}
 		return false;
 	}
@@ -219,18 +224,6 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 			} catch (IOException ignored) {
 			}
 			throw e;
-		}
-	}
-
-	private static class PromiseInfo extends Pair<Promise<?>, Long> {
-
-		PromiseInfo(Promise<?> promise, long timeoutLine) {
-			key(promise);
-			value(timeoutLine);
-		}
-
-		boolean isTimeout() {
-			return value() <= TimeMillis.INSTANCE.get();
 		}
 	}
 }
