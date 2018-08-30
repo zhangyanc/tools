@@ -5,6 +5,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
+import pers.zyc.tools.utils.TimeMillis;
 
 /**
  * Nonstandard unit tests.
@@ -45,6 +46,7 @@ public class RedisClientTest {
 
 		int len = 1024 * 1024;
 		byte[] largeStrBytes = new byte[len];//1M
+
 		Assert.assertEquals("OK", redisClient.set(key, new String(largeStrBytes)));
 
 		Assert.assertTrue(len == redisClient.get(key).length());
@@ -66,12 +68,14 @@ public class RedisClientTest {
 
 	@Test
 	public void case_Increment_NotExistsKey_zeroReturn() {
-		String key = "TestKey-INCR_normal";
-		Assert.assertTrue(redisClient.incr(key) == 1);
-		Assert.assertTrue(redisClient.incr(key) == 2);
-		Assert.assertTrue(redisClient.incr(key) == 3);
+		String key = "TestKey-INCR_" + TimeMillis.INSTANCE.get() + "" + Math.random();
 
-		Assert.assertTrue(redisClient.incrBy(key, -3) == 0);
+		int t = 5;
+		for (int i = 1; i <= t; i++) {
+			Assert.assertTrue(redisClient.incr(key) == i);
+		}
+
+		Assert.assertTrue(redisClient.incrBy(key, -t) == 0);
 	}
 
 	@Test
