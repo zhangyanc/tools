@@ -45,7 +45,8 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	};
 
 	boolean allocated;
-	boolean broken;
+	boolean healthy = true;
+
 	private Request request;
 	private byte[] responseBuffer;
 	private int responseBytesCount;
@@ -84,10 +85,10 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	@Override
 	public void close() {
 		sk.cancel();
+		LOGGER.debug("Close {}", this);
 		closeChannel(channel);
 		((DirectBuffer) buffer).cleaner().clean();
 		publishEvent(new ConnectionEvent.ConnectionClosed(this));
-		LOGGER.debug("{} closed.", this);
 	}
 
 	@Override
@@ -138,7 +139,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 			LOGGER.debug("{} send.", this.request);
 			publishEvent(new ConnectionEvent.RequestSend(this));
 		} catch (IOException e) {
-			broken = true;
+			healthy = false;
 			if (request.finish()) {
 				publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
 			}
@@ -159,7 +160,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 			}
 		} catch (ResponseIncompleteException ignored) {
 		} catch (IOException e) {
-			broken = true;
+			healthy = false;
 			if (!allocated || request.finish()) {
 				publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
 			}
@@ -168,6 +169,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 	void timeout() {
 		LOGGER.debug("{} timeout.", this.request);
+		healthy = false;
 		if (request.finish()) {
 			publishEvent(new ConnectionEvent.RequestTimeout(this));
 		}
@@ -195,17 +197,45 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 	//encode and decode
 
+	/**
+	 * 编码并写出请求数据
+	 *
+	 * @throws IOException 网络异常
+	 */
 	private void encodeAndWrite() throws IOException {
 		encodeIntCRLF(ASTERISK, request.partSize());
 
 		byte[] part;
 		while ((part = request.nextPart()) != null) {
-			encodePartCRLF(part);
-		}
+			encodeIntCRLF(DOLLAR, part.length);
 
-		drainBuffer();
+			int writeIndex = 0;
+			do {
+				need(1);//需要buffer非满
+				int writeLen = Math.min(buffer.remaining(), part.length - writeIndex);
+				buffer.put(part, writeIndex, writeLen);
+				writeIndex += writeLen;
+				//循环直到part数据全部处理
+			} while (writeIndex < part.length);
+
+			need(2);
+			buffer.put(CRLF);
+		}
+		//排空buffer
+		buffer.flip();
+		while (buffer.hasRemaining()) {
+			channel.write(buffer);
+		}
+		buffer.clear();
 	}
 
+	/**
+	 * 写块长度
+	 *
+	 * @param b 符号
+	 * @param length 长度
+	 * @throws IOException 网络异常
+	 */
 	private void encodeIntCRLF(byte b, int length) throws IOException {
 		byte[] intByte = toByteArray(length);
 		need(intByte.length + 3);
@@ -214,49 +244,28 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		buffer.put(CRLF);
 	}
 
-	private void encodePartCRLF(byte[] part) throws IOException {
-		encodeIntCRLF(DOLLAR, part.length);
-
-		ByteBuffer tmpMemBuffer = ByteBuffer.wrap(part);
-		int writeRemain;
-		while ((writeRemain = tmpMemBuffer.remaining()) > 0) {
-			while (buffer.hasRemaining() && writeRemain-- > 0) {
-				buffer.put(tmpMemBuffer.get());
-			}
-			if (!buffer.hasRemaining()) {
-				writeOnce();
-			}
-		}
-
-		need(2);
-		buffer.put(CRLF);
-	}
-
+	/**
+	 * buffer处于写模式时, put前确保有足够的剩余可写
+	 *
+	 * @param need 需要写入大小
+	 * @throws IOException 网络异常
+	 */
 	private void need(int need) throws IOException {
 		while (buffer.remaining() < need) {
-			writeOnce();
-		}
-	}
-
-	private void writeOnce() throws IOException {
-		buffer.flip();
-		channel.write(buffer);
-		buffer.compact();
-	}
-
-	private void drainBuffer() throws IOException {
-		buffer.flip();
-
-		while (buffer.hasRemaining()) {
+			buffer.flip();
 			channel.write(buffer);
+			buffer.compact();
 		}
-
-		buffer.clear();
 	}
 
+	/**
+	 * 将可读数据全部都出到response buffer数组待编码
+	 *
+	 * @throws IOException 网络异常
+	 */
 	private void readToResponseBuffer() throws IOException {
 		if (responseBuffer == null) {
-			responseBuffer = new byte[256];
+			responseBuffer = new byte[512];
 			responseBytesCount = 0;
 		}
 
@@ -266,20 +275,30 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 			if (needCapacity > responseBuffer.length) {
 				responseBuffer = Arrays.copyOf(responseBuffer, Math.max(responseBuffer.length * 2, needCapacity));
 			}
+			//缓存数据复制到response buffer数组, 并累计数组写入位置
 			buffer.flip();
 			buffer.get(responseBuffer, responseBytesCount, read);
 			buffer.clear();
 			responseBytesCount += read;
 		}
 
+		//连接关闭
 		if (read == -1) {
-			throw new IOException("End of stream");
+			throw new IOException("EOF");
 		}
 	}
 
+	/**
+	 * 读取响应数据并解码
+	 *
+	 * @return 响应
+	 * @throws IOException 网络异常
+	 * @throws ResponseIncompleteException 数据未完整
+	 */
 	private Object readAndDecode() throws IOException {
 		readToResponseBuffer();
 
+		//响应包必定以\r\n结尾
 		if (responseBuffer[responseBytesCount - 2] != CR || responseBuffer[responseBytesCount - 1] != LF) {
 			throw new ResponseIncompleteException("Response packet not end with \\r\\n");
 		}
@@ -328,7 +347,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 			return ret;
 		}
 
-		throw new ResponseIncompleteException("MultiBulk expect " + partLen + "part, but just received " + ret.size());
+		throw new ResponseIncompleteException("MultiBulk expect " + partLen + "part, but received " + ret.size());
 	}
 
 	private static byte[] readPart(ByteBuffer buffer) {
@@ -348,26 +367,45 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		return getContentByte(buffer, contentLen);
 	}
 
+	/**
+	 * 读状态
+	 *
+	 * @param buffer 响应buffer
+	 * @return 状态字符串
+	 */
 	private static String readLine(ByteBuffer buffer) {
-		return bytesToString(getContentByte(buffer, buffer.limit() - 3));
+		return bytesToString(getContentByte(buffer, buffer.remaining() - 2));
 	}
 
 	private static int readLength(ByteBuffer buffer) {
 		return bytesToLong(getLongByte(buffer)).intValue();
 	}
 
+	/**
+	 * 读整数
+	 *
+	 * @param buffer 响应buffer
+	 * @return 整数
+	 */
 	private static long readInteger(ByteBuffer buffer) {
 		return bytesToLong(getLongByte(buffer));
 	}
 
+	/**
+	 * 读取块长度
+	 *
+	 * @param buffer 响应buffer
+	 * @return 块长度字节
+	 */
 	private static byte[] getLongByte(ByteBuffer buffer) {
 		int len = 0;
 
+		//先标记位置在读到\r\n后重置, 累计的长度即为块长度的字节数
 		buffer.mark();
 		while (buffer.get() != CR) {
 			len++;
 		}
-		byte cr = buffer.get(); assert cr == LF;
+		byte lf = buffer.get(); assert lf == LF;
 		buffer.reset();
 
 		return getContentByte(buffer, len);

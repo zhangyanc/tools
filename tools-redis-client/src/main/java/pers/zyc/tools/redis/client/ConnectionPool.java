@@ -114,7 +114,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 			try {
 				pool.invalidateObject(connection);
 			} catch (Exception e) {
-				LOGGER.error("Invalidate connection exception!", e);
+				LOGGER.warn("Invalidate connection exception!", e);
 			}
 		} else {
 			pool.returnObject(connection);
@@ -133,6 +133,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 			case EXCEPTION_CAUGHT:
 			case RESPONSE_RECEIVED:
 			case REQUEST_TIMEOUT:
+				//请求结果事件
 				response = event.payload();
 				break;
 			default:
@@ -140,10 +141,13 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 		}
 		Promise<?> responsePromise = requestingMap.remove(connection);
 		if (responsePromise == null) {
-			recycleConnection(connection, false);
+			assert !connection.allocated && !connection.healthy;
+			//未分配状态时检测到连接异常(被对端关闭, 触发Channel上的读事件), 销毁连接
+			recycleConnection(connection, true);
 		} else {
 			responsePromise.response(response);
 
+			//回收连接, 如果为异常响应则销毁连接
 			if (connection.allocated) {
 				connection.allocated = false;
 				recycleConnection(connection, response instanceof Exception);
@@ -177,7 +181,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 	@Override
 	public void destroyObject(PooledObject<Connection> p) throws Exception {
 		try (Connection connection = p.getObject()) {
-			if (!netWorkGroup.inNetworking() && !connection.broken) {
+			if (!netWorkGroup.inNetworking() && connection.healthy) {
 				connection.send(new Quit(), STRING).get();
 			}
 		}
@@ -186,7 +190,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 	@Override
 	public boolean validateObject(PooledObject<Connection> p) {
 		Connection connection = p.getObject();
-		if (!connection.broken) {
+		if (connection.healthy) {
 			try {
 				return connection.send(new Ping(), STRING).get().equals("PONG");
 			} catch (Exception e) {
