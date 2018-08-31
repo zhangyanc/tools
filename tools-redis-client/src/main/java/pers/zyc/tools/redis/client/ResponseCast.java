@@ -1,6 +1,7 @@
 package pers.zyc.tools.redis.client;
 
 import pers.zyc.tools.redis.client.exception.RedisClientException;
+import pers.zyc.tools.redis.client.exception.ServerRespondException;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 import java.util.*;
@@ -37,7 +38,7 @@ public abstract class ResponseCast<R> {
 		@Override
 		public Long cast(Object response) {
 			if (response instanceof String) {
-				throw new RedisClientException((String) response);
+				throw new ServerRespondException((String) response);
 			}
 
 			if (response instanceof Long) {
