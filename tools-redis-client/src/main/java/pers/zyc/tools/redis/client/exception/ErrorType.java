@@ -8,14 +8,14 @@ public enum ErrorType {
 
 		@Override
 		boolean match(String msg) {
-			return msg != null && msg.startsWith("-WAR");
+			return msg != null && msg.contains("WAR");
 		}
 	},
 	ERROR {
 
 		@Override
 		boolean match(String msg) {
-			return msg != null && msg.startsWith("-ERR");
+			return msg != null && msg.contains("ERR");
 		}
 	},
 	UNKNOWN {
