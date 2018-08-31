@@ -142,14 +142,15 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 		Promise<?> responsePromise = requestingMap.remove(connection);
 		if (responsePromise == null) {
 			assert !connection.allocated && !connection.healthy;
-			//未分配状态时检测到连接异常(被对端关闭, 触发Channel上的读事件), 销毁连接
+			//未分配状态时检测到连接异常(被对端关闭, 触发了Channel上的读事件), 销毁连接
 			recycleConnection(connection, true);
 		} else {
 			responsePromise.response(response);
 
-			//回收连接, 如果为异常响应则销毁连接
 			if (connection.allocated) {
+				//修改状态, 控制每个连接借出后只回收一次
 				connection.allocated = false;
+				//回收连接, 如果为异常响应则销毁连接
 				recycleConnection(connection, response instanceof Exception);
 			}
 		}
@@ -181,7 +182,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 	@Override
 	public void destroyObject(PooledObject<Connection> p) throws Exception {
 		try (Connection connection = p.getObject()) {
-			if (!netWorkGroup.inNetworking() && connection.healthy) {
+			if (connection.healthy && !netWorkGroup.inNetworking()) {
 				connection.send(new Quit(), STRING).get();
 			}
 		}

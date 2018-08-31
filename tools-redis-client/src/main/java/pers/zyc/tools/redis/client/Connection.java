@@ -218,7 +218,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 				//循环直到part数据全部处理
 			} while (writeIndex < part.length);
 
-			need(2);
+			need(CRLF.length);
 			buffer.put(CRLF);
 		}
 		//排空buffer
@@ -238,7 +238,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	 */
 	private void encodeIntCRLF(byte b, int length) throws IOException {
 		byte[] intByte = toByteArray(length);
-		need(intByte.length + 3);
+		need(intByte.length + CRLF.length + 1);
 		buffer.put(b);
 		buffer.put(intByte);
 		buffer.put(CRLF);
@@ -259,7 +259,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	}
 
 	/**
-	 * 将可读数据全部都出到response buffer数组待编码
+	 * 将可读数据全部读出到response buffer数组待解码
 	 *
 	 * @throws IOException 网络异常
 	 */
@@ -273,7 +273,8 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		while ((read = channel.read(buffer)) > 0) {
 			int needCapacity = read + responseBytesCount;
 			if (needCapacity > responseBuffer.length) {
-				responseBuffer = Arrays.copyOf(responseBuffer, Math.max(responseBuffer.length * 2, needCapacity));
+				responseBuffer = Arrays.copyOf(responseBuffer,
+						Math.max(responseBuffer.length * 2, needCapacity));
 			}
 			//缓存数据复制到response buffer数组, 并累计数组写入位置
 			buffer.flip();
@@ -299,7 +300,8 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		readToResponseBuffer();
 
 		//响应包必定以\r\n结尾
-		if (responseBuffer[responseBytesCount - 2] != CR || responseBuffer[responseBytesCount - 1] != LF) {
+		if (responseBuffer[responseBytesCount - 2] != CR ||
+			responseBuffer[responseBytesCount - 1] != LF) {
 			throw new ResponseIncompleteException("Response packet not end with \\r\\n");
 		}
 

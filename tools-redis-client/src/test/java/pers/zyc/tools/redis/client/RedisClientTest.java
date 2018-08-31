@@ -4,7 +4,8 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import pers.zyc.tools.redis.client.exception.RedisClientException;
+import pers.zyc.tools.redis.client.exception.ErrorType;
+import pers.zyc.tools.redis.client.exception.ServerRespondException;
 import pers.zyc.tools.utils.TimeMillis;
 
 /**
@@ -30,39 +31,32 @@ public class RedisClientTest {
 
 	@Test
 	public void case_Set_normal_success() {
-		String key = "TestKey-SET_normal";
-		String val = "val";
+		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
 
-		String setResp = redisClient.set(key, val);
-		Assert.assertEquals("OK", setResp);
-
-		String getResp = redisClient.get(key);
-		Assert.assertEquals(val, getResp);
+		Assert.assertEquals("OK", redisClient.set(key, "a"));
 	}
 
 	@Test
 	public void case_Set_LargeStr_success() {
-		String key = "TestKey-SET_large";
+		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
 
-		int len = 1024 * 1024;
-		byte[] largeStrBytes = new byte[len];//1M
+		byte[] largeStrBytes = new byte[1024 * 1024];//1M
+		redisClient.set(key, new String(largeStrBytes));
 
-		Assert.assertEquals("OK", redisClient.set(key, new String(largeStrBytes)));
-
-		Assert.assertTrue(len == redisClient.get(key).length());
-		Assert.assertTrue(len == redisClient.strlen(key));
+		Assert.assertTrue(largeStrBytes.length == redisClient.strlen(key));
 	}
 
 
 	@Test
-	public void case_Increment_WrongType_error() {
-		String key = "TestKey-SET_normal";
+	public void case_Incr_WrongType_error() {
+		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		redisClient.set(key, "a");
+
 		try {
 			redisClient.incr(key);
 			Assert.fail();
-		} catch (RedisClientException rce) {
-			rce.printStackTrace();
-			Assert.assertTrue(rce.getMessage().contains("ERR"));
+		} catch (ServerRespondException sre) {
+			Assert.assertEquals(ErrorType.ERROR, sre.getErrorType());
 		}
 	}
 
