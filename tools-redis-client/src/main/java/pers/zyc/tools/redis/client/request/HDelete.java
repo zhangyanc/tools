@@ -9,9 +9,9 @@ import pers.zyc.tools.redis.client.util.ByteUtil;
 public class HDelete extends Request {
 
 	public HDelete(String key, String... fields) {
-		parts.add(ByteUtil.toByteArray(key));
+		bulks.add(ByteUtil.toByteArray(key));
 		for (String field : fields) {
-			parts.add(ByteUtil.toByteArray(field));
+			bulks.add(ByteUtil.toByteArray(field));
 		}
 	}
 

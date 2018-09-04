@@ -15,12 +15,12 @@ public abstract class Request {
 
 	private static final CommandBytesCache COMMAND_BYTES_CACHE = new CommandBytesCache();
 
-	protected final LinkedList<byte[]> parts;
+	protected final LinkedList<byte[]> bulks;
 	private final AtomicBoolean finished = new AtomicBoolean();
 
 	protected Request(byte[]... args) {
-		parts = new LinkedList<>(Arrays.asList(args));
-		parts.addFirst(getCmd());
+		bulks = new LinkedList<>(Arrays.asList(args));
+		bulks.addFirst(getCmd());
 	}
 
 	private byte[] getCmd() {
@@ -31,12 +31,16 @@ public abstract class Request {
 		return getClass().getSimpleName().toUpperCase();
 	}
 
-	int partSize() {
-		return parts.size();
+	int bulkSize() {
+		return bulks.size();
 	}
 
-	byte[] nextPart() {
-		return parts.poll();
+	byte[] nextBulk() {
+		return bulks.poll();
+	}
+
+	boolean finish() {
+		return !finished.get() && finished.compareAndSet(false, true);
 	}
 
 	@Override
@@ -45,7 +49,7 @@ public abstract class Request {
 	}
 
 	private static class CommandBytesCache {
-		ConcurrentMap<String, byte[]> commandBytesCacheMap = new ConcurrentHashMap<>();
+		final ConcurrentMap<String, byte[]> commandBytesCacheMap = new ConcurrentHashMap<>();
 
 		byte[] getCommandBytes(String command) {
 			byte[] commandBytes = commandBytesCacheMap.get(command);
@@ -55,9 +59,5 @@ public abstract class Request {
 			}
 			return commandBytes;
 		}
-	}
-
-	boolean finish() {
-		return !finished.get() && finished.compareAndSet(false, true);
 	}
 }

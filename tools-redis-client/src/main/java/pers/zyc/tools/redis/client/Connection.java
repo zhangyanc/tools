@@ -203,20 +203,20 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	 * @throws IOException 网络异常
 	 */
 	private void encodeAndWrite() throws IOException {
-		encodeIntCRLF(ASTERISK, request.partSize());
+		encodeIntCRLF(ASTERISK, request.bulkSize());
 
-		byte[] part;
-		while ((part = request.nextPart()) != null) {
-			encodeIntCRLF(DOLLAR, part.length);
+		byte[] bulk;
+		while ((bulk = request.nextBulk()) != null) {
+			encodeIntCRLF(DOLLAR, bulk.length);
 
 			int writeIndex = 0;
 			do {
 				need(1);//需要buffer非满
-				int writeLen = Math.min(buffer.remaining(), part.length - writeIndex);
-				buffer.put(part, writeIndex, writeLen);
+				int writeLen = Math.min(buffer.remaining(), bulk.length - writeIndex);
+				buffer.put(bulk, writeIndex, writeLen);
 				writeIndex += writeLen;
-				//循环直到part数据全部处理
-			} while (writeIndex < part.length);
+				//循环直到bulk数据全部处理
+			} while (writeIndex < bulk.length);
 
 			need(CRLF.length);
 			buffer.put(CRLF);
@@ -322,19 +322,15 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		}
 	}
 
-	private static byte[] readBulk(ByteBuffer buffer) {
-		return readPart(buffer);
-	}
-
 	private static List<byte[]> readMultiBulk(ByteBuffer buffer) {
-		int partLen = readLength(buffer);
+		int bulks = readLength(buffer);
 
-		if (partLen == -1) {
+		if (bulks == -1) {
 			return null;
 		}
 
-		List<byte[]> ret = new ArrayList<>(partLen);
-		if (partLen == 0) {
+		List<byte[]> ret = new ArrayList<>(bulks);
+		if (bulks == 0) {
 			return ret;
 		}
 
@@ -342,31 +338,31 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 		while (buffer.hasRemaining()) {
 			byte $ = buffer.get(); assert $ == DOLLAR;
-			ret.add(readPart(buffer));
+			ret.add(readBulk(buffer));
 		}
 
-		if (ret.size() == partLen) {
+		if (ret.size() == bulks) {
 			return ret;
 		}
 
-		throw new ResponseIncompleteException("MultiBulk expect " + partLen + "part, but received " + ret.size());
+		throw new ResponseIncompleteException("MultiBulk expect " + bulks + " bulk, but received " + ret.size());
 	}
 
-	private static byte[] readPart(ByteBuffer buffer) {
-		int contentLen = readLength(buffer);
+	private static byte[] readBulk(ByteBuffer buffer) {
+		int bulkLen = readLength(buffer);
 
 		skipCRLF(buffer);
 
 		if (!buffer.hasRemaining()) {
-			if (contentLen == -1) {
+			if (bulkLen == -1) {
 				return null;
 			} else {
-				throw new ResponseIncompleteException("Bulk part data deficiency");
+				throw new ResponseIncompleteException("Bulk data deficiency");
 			}
 		}
 
 		//一定可以读取contentLen长度的内容
-		return getContentByte(buffer, contentLen);
+		return getContentByte(buffer, bulkLen);
 	}
 
 	/**
@@ -402,7 +398,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	private static byte[] getLongByte(ByteBuffer buffer) {
 		int len = 0;
 
-		//先标记位置在读到\r\n后重置, 累计的长度即为块长度的字节数
+		//先标记位置, 读到\r\n后重置, 累计的长度即为块长度的字节数
 		buffer.mark();
 		while (buffer.get() != CR) {
 			len++;

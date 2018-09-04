@@ -11,10 +11,10 @@ import java.util.Map;
 public class HMSet extends Request {
 
 	public HMSet(String key, Map<String, String> hash) {
-		parts.add(ByteUtil.toByteArray(key));
+		bulks.add(ByteUtil.toByteArray(key));
 		for (Map.Entry<String, String> entry : hash.entrySet()) {
-			parts.add(ByteUtil.toByteArray(entry.getKey()));
-			parts.add(ByteUtil.toByteArray(entry.getValue()));
+			bulks.add(ByteUtil.toByteArray(entry.getKey()));
+			bulks.add(ByteUtil.toByteArray(entry.getValue()));
 		}
 	}
 }
