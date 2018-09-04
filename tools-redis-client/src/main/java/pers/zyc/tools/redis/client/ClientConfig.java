@@ -127,8 +127,8 @@ public class ClientConfig {
 		}
 	}
 
-	GenericObjectPoolConfig createPoolConfig() {
-		GenericObjectPoolConfig poolConfig = new GenericObjectPoolConfig();
+	<T> GenericObjectPoolConfig<T> createPoolConfig() {
+		GenericObjectPoolConfig<T> poolConfig = new GenericObjectPoolConfig<>();
 		poolConfig.setMaxWaitMillis(getConnectionTimeout());
 		poolConfig.setMaxTotal(getMaxConnectionTotal());
 		poolConfig.setMaxIdle(getMaxConnectionTotal());

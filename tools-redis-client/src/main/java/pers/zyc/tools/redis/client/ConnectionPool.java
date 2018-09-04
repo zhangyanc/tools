@@ -44,7 +44,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 		this.config = config;
 		netWorkGroup = new NetWorkGroup(config.getNetWorkers());
 
-		pool = new GenericObjectPool<>(this, config.createPoolConfig());
+		pool = new GenericObjectPool<>(this, config.<Connection>createPoolConfig());
 		start();
 	}
 
@@ -171,7 +171,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 			if (config.getDb() > 0) {
 				connection.send(new Select(config.getDb()), STRING).get();
 			}
-			LOGGER.info("Created new {}", connection);
+			LOGGER.debug("Created new {}", connection);
 			return new DefaultPooledObject<>(connection);
 		} catch (Exception e) {
 			connection.close();
