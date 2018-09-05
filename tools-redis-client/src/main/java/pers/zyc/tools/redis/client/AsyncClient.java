@@ -1,14 +1,12 @@
 package pers.zyc.tools.redis.client;
 
-import pers.zyc.tools.redis.client.util.Future;
 import pers.zyc.tools.redis.client.request.*;
+import pers.zyc.tools.redis.client.util.Future;
 
 import java.io.Closeable;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import static pers.zyc.tools.redis.client.ResponseCast.*;
 
 /**
  * @author zhangyancheng
@@ -26,193 +24,193 @@ public class AsyncClient implements AsyncCommands, Closeable {
 	}
 
 	@Override
-	public Future<String> _set(String key, String value) {
-		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.Set(key, value), STRING);
+	public Future<Boolean> _set(String key, String value) {
+		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.Set(key, value));
 	}
 
 	@Override
-	public Future<String> _set(String key, String value, String nxxx, String expx, long time) {
-		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx, expx, time), STRING);
+	public Future<Boolean> _set(String key, String value, String nxxx, String expx, long time) {
+		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx, expx, time));
 	}
 
 	@Override
-	public Future<String> _set(String key, String value, String nxxx) {
-		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx), STRING);
+	public Future<Boolean> _set(String key, String value, String nxxx) {
+		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx));
 	}
 
 	@Override
 	public Future<String> _get(String key) {
-		return connectionPool.getConnection().send(new Get(key), STRING);
+		return connectionPool.getConnection().send(new Get(key));
 	}
 
 	@Override
 	public Future<Boolean> _exists(String key) {
-		return connectionPool.getConnection().send(new Exists(key), BOOLEAN);
+		return connectionPool.getConnection().send(new Exists(key));
 	}
 
 	@Override
-	public Future<Long> _persist(String key) {
-		return connectionPool.getConnection().send(new Persist(key), LONG);
+	public Future<Boolean> _persist(String key) {
+		return connectionPool.getConnection().send(new Persist(key));
 	}
 
 	@Override
-	public Future<String> _type(String key) {
-		return connectionPool.getConnection().send(new Type(key), STRING);
+	public Future<KeyType> _type(String key) {
+		return connectionPool.getConnection().send(new Type(key));
 	}
 
 	@Override
-	public Future<Long> _expire(String key, int seconds) {
-		return connectionPool.getConnection().send(new Expire(key, seconds), LONG);
+	public Future<Boolean> _expire(String key, int seconds) {
+		return connectionPool.getConnection().send(new Expire(key, seconds));
 	}
 
 	@Override
-	public Future<Long> _pexpire(String key, long milliseconds) {
-		return connectionPool.getConnection().send(new PExpire(key, milliseconds), LONG);
+	public Future<Boolean> _pexpire(String key, long milliseconds) {
+		return connectionPool.getConnection().send(new PExpire(key, milliseconds));
 	}
 
 	@Override
-	public Future<Long> _expireAt(String key, long unixTime) {
-		return connectionPool.getConnection().send(new ExpireAt(key, unixTime), LONG);
+	public Future<Boolean> _expireAt(String key, long unixTime) {
+		return connectionPool.getConnection().send(new ExpireAt(key, unixTime));
 	}
 
 	@Override
-	public Future<Long> _pexpireAt(String key, long millisecondsTimestamp) {
-		return connectionPool.getConnection().send(new PExpireAt(key, millisecondsTimestamp), LONG);
+	public Future<Boolean> _pexpireAt(String key, long millisecondsTimestamp) {
+		return connectionPool.getConnection().send(new PExpireAt(key, millisecondsTimestamp));
 	}
 
 	@Override
 	public Future<Long> _ttl(String key) {
-		return connectionPool.getConnection().send(new Ttl(key), LONG);
+		return connectionPool.getConnection().send(new Ttl(key));
 	}
 
 	@Override
 	public Future<Long> _pttl(String key) {
-		return connectionPool.getConnection().send(new PTtl(key), LONG);
+		return connectionPool.getConnection().send(new PTtl(key));
 	}
 
 	@Override
 	public Future<Boolean> _setbit(String key, long offset, boolean value) {
-		return connectionPool.getConnection().send(new SetBit(key, offset, value), BOOLEAN);
+		return connectionPool.getConnection().send(new SetBit(key, offset, value));
 	}
 
 	@Override
 	public Future<Boolean> _setbit(String key, long offset, String value) {
-		return connectionPool.getConnection().send(new SetBit(key, offset, value), BOOLEAN);
+		return connectionPool.getConnection().send(new SetBit(key, offset, value));
 	}
 
 	@Override
 	public Future<Boolean> _getbit(String key, long offset) {
-		return connectionPool.getConnection().send(new GetBit(key, offset), BOOLEAN);
+		return connectionPool.getConnection().send(new GetBit(key, offset));
 	}
 
 	@Override
 	public Future<Long> _setrange(String key, long offset, String value) {
-		return connectionPool.getConnection().send(new SetRange(key, offset, value), LONG);
+		return connectionPool.getConnection().send(new SetRange(key, offset, value));
 	}
 
 	@Override
 	public Future<String> _getrange(String key, long startOffset, long endOffset) {
-		return connectionPool.getConnection().send(new GetRange(key, startOffset, endOffset), STRING);
+		return connectionPool.getConnection().send(new GetRange(key, startOffset, endOffset));
 	}
 
 	@Override
 	public Future<String> _getSet(String key, String value) {
-		return connectionPool.getConnection().send(new GetSet(key, value), STRING);
+		return connectionPool.getConnection().send(new GetSet(key, value));
 	}
 
 	@Override
-	public Future<Long> _setnx(String key, String value) {
-		return connectionPool.getConnection().send(new SetNx(key, value), LONG);
+	public Future<Boolean> _setnx(String key, String value) {
+		return connectionPool.getConnection().send(new SetNx(key, value));
 	}
 
 	@Override
-	public Future<String> _setex(String key, int seconds, String value) {
-		return connectionPool.getConnection().send(new SetEx(key, seconds, value), STRING);
+	public Future<Void> _setex(String key, int seconds, String value) {
+		return connectionPool.getConnection().send(new SetEx(key, seconds, value));
 	}
 
 	@Override
-	public Future<String> _psetex(String key, long milliseconds, String value) {
-		return connectionPool.getConnection().send(new PSetEx(key, milliseconds, value), STRING);
+	public Future<Void> _psetex(String key, long milliseconds, String value) {
+		return connectionPool.getConnection().send(new PSetEx(key, milliseconds, value));
 	}
 
 	@Override
 	public Future<Long> _decrBy(String key, long integer) {
-		return connectionPool.getConnection().send(new DecrementBy(key, integer), LONG);
+		return connectionPool.getConnection().send(new DecrementBy(key, integer));
 	}
 
 	@Override
 	public Future<Long> _decr(String key) {
-		return connectionPool.getConnection().send(new Decrement(key), LONG);
+		return connectionPool.getConnection().send(new Decrement(key));
 	}
 
 	@Override
 	public Future<Long> _incrBy(String key, long integer) {
-		return connectionPool.getConnection().send(new IncrementBy(key, integer), LONG);
+		return connectionPool.getConnection().send(new IncrementBy(key, integer));
 	}
 
 	@Override
 	public Future<Double> _incrByFloat(String key, double value) {
-		return connectionPool.getConnection().send(new IncrementByFloat(key, value), DOUBLE);
+		return connectionPool.getConnection().send(new IncrementByFloat(key, value));
 	}
 
 	@Override
 	public Future<Long> _incr(String key) {
-		return connectionPool.getConnection().send(new Increment(key), LONG);
+		return connectionPool.getConnection().send(new Increment(key));
 	}
 
 	@Override
 	public Future<Long> _append(String key, String value) {
-		return connectionPool.getConnection().send(new Append(key, value), LONG);
+		return connectionPool.getConnection().send(new Append(key, value));
 	}
 
 	@Override
 	public Future<String> _substr(String key, int start, int end) {
-		return connectionPool.getConnection().send(new SubStr(key, start, end), STRING);
+		return connectionPool.getConnection().send(new SubStr(key, start, end));
 	}
 
 	@Override
-	public Future<Long> _hset(String key, String field, String value) {
-		return connectionPool.getConnection().send(new HSet(key, field, value), LONG);
+	public Future<Boolean> _hset(String key, String field, String value) {
+		return connectionPool.getConnection().send(new HSet(key, field, value));
 	}
 
 	@Override
 	public Future<String> _hget(String key, String field) {
-		return connectionPool.getConnection().send(new HGet(key, field), STRING);
+		return connectionPool.getConnection().send(new HGet(key, field));
 	}
 
 	@Override
-	public Future<Long> _hsetnx(String key, String field, String value) {
-		return connectionPool.getConnection().send(new HSetNx(key, field, value), LONG);
+	public Future<Boolean> _hsetnx(String key, String field, String value) {
+		return connectionPool.getConnection().send(new HSetNx(key, field, value));
 	}
 
 	@Override
-	public Future<String> _hmset(String key, Map<String, String> hash) {
-		return connectionPool.getConnection().send(new HMSet(key, hash), STRING);
+	public Future<Void> _hmset(String key, Map<String, String> hash) {
+		return connectionPool.getConnection().send(new HMSet(key, hash));
 	}
 
 	@Override
 	public Future<List<String>> _hmget(String key, String... fields) {
-		return connectionPool.getConnection().send(new HMGet(key, fields), STRING_LIST);
+		return connectionPool.getConnection().send(new HMGet(key, fields));
 	}
 
 	@Override
 	public Future<Long> _hincrBy(String key, String field, long value) {
-		return connectionPool.getConnection().send(new HIncrementBy(key, field, value), LONG);
+		return connectionPool.getConnection().send(new HIncrementBy(key, field, value));
 	}
 
 	@Override
 	public Future<Double> _hincrByFloat(String key, String field, double value) {
-		return connectionPool.getConnection().send(new HIncrementByFloat(key, field, value), DOUBLE);
+		return connectionPool.getConnection().send(new HIncrementByFloat(key, field, value));
 	}
 
 	@Override
 	public Future<Boolean> _hexists(String key, String field) {
-		return connectionPool.getConnection().send(new HExists(key, field), BOOLEAN);
+		return connectionPool.getConnection().send(new HExists(key, field));
 	}
 
 	@Override
 	public Future<Long> _hdel(String key, String... field) {
-		return connectionPool.getConnection().send(new HDelete(key, field), LONG);
+		return connectionPool.getConnection().send(new HDelete(key, field));
 	}
 
 	@Override
@@ -332,7 +330,7 @@ public class AsyncClient implements AsyncCommands, Closeable {
 
 	@Override
 	public Future<Long> _strlen(String key) {
-		return connectionPool.getConnection().send(new StrLen(key), LONG);
+		return connectionPool.getConnection().send(new StrLen(key));
 	}
 
 	@Override
@@ -517,7 +515,7 @@ public class AsyncClient implements AsyncCommands, Closeable {
 
 	@Override
 	public Future<Long> _del(String key) {
-		return connectionPool.getConnection().send(new Delete(key), LONG);
+		return connectionPool.getConnection().send(new Delete(key));
 	}
 
 	@Override

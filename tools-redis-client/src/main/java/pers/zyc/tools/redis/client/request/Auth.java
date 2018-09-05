@@ -6,7 +6,7 @@ import pers.zyc.tools.redis.client.util.ByteUtil;
 /**
  * @author zhangyancheng
  */
-public class Auth extends Request {
+public class Auth extends Request<Void> {
 
 	public Auth(String password) {
 		super(

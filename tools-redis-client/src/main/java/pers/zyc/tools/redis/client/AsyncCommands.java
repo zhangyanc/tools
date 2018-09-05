@@ -1,5 +1,6 @@
 package pers.zyc.tools.redis.client;
 
+import pers.zyc.tools.redis.client.request.KeyType;
 import pers.zyc.tools.redis.client.util.Future;
 
 import java.util.List;
@@ -11,27 +12,27 @@ import java.util.Set;
  */
 public interface AsyncCommands {
 
-	Future<String> _set(String key, String value);
+	Future<Boolean> _set(String key, String value);
 
-	Future<String> _set(String key, String value, String nxxx, String expx, long time);
+	Future<Boolean> _set(String key, String value, String nxxx, String expx, long time);
 
-	Future<String> _set(String key, String value, String nxxx);
+	Future<Boolean> _set(String key, String value, String nxxx);
 
 	Future<String> _get(String key);
 
 	Future<Boolean> _exists(String key);
 
-	Future<Long> _persist(String key);
+	Future<Boolean> _persist(String key);
 
-	Future<String> _type(String key);
+	Future<KeyType> _type(String key);
 
-	Future<Long> _expire(String key, int seconds);
+	Future<Boolean> _expire(String key, int seconds);
 
-	Future<Long> _pexpire(String key, long milliseconds);
+	Future<Boolean> _pexpire(String key, long milliseconds);
 
-	Future<Long> _expireAt(String key, long unixTime);
+	Future<Boolean> _expireAt(String key, long unixTime);
 
-	Future<Long> _pexpireAt(String key, long millisecondsTimestamp);
+	Future<Boolean> _pexpireAt(String key, long millisecondsTimestamp);
 
 	Future<Long> _ttl(String key);
 
@@ -49,11 +50,11 @@ public interface AsyncCommands {
 
 	Future<String> _getSet(String key, String value);
 
-	Future<Long> _setnx(String key, String value);
+	Future<Boolean> _setnx(String key, String value);
 
-	Future<String> _setex(String key, int seconds, String value);
+	Future<Void> _setex(String key, int seconds, String value);
 
-	Future<String> _psetex(String key, long milliseconds, String value);
+	Future<Void> _psetex(String key, long milliseconds, String value);
 
 	Future<Long> _decrBy(String key, long integer);
 
@@ -69,13 +70,13 @@ public interface AsyncCommands {
 
 	Future<String> _substr(String key, int start, int end);
 
-	Future<Long> _hset(String key, String field, String value);
+	Future<Boolean> _hset(String key, String field, String value);
 
 	Future<String> _hget(String key, String field);
 
-	Future<Long> _hsetnx(String key, String field, String value);
+	Future<Boolean> _hsetnx(String key, String field, String value);
 
-	Future<String> _hmset(String key, Map<String, String> _hash);
+	Future<Void> _hmset(String key, Map<String, String> _hash);
 
 	Future<List<String>> _hmget(String key, String... fields);
 

@@ -1,5 +1,7 @@
 package pers.zyc.tools.redis.client;
 
+import pers.zyc.tools.redis.client.request.KeyType;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -14,19 +16,19 @@ public class RedisClient extends AsyncClient implements SyncCommands {
 	}
 
 	@Override
-	public String set(String key, String value) {
-		return _set(key, value)
+	public void set(String key, String value) {
+		_set(key, value)
 				.get();
 	}
 
 	@Override
-	public String set(String key, String value, String nxxx, String expx, long time) {
+	public boolean set(String key, String value, String nxxx, String expx, long time) {
 		return _set(key, value, nxxx, expx, time)
 				.get();
 	}
 
 	@Override
-	public String set(String key, String value, String nxxx) {
+	public boolean set(String key, String value, String nxxx) {
 		return _set(key, value, nxxx)
 				.get();
 	}
@@ -38,79 +40,79 @@ public class RedisClient extends AsyncClient implements SyncCommands {
 	}
 
 	@Override
-	public Boolean exists(String key) {
+	public boolean exists(String key) {
 		return _exists(key)
 				.get();
 	}
 
 	@Override
-	public Long persist(String key) {
+	public boolean persist(String key) {
 		return _persist(key)
 				.get();
 	}
 
 	@Override
-	public String type(String key) {
+	public KeyType type(String key) {
 		return _type(key)
 				.get();
 	}
 
 	@Override
-	public Long expire(String key, int seconds) {
+	public boolean expire(String key, int seconds) {
 		return _expire(key, seconds)
 				.get();
 	}
 
 	@Override
-	public Long pexpire(String key, long milliseconds) {
+	public boolean pexpire(String key, long milliseconds) {
 		return _pexpire(key, milliseconds)
 				.get();
 	}
 
 	@Override
-	public Long expireAt(String key, long unixTime) {
+	public boolean expireAt(String key, long unixTime) {
 		return _expireAt(key, unixTime)
 				.get();
 	}
 
 	@Override
-	public Long pexpireAt(String key, long millisecondsTimestamp) {
+	public boolean pexpireAt(String key, long millisecondsTimestamp) {
 		return _pexpireAt(key, millisecondsTimestamp)
 				.get();
 	}
 
 	@Override
-	public Long ttl(String key) {
+	public long ttl(String key) {
 		return _ttl(key)
 				.get();
 	}
 
 	@Override
-	public Long pttl(String key) {
+	public long pttl(String key) {
 		return _pttl(key)
 				.get();
 	}
 
 	@Override
-	public Boolean setbit(String key, long offset, boolean value) {
+	public boolean setbit(String key, long offset, boolean value) {
 		return _setbit(key, offset, value)
 				.get();
 	}
 
 	@Override
-	public Boolean setbit(String key, long offset, String value) {
+	public boolean setbit(String key, long offset, String value) {
 		return _setbit(key, offset, value)
 				.get();
 	}
 
 	@Override
-	public Boolean getbit(String key, long offset) {
+	public boolean getbit(String key, long offset) {
 		return _getbit(key, offset)
 				.get();
 	}
 
 	@Override
-	public Long setrange(String key, long offset, String value) {
+	public long setrange(String key, long offset, String value) {
 		return _setrange(key, offset, value)
 				.get();
 	}
@@ -128,55 +130,55 @@ public class RedisClient extends AsyncClient implements SyncCommands {
 	}
 
 	@Override
-	public Long setnx(String key, String value) {
+	public boolean setnx(String key, String value) {
 		return _setnx(key, value)
 				.get();
 	}
 
 	@Override
-	public String setex(String key, int seconds, String value) {
-		return _setex(key, seconds, value)
+	public void setex(String key, int seconds, String value) {
+		_setex(key, seconds, value)
 				.get();
 	}
 
 	@Override
-	public String psetex(String key, long milliseconds, String value) {
-		return _psetex(key, milliseconds, value)
+	public void psetex(String key, long milliseconds, String value) {
+		_psetex(key, milliseconds, value)
 				.get();
 	}
 
 	@Override
-	public Long decrBy(String key, long integer) {
+	public long decrBy(String key, long integer) {
 		return _decrBy(key, integer)
 				.get();
 	}
 
 	@Override
-	public Long decr(String key) {
+	public long decr(String key) {
 		return _decr(key)
 				.get();
 	}
 
 	@Override
-	public Long incrBy(String key, long integer) {
+	public long incrBy(String key, long integer) {
 		return _incrBy(key, integer)
 				.get();
 	}
 
 	@Override
-	public Double incrByFloat(String key, double value) {
+	public double incrByFloat(String key, double value) {
 		return _incrByFloat(key, value)
 				.get();
 	}
 
 	@Override
-	public Long incr(String key) {
+	public long incr(String key) {
 		return _incr(key)
 				.get();
 	}
 
 	@Override
-	public Long append(String key, String value) {
+	public long append(String key, String value) {
 		return _append(key, value)
 				.get();
 	}
@@ -188,7 +190,7 @@ public class RedisClient extends AsyncClient implements SyncCommands {
 	}
 
 	@Override
-	public Long hset(String key, String field, String value) {
+	public boolean hset(String key, String field, String value) {
 		return _hset(key, field, value)
 				.get();
 	}
@@ -200,14 +202,14 @@ public class RedisClient extends AsyncClient implements SyncCommands {
 	}
 
 	@Override
-	public Long hsetnx(String key, String field, String value) {
+	public boolean hsetnx(String key, String field, String value) {
 		return _hsetnx(key, field, value)
 				.get();
 	}
 
 	@Override
-	public String hmset(String key, Map<String, String> hash) {
-		return _hmset(key, hash)
+	public void hmset(String key, Map<String, String> hash) {
+		_hmset(key, hash)
 				.get();
 	}
 
@@ -218,25 +220,25 @@ public class RedisClient extends AsyncClient implements SyncCommands {
 	}
 
 	@Override
-	public Long hincrBy(String key, String field, long value) {
+	public long hincrBy(String key, String field, long value) {
 		return _hincrBy(key, field, value)
 				.get();
 	}
 
 	@Override
-	public Double hincrByFloat(String key, String field, double value) {
+	public double hincrByFloat(String key, String field, double value) {
 		return _hincrByFloat(key, field, value)
 				.get();
 	}
 
 	@Override
-	public Boolean hexists(String key, String field) {
+	public boolean hexists(String key, String field) {
 		return _hexists(key, field)
 				.get();
 	}
 
 	@Override
-	public Long hdel(String key, String... field) {
+	public long hdel(String key, String... field) {
 		return _hdel(key, field)
 				.get();
 	}
@@ -373,7 +375,7 @@ public class RedisClient extends AsyncClient implements SyncCommands {
 	}
 
 	@Override
-	public Long strlen(String key) {
+	public long strlen(String key) {
 		return _strlen(key)
 				.get();
 	}
@@ -559,8 +561,8 @@ public class RedisClient extends AsyncClient implements SyncCommands {
 	}
 
 	@Override
-	public Long del(String key) {
-		return null;
+	public long del(String key) {
+		return _del(key).get();
 	}
 
 	@Override

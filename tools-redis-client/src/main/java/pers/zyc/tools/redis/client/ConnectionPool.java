@@ -27,8 +27,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.TimeUnit;
 
-import static pers.zyc.tools.redis.client.ResponseCast.STRING;
-
 /**
  * @author zhangyancheng
  */
@@ -166,10 +164,10 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 		connection.addListener(this);
 		try {
 			if (config.getPassword() != null) {
-				connection.send(new Auth(config.getPassword()), STRING).get();
+				connection.send(new Auth(config.getPassword())).get();
 			}
 			if (config.getDb() > 0) {
-				connection.send(new Select(config.getDb()), STRING).get();
+				connection.send(new Select(config.getDb())).get();
 			}
 			LOGGER.debug("Created new {}", connection);
 			return new DefaultPooledObject<>(connection);
@@ -183,7 +181,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 	public void destroyObject(PooledObject<Connection> p) throws Exception {
 		try (Connection connection = p.getObject()) {
 			if (connection.healthy && !netWorkGroup.inNetworking()) {
-				connection.send(new Quit(), STRING).get();
+				connection.send(new Quit()).get();
 			}
 		}
 	}
@@ -193,7 +191,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 		Connection connection = p.getObject();
 		if (connection.healthy) {
 			try {
-				return connection.send(new Ping(), STRING).get().equals("PONG");
+				return connection.send(new Ping()).get().equals("PONG");
 			} catch (Exception e) {
 				LOGGER.warn("PING-PONG failed.", e.getCause());
 			}

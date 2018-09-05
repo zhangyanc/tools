@@ -47,7 +47,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	boolean allocated;
 	boolean healthy = true;
 
-	private Request request;
+	private Request<?> request;
 	private byte[] responseBuffer;
 	private int responseBytesCount;
 
@@ -104,12 +104,11 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	 * 异步发送请求, 返回响应Future
 	 *
 	 * @param request 请求
-	 * @param responseCast 响应转换
 	 * @param <R> 响应泛型
 	 * @return 响应Future
 	 */
-	<R> Promise<R> send(Request request, final ResponseCast<R> responseCast) {
-		Promise<R> promise = new ResponsePromise<>(responseCast);
+	<R> Promise<R> send(Request<R> request) {
+		Promise<R> promise = new ResponsePromise<>(request);
 		publishEvent(new ConnectionEvent.RequestSet(this, promise));
 
 		this.request = request;
@@ -203,10 +202,11 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	 * @throws IOException 网络异常
 	 */
 	private void encodeAndWrite() throws IOException {
-		encodeIntCRLF(ASTERISK, request.bulkSize());
+		encodeIntCRLF(ASTERISK, request.bulks.size());
+
 
 		byte[] bulk;
-		while ((bulk = request.nextBulk()) != null) {
+		while ((bulk = request.bulks.poll()) != null) {
 			encodeIntCRLF(DOLLAR, bulk.length);
 
 			int writeIndex = 0;

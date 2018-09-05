@@ -1,5 +1,7 @@
 package pers.zyc.tools.redis.client;
 
+import pers.zyc.tools.redis.client.request.KeyType;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -10,47 +12,22 @@ import java.util.Set;
 public interface SyncCommands {
 
 	/**
-	 * 将字符串值设置到键, 如果键已存在则覆盖就值, 且无视类型
-	 *
-	 * @param key key
-	 * @param value value
-	 * @return 响应码
+	 * @see pers.zyc.tools.redis.client.request.Set
 	 */
-	String set(String key, String value);
+	void set(String key, String value);
 
 	/**
-	 * 将字符串值设置到键, 并且设置过期时间
-	 *
-	 * @param key 键
-	 * @param value 字符串值
-	 * @param nxxx 可选值为"NX"或者XX
-	 *             NX -- 当且仅当键不存在才设置
-	 *             XX -- 当前仅当键存在才设置
-	 * @param expx 过期时间单位,可选值为"EX"或者"PX"
-	 *             EX -- 秒
-	 *             PX --毫秒
-	 * @param time 过期时间
-	 * @return 响应码
+	 * @see pers.zyc.tools.redis.client.request.Set
 	 */
-	String set(String key, String value, String nxxx, String expx, long time);
+	boolean set(String key, String value, String nxxx, String expx, long time);
 
 	/**
-	 * 将字符串值设置到键
-	 *
-	 * @param key 键
-	 * @param value 字符串值
-	 * @param nxxx 可选值为"NX"或者XX
-	 *             NX -- 当且仅当键不存在才设置
-	 *             XX -- 当前仅当键存在才设置
-	 * @return 响应码
+	 * @see pers.zyc.tools.redis.client.request.Set
 	 */
-	String set(String key, String value, String nxxx);
+	boolean set(String key, String value, String nxxx);
 
 	/**
-	 * 获取键设置的的字符串值
-	 *
-	 * @param key 键
-	 * @return 如果键不存在返回null
+	 * @see pers.zyc.tools.redis.client.request.Get
 	 */
 	String get(String key);
 
@@ -60,291 +37,172 @@ public interface SyncCommands {
 	 * @param key 键
 	 * @return 键是否存在
 	 */
-	Boolean exists(String key);
+	boolean exists(String key);
 
 	/**
-	 * 取消{@link #expire(String, int) expire}设置在键上的超时时间
-	 *
-	 * @param key 键
-	 * @return 键不存在返回0, 否者返回1
+	 * @see pers.zyc.tools.redis.client.request.Persist
 	 */
-	Long persist(String key);
+	boolean persist(String key);
 
 	/**
-	 * 返回键存储的值类型, 如果键不存在返回特殊字符串"none"
-	 *
-	 * @param key 键
-	 * @return "none" -- 键不存在
-	 * 		   "string" -- 字符串类型
-	 * 		   "list" -- list类型
-	 * 		   "set" -- set类型
-	 * 		   "zset" -- 排序set
-	 * 		   "hash" -- 哈希表
+	 * @see pers.zyc.tools.redis.client.request.Type
 	 */
-	String type(String key);
+	KeyType type(String key);
 
 	/**
-	 * 在键上设置一个过期时间, 过期后键将在服务端被自动删除
-	 *
-	 * @param key 键
-	 * @param seconds 过期秒数
-	 * @return 1 -- 成功设置了过期时间, 0 -- 键不存在.(键已有过期时间时, Redis 2.1.3之后的版本
-	 * 		   会更新时间并返回1, 之前的版本不更新时间返回0)
+	 * @see pers.zyc.tools.redis.client.request.Expire
 	 */
-	Long expire(String key, int seconds);
+	boolean expire(String key, int seconds);
 
 	/**
-	 * 和{@link #expire(String, int) expire}一样, 不过过期时间为一个毫秒数
-	 *
-	 * @param key 键
-	 * @param milliseconds 过期毫秒数
-	 * @return 响应码, 同expire.
+	 * @see pers.zyc.tools.redis.client.request.PExpire
 	 */
-	Long pexpire(String key, long milliseconds);
+	boolean pexpire(String key, long milliseconds);
 
 	/**
-	 * 和{@link #expire(String, int) expire}一样, 不过过期时间是一个用秒数表示的绝对unix时间点
-	 *
-	 * @param key 键
-	 * @param unixTime 过期时间点
-	 * @return 响应码, 同expire
+	 * @see pers.zyc.tools.redis.client.request.ExpireAt
 	 */
-	Long expireAt(String key, long unixTime);
+	boolean expireAt(String key, long unixTime);
 
 	/**
-	 * 和{@link #expireAt(String, long) expire}一样, 不过过期时间是一个用毫秒数表示的绝对unix时间点
-	 *
-	 * @param key 键
-	 * @param millisecondsTimestamp 过期时间点
-	 * @return 响应码, 同expire
+	 * @see pers.zyc.tools.redis.client.request.PExpireAt
 	 */
-	Long pexpireAt(String key, long millisecondsTimestamp);
+	boolean pexpireAt(String key, long millisecondsTimestamp);
 
 	/**
-	 * 检查键的剩余过期时间秒数
-	 *
-	 * @param key 键
-	 * @return 键剩余过期秒数, 在Redis 2.6及之前版本, 如果键不存在或者未设置过期时间都将返回-1,
-	 * 		   但在2.8及之后的版本, 如果键不存在返回-2, 键未设置过期时间返回-1
-	 *
+	 * @see pers.zyc.tools.redis.client.request.Ttl
 	 */
-	Long ttl(String key);
+	long ttl(String key);
 
 	/**
-	 * 和{@link #ttl(String) ttl}一样, 不过返回的是毫秒数
-	 *
-	 * @param key 键
-	 * @return 同ttl
+	 * @see pers.zyc.tools.redis.client.request.PTtl
 	 */
-	Long pttl(String key);
+	long pttl(String key);
 
-	Boolean setbit(String key, long offset, boolean value);
+	/**
+	 * @see pers.zyc.tools.redis.client.request.SetBit
+	 */
+	boolean setbit(String key, long offset, boolean value);
 
-	Boolean setbit(String key, long offset, String value);
+	/**
+	 * @see pers.zyc.tools.redis.client.request.SetBit
+	 */
+	boolean setbit(String key, long offset, String value);
 
-	Boolean getbit(String key, long offset);
+	/**
+	 * @see pers.zyc.tools.redis.client.request.GetBit
+	 */
+	boolean getbit(String key, long offset);
 
-	Long setrange(String key, long offset, String value);
+	/**
+	 * @see pers.zyc.tools.redis.client.request.SetRange
+	 */
+	long setrange(String key, long offset, String value);
 
+	/**
+	 * @see pers.zyc.tools.redis.client.request.GetRange
+	 */
 	String getrange(String key, long startOffset, long endOffset);
 
 	/**
-	 * 将字符串值设置到键, 并返回键原先的值
-	 *
-	 * @param key 键
-	 * @param value 字符串值
-	 * @return 键原先的值, 如果键不存在返回null
+	 * @see pers.zyc.tools.redis.client.request.GetSet
 	 */
 	String getSet(String key, String value);
 
 	/**
-	 * 将字符串值设置到键, 当且仅当键不存在才设置成功
-	 *
-	 * @param key 键
-	 * @param value 字符串值
-	 * @return 1 -- 设置成功, 0 -- 设置未成功
+	 * @see pers.zyc.tools.redis.client.request.SetNx
 	 */
-	Long setnx(String key, String value);
+	boolean setnx(String key, String value);
 
 	/**
-	 * 将字符串值设置到键, 同时设置过期时间
-	 *
-	 * @param key 键
-	 * @param seconds 过期时间秒数
-	 * @param value 字符串值
-	 * @return 响应码
+	 * @see pers.zyc.tools.redis.client.request.SetEx
 	 */
-	String setex(String key, int seconds, String value);
+	void setex(String key, int seconds, String value);
 
 	/**
-	 * 将字符串值设置到键, 同时设置过期时间
-	 *
-	 * @param key 键
-	 * @param milliseconds 过期时间毫秒数
-	 * @param value 字符串值
-	 * @return 响应吗
+	 * @see pers.zyc.tools.redis.client.request.PSetEx
 	 */
-	String psetex(String key, long milliseconds, String value);
+	void psetex(String key, long milliseconds, String value);
 
 	/**
-	 * 将键设置的数值减去减数并返回结果值
-	 *
-	 * @param key 键
-	 * @param integer 减数
-	 * @return 减后的值
+	 * @see pers.zyc.tools.redis.client.request.DecrementBy
 	 */
-	Long decrBy(String key, long integer);
+	long decrBy(String key, long integer);
 
 	/**
-	 * 将键设置的数值减1并返回结果值
-	 *
-	 * @param key 键
-	 * @return 减后的值
+	 * @see pers.zyc.tools.redis.client.request.Decrement
 	 */
-	Long decr(String key);
+	long decr(String key);
 
 	/**
-	 * 将键设置的数值加上加数并返回结果值
-	 *
-	 * @param key 键
-	 * @param integer 加数
-	 * @return 加后的值
+	 * @see pers.zyc.tools.redis.client.request.IncrementBy
 	 */
-	Long incrBy(String key, long integer);
+	long incrBy(String key, long integer);
 
 	/**
-	 * 将键设置的数值加上加数并返回结果值
-	 *
-	 * @param key 键
-	 * @param value 加数(浮点数)
-	 * @return 加后的值
+	 * @see pers.zyc.tools.redis.client.request.IncrementByFloat
 	 */
-	Double incrByFloat(String key, double value);
+	double incrByFloat(String key, double value);
 
 	/**
-	 * 将键设置的数值加1并返回结果值
-	 *
-	 * <p>
-	 * 		如果key不存在将以0为起始数进行操作,
-	 * 		Redis没有专有的整数类型, 所有的加、减操作都发生在string类型的10进制64位数字值上,
-	 * 		返回值也是将string转换为数字返回
-	 *
-	 * 		如果key存在但不是整数类型, 将抛出异常
-	 *
-	 *
-	 * @param key 键
-	 * @return 加后的值
+	 * @see pers.zyc.tools.redis.client.request.Increment
 	 */
-	Long incr(String key);
+	long incr(String key);
 
 	/**
-	 * 将给定的字符串追加到键已设置的值, 如果键不存在则等同于set操作
-	 *
-	 * @param key 键
-	 * @param value 字符串值
-	 * @return 追加后的字符串长度
+	 * @see pers.zyc.tools.redis.client.request.Append
 	 */
-	Long append(String key, String value);
+	long append(String key, String value);
 
 	/**
-	 * 返回键上设置的字符串值的子串, 其中起始、结束位置都会被包含
-	 *
-	 * <p>
-	 *     负数下标表示从字符串的末尾开始计算(-1表示最后一个, -2表示倒数第二个...依次类推)
-	 *
-	 *     substr不会反馈越界异常, 而是按照字符串实际长度返回
-	 *
-	 * @param key 键
-	 * @param start 开始位置
-	 * @param end 结束位置
-	 * @return 子串
+	 * @see pers.zyc.tools.redis.client.request.SubStr
 	 */
 	String substr(String key, int start, int end);
 
 	/**
-	 * 在键对应的HASH上设置一对"字段-值", 如果键不存在则新增后再设置, 字段已存在则更新值
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @param value 值
-	 * @return 字段已存在时更新值并返回0, 否则返回1
+	 * @see pers.zyc.tools.redis.client.request.HMSet
 	 */
-	Long hset(String key, String field, String value);
+	boolean hset(String key, String field, String value);
 
 	/**
-	 * 返回键对应HASH上字段设置的值, 如果键不存在或者字段不存在返回null
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @return 字段值或者null
+	 * @see pers.zyc.tools.redis.client.request.HGet
 	 */
 	String hget(String key, String field);
 
 	/**
-	 * 在键对应的HASH上设置一对"字段-值", 当且仅当字段不存在时才设置
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @param value 值
-	 * @return 如果字段已存在返回0, 否则返回1
+	 * @see pers.zyc.tools.redis.client.request.HSetNx
 	 */
-	Long hsetnx(String key, String field, String value);
+	boolean hsetnx(String key, String field, String value);
 
 	/**
-	 * 在键对应的HASH上设置多对"字段-值", 如果键不存在则新增后再设置, 字段已存在则更新值
-	 *
-	 * @param key 键
-	 * @param hash "字段-值"Map集合
-	 * @return 响应码
+	 * @see pers.zyc.tools.redis.client.request.HMSet
 	 */
-	String hmset(String key, Map<String, String> hash);
+	void hmset(String key, Map<String, String> hash);
 
 	/**
-	 * 返回键对应HASH上多个字段设置的值, 如果键不存在或者字段不存在返回null
-	 *
-	 * @param key 键
-	 * @param fields 字段
-	 * @return 多个字段值
+	 * @see pers.zyc.tools.redis.client.request.HMGet
 	 */
 	List<String> hmget(String key, String... fields);
 
 	/**
-	 * 将键对应HASH上字段的数值加上加数, 如果键不存在则新建, 字段不存在则按照0计算
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @param value 加数
-	 * @return 加后的值
+	 * @see pers.zyc.tools.redis.client.request.HIncrementBy
 	 */
-	Long hincrBy(String key, String field, long value);
+	long hincrBy(String key, String field, long value);
 
 	/**
-	 * 将键对应HASH上字段的数值加上加数, 如果键不存在则新建, 字段不存在则按照0计算
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @param value 加数(浮点数)
-	 * @return 加后的值
+	 * @see pers.zyc.tools.redis.client.request.HIncrementByFloat
 	 */
-	Double hincrByFloat(String key, String field, double value);
+	double hincrByFloat(String key, String field, double value);
 
 	/**
-	 * 检查键对应HASH上字段是否存在
-	 *
-	 * @param key 键
-	 * @param field 值
-	 * @return 字段是否存在
+	 * @see pers.zyc.tools.redis.client.request.HExists
 	 */
-	Boolean hexists(String key, String field);
+	boolean hexists(String key, String field);
 
 	/**
-	 * 删除键对应HASH上"字段-值"对
-	 *
-	 * @param key 键
-	 * @param field 字段
-	 * @return 字段存在被删除后返回1, 否则返回0
+	 * @see pers.zyc.tools.redis.client.request.HDelete
 	 */
-	Long hdel(String key, String... field);
+	long hdel(String key, String... field);
 
 	/**
 	 * 返回键对应HASH上"字段-值"的对数
@@ -436,7 +294,10 @@ public interface SyncCommands {
 	List<String> srandmember(String key, int count);
 
 
-	Long strlen(String key);
+	/**
+	 * @see pers.zyc.tools.redis.client.request.StrLen
+	 */
+	long strlen(String key);
 
 
 	Long zadd(String key, double score, String member);
@@ -592,7 +453,10 @@ public interface SyncCommands {
 	List<String> brpop(int timeout, String key);
 
 
-	Long del(String key);
+	/**
+	 * @see pers.zyc.tools.redis.client.request.Delete
+	 */
+	long del(String key);
 
 
 	String echo(String string);
