@@ -109,8 +109,13 @@ class NetWorker extends ThreadService {
 	}
 
 	SelectionKey register(SocketChannel channel) throws IOException {
-		wakeUp();
-		return channel.register(selector, SelectionKey.OP_READ);
+		serviceLock.lock();
+		try {
+			wakeUp();
+			return channel.register(selector, SelectionKey.OP_READ);
+		} finally {
+			serviceLock.unlock();
+		}
 	}
 
 	void wakeUp() {
