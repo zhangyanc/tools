@@ -221,6 +221,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 			need(CRLF.length);
 			buffer.put(CRLF);
 		}
+
 		//排空buffer
 		buffer.flip();
 		while (buffer.hasRemaining()) {
@@ -259,13 +260,15 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	}
 
 	/**
-	 * 将可读数据全部读出到response buffer数组待解码
+	 * 读取响应数据并解码
 	 *
+	 * @return 响应
 	 * @throws IOException 网络异常
+	 * @throws ResponseIncompleteException 数据未完整
 	 */
-	private void readToResponseBuffer() throws IOException {
+	private Object readAndDecode() throws IOException {
 		if (responseBuffer == null) {
-			responseBuffer = new byte[512];
+			responseBuffer = new byte[32];
 			responseBytesCount = 0;
 		}
 
@@ -283,24 +286,21 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 			responseBytesCount += read;
 		}
 
-		//连接关闭
-		if (read == -1) {
-			throw new IOException("EOF");
+		try {
+			return decodeResp();
+		} catch (ResponseIncompleteException rie) {
+			if (read != -1) {
+				throw rie;
+			}
+			//响应数据不完整但流已关闭
+			throw new IOException("Unexpected end of stream");
 		}
 	}
 
-	/**
-	 * 读取响应数据并解码
-	 *
-	 * @return 响应
-	 * @throws IOException 网络异常
-	 * @throws ResponseIncompleteException 数据未完整
-	 */
-	private Object readAndDecode() throws IOException {
-		readToResponseBuffer();
-
-		//响应包必定以\r\n结尾
-		if (responseBuffer[responseBytesCount - 2] != CR ||
+	private Object decodeResp() {
+		//Redis数据包至少3个字节且必定以\r\n结尾
+		if (responseBytesCount < 3 ||
+			responseBuffer[responseBytesCount - 2] != CR ||
 			responseBuffer[responseBytesCount - 1] != LF) {
 			throw new ResponseIncompleteException("Response packet not end with \\r\\n");
 		}
