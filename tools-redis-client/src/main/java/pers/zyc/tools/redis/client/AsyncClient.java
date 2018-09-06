@@ -54,7 +54,7 @@ public class AsyncClient implements AsyncCommands, Closeable {
 	}
 
 	@Override
-	public Future<KeyType> _type(String key) {
+	public Future<String> _type(String key) {
 		return connectionPool.getConnection().send(new Type(key));
 	}
 

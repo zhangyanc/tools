@@ -1,7 +1,6 @@
 package pers.zyc.tools.redis.client.request;
 
 import pers.zyc.tools.redis.client.Request;
-import pers.zyc.tools.redis.client.exception.ServerRespondException;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
@@ -28,13 +27,5 @@ public class Get extends Request<String> {
 		super(
 				ByteUtil.toByteArray(key)
 		);
-	}
-
-	@Override
-	public String cast(Object response) {
-		if (response instanceof String) {
-			throw new ServerRespondException((String) response);
-		}
-		return STRING.cast(response);
 	}
 }

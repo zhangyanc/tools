@@ -1,7 +1,5 @@
 package pers.zyc.tools.redis.client;
 
-import pers.zyc.tools.redis.client.request.KeyType;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -52,7 +50,7 @@ public class RedisClient extends AsyncClient implements SyncCommands {
 	}
 
 	@Override
-	public KeyType type(String key) {
+	public String type(String key) {
 		return _type(key)
 				.get();
 	}

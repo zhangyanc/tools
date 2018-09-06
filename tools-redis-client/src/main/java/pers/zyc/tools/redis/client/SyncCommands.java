@@ -1,7 +1,5 @@
 package pers.zyc.tools.redis.client;
 
-import pers.zyc.tools.redis.client.request.KeyType;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -47,7 +45,7 @@ public interface SyncCommands {
 	/**
 	 * @see pers.zyc.tools.redis.client.request.Type
 	 */
-	KeyType type(String key);
+	String type(String key);
 
 	/**
 	 * @see pers.zyc.tools.redis.client.request.Expire

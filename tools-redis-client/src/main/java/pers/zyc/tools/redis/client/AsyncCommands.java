@@ -1,6 +1,5 @@
 package pers.zyc.tools.redis.client;
 
-import pers.zyc.tools.redis.client.request.KeyType;
 import pers.zyc.tools.redis.client.util.Future;
 
 import java.util.List;
@@ -24,7 +23,7 @@ public interface AsyncCommands {
 
 	Future<Boolean> _persist(String key);
 
-	Future<KeyType> _type(String key);
+	Future<String> _type(String key);
 
 	Future<Boolean> _expire(String key, int seconds);
 
