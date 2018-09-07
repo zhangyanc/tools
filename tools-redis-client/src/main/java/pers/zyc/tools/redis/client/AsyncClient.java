@@ -1,6 +1,8 @@
 package pers.zyc.tools.redis.client;
 
-import pers.zyc.tools.redis.client.request.*;
+import pers.zyc.tools.redis.client.request.hash.*;
+import pers.zyc.tools.redis.client.request.key.*;
+import pers.zyc.tools.redis.client.request.string.*;
 import pers.zyc.tools.redis.client.util.Future;
 
 import java.io.Closeable;
@@ -25,17 +27,17 @@ public class AsyncClient implements AsyncCommands, Closeable {
 
 	@Override
 	public Future<Boolean> _set(String key, String value) {
-		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.Set(key, value));
+		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.string.Set(key, value));
 	}
 
 	@Override
 	public Future<Boolean> _set(String key, String value, String nxxx, String expx, long time) {
-		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx, expx, time));
+		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.string.Set(key, value, nxxx, expx, time));
 	}
 
 	@Override
 	public Future<Boolean> _set(String key, String value, String nxxx) {
-		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.Set(key, value, nxxx));
+		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.string.Set(key, value, nxxx));
 	}
 
 	@Override

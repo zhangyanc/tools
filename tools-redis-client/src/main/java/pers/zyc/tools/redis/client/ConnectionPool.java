@@ -8,10 +8,6 @@ import org.apache.commons.pool2.impl.GenericObjectPool;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
-import pers.zyc.tools.redis.client.request.Auth;
-import pers.zyc.tools.redis.client.request.Ping;
-import pers.zyc.tools.redis.client.request.Quit;
-import pers.zyc.tools.redis.client.request.Select;
 import pers.zyc.tools.redis.client.util.Promise;
 import pers.zyc.tools.redis.client.util.ResponsePromise;
 import pers.zyc.tools.utils.TimeMillis;
@@ -97,6 +93,10 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 		};
 	}
 
+	GenericObjectPool<Connection> getInternalPool() {
+		return pool;
+	}
+
 	Connection getConnection() {
 		try {
 			Connection connection = pool.borrowObject();
@@ -111,8 +111,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 		if (invalid) {
 			try {
 				pool.invalidateObject(connection);
-			} catch (Exception e) {
-				LOGGER.warn("Invalidate connection exception!", e);
+			} catch (Exception ignored) {
 			}
 		} else {
 			pool.returnObject(connection);
@@ -164,10 +163,10 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 		connection.addListener(this);
 		try {
 			if (config.getPassword() != null) {
-				connection.send(new Auth(config.getPassword())).get();
+				connection.auth(config.getPassword());
 			}
 			if (config.getDb() > 0) {
-				connection.send(new Select(config.getDb())).get();
+				connection.selectDb(config.getDb());
 			}
 			LOGGER.debug("Created new {}", connection);
 			return new DefaultPooledObject<>(connection);
@@ -181,7 +180,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 	public void destroyObject(PooledObject<Connection> p) throws Exception {
 		try (Connection connection = p.getObject()) {
 			if (connection.healthy && !netWorkGroup.inNetworking()) {
-				connection.send(new Quit()).get();
+				connection.quit();
 			}
 		}
 	}
@@ -191,7 +190,8 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 		Connection connection = p.getObject();
 		if (connection.healthy) {
 			try {
-				return connection.send(new Ping()).get().equals("PONG");
+				connection.ping();
+				return true;
 			} catch (Exception e) {
 				LOGGER.warn("PING-PONG failed.", e.getCause());
 			}

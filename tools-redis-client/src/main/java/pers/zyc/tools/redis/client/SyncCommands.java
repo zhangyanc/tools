@@ -1,5 +1,9 @@
 package pers.zyc.tools.redis.client;
 
+import pers.zyc.tools.redis.client.request.hash.*;
+import pers.zyc.tools.redis.client.request.key.*;
+import pers.zyc.tools.redis.client.request.string.*;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -10,22 +14,22 @@ import java.util.Set;
 public interface SyncCommands {
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Set
+	 * @see pers.zyc.tools.redis.client.request.string.Set
 	 */
 	void set(String key, String value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Set
+	 * @see pers.zyc.tools.redis.client.request.string.Set
 	 */
 	boolean set(String key, String value, String nxxx, String expx, long time);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Set
+	 * @see pers.zyc.tools.redis.client.request.string.Set
 	 */
 	boolean set(String key, String value, String nxxx);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Get
+	 * @see Get
 	 */
 	String get(String key);
 
@@ -38,167 +42,167 @@ public interface SyncCommands {
 	boolean exists(String key);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Persist
+	 * @see Persist
 	 */
 	boolean persist(String key);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Type
+	 * @see Type
 	 */
 	String type(String key);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Expire
+	 * @see Expire
 	 */
 	boolean expire(String key, int seconds);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.PExpire
+	 * @see PExpire
 	 */
 	boolean pexpire(String key, long milliseconds);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.ExpireAt
+	 * @see ExpireAt
 	 */
 	boolean expireAt(String key, long unixTime);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.PExpireAt
+	 * @see PExpireAt
 	 */
 	boolean pexpireAt(String key, long millisecondsTimestamp);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Ttl
+	 * @see Ttl
 	 */
 	long ttl(String key);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.PTtl
+	 * @see PTtl
 	 */
 	long pttl(String key);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.SetBit
+	 * @see SetBit
 	 */
 	boolean setbit(String key, long offset, boolean value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.SetBit
+	 * @see SetBit
 	 */
 	boolean setbit(String key, long offset, String value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.GetBit
+	 * @see GetBit
 	 */
 	boolean getbit(String key, long offset);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.SetRange
+	 * @see SetRange
 	 */
 	long setrange(String key, long offset, String value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.GetRange
+	 * @see GetRange
 	 */
 	String getrange(String key, long startOffset, long endOffset);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.GetSet
+	 * @see GetSet
 	 */
 	String getSet(String key, String value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.SetNx
+	 * @see SetNx
 	 */
 	boolean setnx(String key, String value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.SetEx
+	 * @see SetEx
 	 */
 	void setex(String key, int seconds, String value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.PSetEx
+	 * @see PSetEx
 	 */
 	void psetex(String key, long milliseconds, String value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.DecrementBy
+	 * @see DecrementBy
 	 */
 	long decrBy(String key, long integer);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Decrement
+	 * @see Decrement
 	 */
 	long decr(String key);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.IncrementBy
+	 * @see IncrementBy
 	 */
 	long incrBy(String key, long integer);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.IncrementByFloat
+	 * @see IncrementByFloat
 	 */
 	double incrByFloat(String key, double value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Increment
+	 * @see Increment
 	 */
 	long incr(String key);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Append
+	 * @see Append
 	 */
 	long append(String key, String value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.SubStr
+	 * @see SubStr
 	 */
 	String substr(String key, int start, int end);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.HMSet
+	 * @see HMSet
 	 */
 	boolean hset(String key, String field, String value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.HGet
+	 * @see HGet
 	 */
 	String hget(String key, String field);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.HSetNx
+	 * @see HSetNx
 	 */
 	boolean hsetnx(String key, String field, String value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.HMSet
+	 * @see HMSet
 	 */
 	void hmset(String key, Map<String, String> hash);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.HMGet
+	 * @see HMGet
 	 */
 	List<String> hmget(String key, String... fields);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.HIncrementBy
+	 * @see HIncrementBy
 	 */
 	long hincrBy(String key, String field, long value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.HIncrementByFloat
+	 * @see HIncrementByFloat
 	 */
 	double hincrByFloat(String key, String field, double value);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.HExists
+	 * @see HExists
 	 */
 	boolean hexists(String key, String field);
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.HDelete
+	 * @see HDelete
 	 */
 	long hdel(String key, String... field);
 
@@ -293,7 +297,7 @@ public interface SyncCommands {
 
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.StrLen
+	 * @see StrLen
 	 */
 	long strlen(String key);
 
@@ -452,7 +456,7 @@ public interface SyncCommands {
 
 
 	/**
-	 * @see pers.zyc.tools.redis.client.request.Delete
+	 * @see Delete
 	 */
 	long del(String key);
 

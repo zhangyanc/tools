@@ -4,19 +4,27 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 import pers.zyc.tools.redis.client.exception.ResponseIncompleteException;
+import pers.zyc.tools.redis.client.request.client.ClientGetName;
+import pers.zyc.tools.redis.client.request.client.ClientList;
+import pers.zyc.tools.redis.client.request.client.ClientSetName;
+import pers.zyc.tools.redis.client.request.connection.Auth;
+import pers.zyc.tools.redis.client.request.connection.Ping;
+import pers.zyc.tools.redis.client.request.connection.Quit;
+import pers.zyc.tools.redis.client.request.connection.Select;
 import pers.zyc.tools.redis.client.util.Promise;
 import pers.zyc.tools.redis.client.util.ResponsePromise;
+import pers.zyc.tools.utils.event.EventListener;
 import pers.zyc.tools.utils.event.*;
 import sun.nio.ch.DirectBuffer;
 
+import java.io.BufferedReader;
 import java.io.Closeable;
 import java.io.IOException;
+import java.io.StringReader;
 import java.nio.ByteBuffer;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 
 import static pers.zyc.tools.redis.client.util.ByteUtil.*;
 
@@ -98,6 +106,83 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 	private void publishEvent(ConnectionEvent event) {
 		multicaster.listeners.onEvent(event);
+	}
+
+	/**
+	 * 验证密码
+	 *
+	 * @param password 密码
+	 */
+	void auth(String password) {
+		sync(new Auth(password));
+	}
+
+	/**
+	 * 切换数据库
+	 *
+	 * @param dbIndex 数据库
+	 */
+	void selectDb(int dbIndex) {
+		sync(new Select(dbIndex));
+	}
+
+	/**
+	 * 测试网络
+	 */
+	void ping() {
+		sync(new Ping());
+	}
+
+	/**
+	 * 退出
+	 */
+	void quit() {
+		sync(new Quit());
+	}
+
+	/**
+	 * 设置连接名称
+	 *
+	 * @param clientName 连接名称
+	 */
+	void setClientName(String clientName) {
+		sync(new ClientSetName(clientName));
+	}
+
+	/**
+	 * @return 设置的连接名称(未设置返回空字符串)
+	 */
+	String getClientName() {
+		return sync(new ClientGetName());
+	}
+
+	/**
+	 * @see ClientList
+	 */
+	List<Map<String, String>> clientList() {
+		String allClientStr = sync(new ClientList());
+
+		BufferedReader br = new BufferedReader(new StringReader(allClientStr));
+		List<Map<String, String>> clientList = new ArrayList<>();
+		try {
+			String line;
+			while ((line = br.readLine()) != null) {
+				String[] infoArr = line.split(" ");
+				Map<String, String> clientInfoMap = new HashMap<>(infoArr.length);
+				for (String info : infoArr) {
+					String[] kv = info.split("=");
+					clientInfoMap.put(kv[0], kv.length == 1 ? null : kv[1]);
+				}
+				clientList.add(clientInfoMap);
+			}
+			return clientList;
+		} catch (Exception e) {
+			throw new RedisClientException("Cannot cast CLIENT LIST response", e);
+		}
+	}
+
+	private <R> R sync(Request<R> request) {
+		return send(request).get();
 	}
 
 	/**

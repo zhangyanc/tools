@@ -120,10 +120,10 @@ public class ClientConfig {
 			throw new IllegalArgumentException("requestTimeoutDetectInterval must be positive: " + requestTimeoutDetectInterval);
 		}
 		if (maxConnectionTotal <= 0) {
-			throw new IllegalArgumentException("maxConnectionTotal must be positive: " + maxConnectionTotal);
+			throw new IllegalArgumentException("maxConnectionTotal must > 0: " + maxConnectionTotal);
 		}
-		if (minConnectionIdle <= 0) {
-			throw new IllegalArgumentException("minConnectionIdle must be positive: " + minConnectionIdle);
+		if (minConnectionIdle < 0) {
+			throw new IllegalArgumentException("minConnectionIdle must >= 0: " + minConnectionIdle);
 		}
 	}
 
