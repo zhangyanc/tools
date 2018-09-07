@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.request.hash;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
@@ -22,7 +22,7 @@ import pers.zyc.tools.redis.client.util.ByteUtil;
  *
  * @author zhangyancheng
  */
-public class HSet extends Request<Boolean> {
+public class HSet extends AutoCastRequest<Boolean> {
 
 	public HSet(String key, String field, String value) {
 		super(

@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.request.string;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
@@ -21,7 +21,7 @@ import pers.zyc.tools.redis.client.util.ByteUtil;
  *
  * @author zhangyancheng
  */
-public class Get extends Request<String> {
+public class Get extends AutoCastRequest<String> {
 
 	public Get(String key) {
 		super(

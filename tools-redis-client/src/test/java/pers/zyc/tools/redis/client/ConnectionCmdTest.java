@@ -25,6 +25,8 @@ public class ConnectionCmdTest {
 			Assert.assertEquals(1, connectionPool.getInternalPool().getNumActive());
 
 			connection.quit();
+			Thread.sleep(100);
+
 			Assert.assertEquals(0, connectionPool.getInternalPool().getNumActive());
 		} finally {
 			connectionPool.stop();

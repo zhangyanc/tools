@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.request.hash;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
@@ -22,7 +22,7 @@ import pers.zyc.tools.redis.client.util.ByteUtil;
  *
  * @author zhangyancheng
  */
-public class HIncrementBy extends Request<Long> {
+public class HIncrementBy extends AutoCastRequest<Long> {
 
 	public HIncrementBy(String key, String field, long value) {
 		super(

@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.request.key;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
@@ -18,7 +18,7 @@ import pers.zyc.tools.redis.client.util.ByteUtil;
  *
  * @author zhangyancheng
  */
-public class PExpireAt extends Request<Boolean> {
+public class PExpireAt extends AutoCastRequest<Boolean> {
 
 	public PExpireAt(String key, long millisecondsTimestamp) {
 		super(

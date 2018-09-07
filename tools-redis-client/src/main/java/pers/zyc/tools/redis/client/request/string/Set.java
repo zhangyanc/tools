@@ -1,6 +1,7 @@
 package pers.zyc.tools.redis.client.request.string;
 
 import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.ResponseCast;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
@@ -82,7 +83,15 @@ public class Set extends Request<Boolean> {
 	}
 
 	@Override
-	public Boolean cast(Object response) {
-		return response != null;
+	public ResponseCast<Boolean> getCast() {
+		return SET_CAST;
 	}
+
+	private static final ResponseCast<Boolean> SET_CAST = new ResponseCast<Boolean>() {
+
+		@Override
+		public Boolean cast(Object response) {
+			return response != null;
+		}
+	};
 }

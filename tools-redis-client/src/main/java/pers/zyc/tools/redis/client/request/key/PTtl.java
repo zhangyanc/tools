@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.request.key;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
@@ -22,7 +22,7 @@ import pers.zyc.tools.redis.client.util.ByteUtil;
  *
  * @author zhangyancheng
  */
-public class PTtl extends Request<Long> {
+public class PTtl extends AutoCastRequest<Long> {
 
 	public PTtl(String key) {
 		super(

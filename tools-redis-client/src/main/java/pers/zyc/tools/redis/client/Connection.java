@@ -193,7 +193,17 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 	 * @return 响应Future
 	 */
 	<R> Promise<R> send(Request<R> request) {
-		Promise<R> promise = new ResponsePromise<>(request);
+		return send(request, new ResponsePromise<>(request.getCast()));
+	}
+
+	/**
+	 * 异步发送请求, 返回响应Future
+	 *
+	 * @param request 请求
+	 * @param <R> 响应泛型
+	 * @return 响应Future
+	 */
+	<R> Promise<R> send(Request<R> request, Promise<R> promise) {
 		publishEvent(new ConnectionEvent.RequestSet(this, promise));
 
 		this.request = request;
@@ -222,7 +232,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 
 			LOGGER.debug("{} send.", this.request);
 			publishEvent(new ConnectionEvent.RequestSend(this));
-		} catch (IOException e) {
+		} catch (Exception e) {
 			healthy = false;
 			if (request.finish()) {
 				publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
@@ -243,7 +253,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 				publishEvent(new ConnectionEvent.ResponseReceived(this, response));
 			}
 		} catch (ResponseIncompleteException ignored) {
-		} catch (IOException e) {
+		} catch (Exception e) {
 			healthy = false;
 			if (!allocated || request.finish()) {
 				publishEvent(new ConnectionEvent.ExceptionCaught(this, e));
@@ -372,7 +382,14 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		}
 
 		try {
-			return decodeResp();
+			//Redis数据包至少3个字节且必定以\r\n结尾
+			if (responseBytesCount < 3 ||
+				responseBuffer[responseBytesCount - 2] != CR ||
+				responseBuffer[responseBytesCount - 1] != LF) {
+				throw new ResponseIncompleteException("Response packet not end with \\r\\n");
+			}
+
+			return decodeResp(ByteBuffer.wrap(responseBuffer, 0, responseBytesCount));
 		} catch (ResponseIncompleteException rie) {
 			if (read != -1) {
 				throw rie;
@@ -382,39 +399,32 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		}
 	}
 
-	private Object decodeResp() {
-		//Redis数据包至少3个字节且必定以\r\n结尾
-		if (responseBytesCount < 3 ||
-			responseBuffer[responseBytesCount - 2] != CR ||
-			responseBuffer[responseBytesCount - 1] != LF) {
-			throw new ResponseIncompleteException("Response packet not end with \\r\\n");
-		}
-
-		ByteBuffer respBuffer = ByteBuffer.wrap(responseBuffer, 0, responseBytesCount);
-		byte bType = respBuffer.get();
+	private static Object decodeResp(ByteBuffer byteBuffer) {
+		byte bType = byteBuffer.get();
 		switch (bType) {
 			case PLUS:
 			case MINUS:
-				return readLine(respBuffer);
+				return readLine(byteBuffer);
 			case COLON:
-				return readInteger(respBuffer);
+				return readInteger(byteBuffer);
 			case DOLLAR:
-				return readBulk(respBuffer);
+				return readBulk(byteBuffer);
 			case ASTERISK:
-				return readMultiBulk(respBuffer);
+				return readMultiBulk(byteBuffer);
 			default:
-				throw new RedisClientException("Unknown reply: " + (char) bType);
+				throw new RedisClientException("Unknown reply: " + bType);
 		}
 	}
 
-	private static List<byte[]> readMultiBulk(ByteBuffer buffer) {
+
+	private static List<Object> readMultiBulk(ByteBuffer buffer) {
 		int bulks = readLength(buffer);
 
 		if (bulks == -1) {
 			return null;
 		}
 
-		List<byte[]> ret = new ArrayList<>(bulks);
+		List<Object> ret = new ArrayList<>(bulks);
 		if (bulks == 0) {
 			return ret;
 		}
@@ -422,8 +432,11 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 		skipCRLF(buffer);
 
 		while (buffer.hasRemaining()) {
-			byte $ = buffer.get(); assert $ == DOLLAR;
-			ret.add(readBulk(buffer));
+			ret.add(decodeResp(buffer));
+
+			if (buffer.hasRemaining()) {
+				skipCRLF(buffer);
+			}
 		}
 
 		if (ret.size() == bulks) {

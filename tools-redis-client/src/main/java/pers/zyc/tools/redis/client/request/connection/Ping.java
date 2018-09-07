@@ -1,7 +1,8 @@
 package pers.zyc.tools.redis.client.request.connection;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.ResponseCast;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 
 /**
  * PING
@@ -19,13 +20,21 @@ import pers.zyc.tools.redis.client.exception.RedisClientException;
  *
  * @author zhangyancheng
  */
-public class Ping extends Request<Void> {
+public class Ping extends AutoCastRequest<Void> {
 
 	@Override
-	public Void cast(Object response) {
-		if (!"PONG".equals(response)) {
-			throw new RedisClientException("Ping failed, " + response);
-		}
-		return null;
+	public ResponseCast<Void> getCast() {
+		return PING_CAST;
 	}
+
+	private static final ResponseCast<Void> PING_CAST = new ResponseCast<Void>() {
+
+		@Override
+		public Void cast(Object response) {
+			if (!"PONG".equals(response)) {
+				throw new RedisClientException("Ping failed, " + response);
+			}
+			return null;
+		}
+	};
 }

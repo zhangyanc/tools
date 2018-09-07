@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.request.string;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
@@ -18,7 +18,7 @@ import pers.zyc.tools.redis.client.util.ByteUtil;
  *
  * @author zhangyancheng
  */
-public class GetBit extends Request<Boolean> {
+public class GetBit extends AutoCastRequest<Boolean> {
 
 	public GetBit(String key, long offset) {
 		super(

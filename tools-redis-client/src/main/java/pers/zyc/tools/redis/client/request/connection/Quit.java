@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.request.connection;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 
 /**
  * QUIT
@@ -18,5 +18,5 @@ import pers.zyc.tools.redis.client.Request;
  *
  * @author zhangyancheng
  */
-public class Quit extends Request<Void> {
+public class Quit extends AutoCastRequest<Void> {
 }

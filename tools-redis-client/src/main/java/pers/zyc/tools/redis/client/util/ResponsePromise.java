@@ -14,7 +14,7 @@ public class ResponsePromise<R> extends CountDownLatch implements Promise<R> {
 	private final ResponseCast<R> responseCast;
 	private final long createTime = TimeMillis.INSTANCE.get();
 
-	private Object response;
+	protected Object response;
 
 	public ResponsePromise(ResponseCast<R> responseCast) {
 		super(1);
@@ -26,27 +26,45 @@ public class ResponsePromise<R> extends CountDownLatch implements Promise<R> {
 	}
 
 	@Override
+	@SuppressWarnings("unchecked")
 	public R get() {
 		try {
 			await();
 
-			if (response instanceof Throwable) {
-				if (response instanceof RedisClientException) {
-					throw (RedisClientException) response;
-				}
-				throw new RedisClientException((Throwable) response);
+			if (response instanceof RedisClientException) {
+				throw (RedisClientException) response;
 			}
 
-			return responseCast.cast(response);
+			return (R) response;
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
 			throw new RedisClientException("Thread Interrupted");
 		}
 	}
 
+	private void exception(Object response) {
+		if (response instanceof RedisClientException) {
+			this.response = response;
+		} else {
+			this.response = new RedisClientException((Throwable) response);
+		}
+	}
+
 	@Override
 	public void response(Object response) {
-		this.response = response;
+		if (response instanceof Throwable) {
+			exception(response);
+		} else {
+			try {
+				this.response = responseCast.cast(response);
+			} catch (Throwable caseException) {
+				exception(caseException);
+			}
+		}
+		onRespond();
 		countDown();
+	}
+
+	protected void onRespond() {
 	}
 }

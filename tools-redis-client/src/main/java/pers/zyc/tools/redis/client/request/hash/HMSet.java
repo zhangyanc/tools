@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.request.hash;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 import java.util.Map;
@@ -22,7 +22,7 @@ import java.util.Map;
  *
  * @author zhangyancheng
  */
-public class HMSet extends Request<Void> {
+public class HMSet extends AutoCastRequest<Void> {
 
 	public HMSet(String key, Map<String, String> hash) {
 		bulks.add(ByteUtil.toByteArray(key));

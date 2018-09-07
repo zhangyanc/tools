@@ -62,19 +62,20 @@ class NetWorker extends ThreadService {
 		List<SelectionKey> selected = doSelect();
 
 		for (SelectionKey sk : selected) {
-			if (!sk.isValid()) {
-				continue;
-			}
-
-			Connection connection = (Connection) sk.attachment();
 			try {
+				if (!sk.isValid()) {
+					continue;
+				}
+
+				Connection connection = (Connection) sk.attachment();
 				if (sk.isWritable()) {
 					connection.write();
 				}
 				if (sk.isReadable()) {
 					connection.read();
 				}
-			} catch (Exception ignored) {
+			} catch (Exception e) {
+				LOGGER.error("Connection read/write error: ", e.getMessage());
 			}
 		}
 	}

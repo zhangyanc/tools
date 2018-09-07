@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.request.key;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
@@ -22,7 +22,7 @@ import pers.zyc.tools.redis.client.util.ByteUtil;
  *
  * @author zhangyancheng
  */
-public class Delete extends Request<Long> {
+public class Delete extends AutoCastRequest<Long> {
 
 	public Delete(String... keys) {
 		for (String key :keys) {

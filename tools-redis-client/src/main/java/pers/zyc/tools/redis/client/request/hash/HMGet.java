@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.request.hash;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 import java.util.List;
@@ -22,7 +22,7 @@ import java.util.List;
  *
  * @author zhangyancheng
  */
-public class HMGet extends Request<List<String>> {
+public class HMGet extends AutoCastRequest<List<String>> {
 
 	public HMGet(String key, String... fields) {
 		bulks.add(ByteUtil.toByteArray(key));

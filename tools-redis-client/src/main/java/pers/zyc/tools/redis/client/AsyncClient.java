@@ -25,6 +25,10 @@ public class AsyncClient implements AsyncCommands, Closeable {
 		connectionPool.stop();
 	}
 
+	public KeyScanner createScan() {
+		return new KeyScanner(connectionPool);
+	}
+
 	@Override
 	public Future<Boolean> _set(String key, String value) {
 		return connectionPool.getConnection().send(new pers.zyc.tools.redis.client.request.string.Set(key, value));

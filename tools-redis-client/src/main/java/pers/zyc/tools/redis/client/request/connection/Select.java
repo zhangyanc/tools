@@ -1,6 +1,6 @@
 package pers.zyc.tools.redis.client.request.connection;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
@@ -20,7 +20,7 @@ import pers.zyc.tools.redis.client.util.ByteUtil;
  *
  * @author zhangyancheng
  */
-public class Select extends Request<Void> {
+public class Select extends AutoCastRequest<Void> {
 
 	public Select(int index) {
 		super(

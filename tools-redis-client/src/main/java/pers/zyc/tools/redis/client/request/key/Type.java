@@ -1,7 +1,8 @@
 package pers.zyc.tools.redis.client.request.key;
 
-import pers.zyc.tools.redis.client.Request;
+import pers.zyc.tools.redis.client.ResponseCast;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
+import pers.zyc.tools.redis.client.request.AutoCastRequest;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
@@ -25,7 +26,7 @@ import pers.zyc.tools.redis.client.util.ByteUtil;
  *
  * @author zhangyancheng
  */
-public class Type extends Request<String> {
+public class Type extends AutoCastRequest<String> {
 
 	public Type(String key) {
 		super(
@@ -34,18 +35,26 @@ public class Type extends Request<String> {
 	}
 
 	@Override
-	public String cast(Object response) {
-		String type = (String) response;
-		switch (type) {
-			case "none":
-			case "string":
-			case "list":
-			case "set":
-			case "zset":
-			case "hash":
-				return type;
-			default:
-				throw new RedisClientException("UnExcepted type: " + type);
-		}
+	public ResponseCast<String> getCast() {
+		return TYPE_CAST;
 	}
+
+	private static final ResponseCast<String> TYPE_CAST = new ResponseCast<String>() {
+
+		@Override
+		public String cast(Object response) {
+			String type = (String) response;
+			switch (type) {
+				case "none":
+				case "string":
+				case "list":
+				case "set":
+				case "zset":
+				case "hash":
+					return type;
+				default:
+					throw new RedisClientException("UnExcepted type: " + type);
+			}
+		}
+	};
 }
