@@ -1,4 +1,4 @@
-package pers.zyc.tools.redis.client.request.client;
+package pers.zyc.tools.redis.client.request.server;
 
 import pers.zyc.tools.redis.client.request.AutoCastRequest;
 

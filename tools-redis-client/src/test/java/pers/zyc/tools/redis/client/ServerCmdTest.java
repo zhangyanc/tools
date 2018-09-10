@@ -2,6 +2,7 @@ package pers.zyc.tools.redis.client;
 
 import org.junit.Assert;
 import org.junit.Test;
+import pers.zyc.tools.redis.client.request.server.DBSize;
 
 import java.util.List;
 import java.util.Map;
@@ -9,7 +10,7 @@ import java.util.Map;
 /**
  * @author zhangyancheng
  */
-public class ClientCmdTest {
+public class ServerCmdTest {
 
 	private static final String TESTABLE_REDIS_SERVER = "172.25.45.240:5385";
 
@@ -56,6 +57,19 @@ public class ClientCmdTest {
 			//当前连接的最后一次请求未client
 			Assert.assertNotNull(currentClient);
 			Assert.assertEquals("client", currentClient.get("cmd"));
+		} finally {
+			connectionPool.stop();
+		}
+	}
+
+	@Test
+	public void case_DBSIZE() throws Exception {
+		ClientConfig config = new ClientConfig("redis://" +TESTABLE_REDIS_SERVER +
+				"?minConnectionIdle=1&maxConnectionTotal=1");
+		//只有一个连接
+		ConnectionPool connectionPool = new ConnectionPool(config);
+		try {
+			System.out.println(connectionPool.getConnection().send(new DBSize()).get());
 		} finally {
 			connectionPool.stop();
 		}

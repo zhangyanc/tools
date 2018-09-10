@@ -1,9 +1,9 @@
-package pers.zyc.tools.redis.client.request.client;
+package pers.zyc.tools.redis.client.request.server;
 
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
- * CLIENT KILL ADDR ip:port/CLIENT KILL ID client-id
+ * CLIENT KILL ADDR ip:port/CLIENT KILL ID server-id
  * </p>
  *
  * <ul>

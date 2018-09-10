@@ -4,6 +4,9 @@ import pers.zyc.tools.redis.client.request.BaseScan;
 import pers.zyc.tools.redis.client.util.ByteUtil;
 
 /**
+ * HSCAN key cursor [MATCH pattern] [COUNT count]
+ *
+ * @see pers.zyc.tools.redis.client.request.key.Scan
  * @author zhangyancheng
  */
 public class HScan extends BaseScan {
