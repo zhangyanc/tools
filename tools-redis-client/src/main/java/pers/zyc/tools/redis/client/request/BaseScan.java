@@ -2,8 +2,8 @@ package pers.zyc.tools.redis.client.request;
 
 import pers.zyc.tools.redis.client.Request;
 import pers.zyc.tools.redis.client.ResponseCast;
+import pers.zyc.tools.redis.client.ScanResult;
 import pers.zyc.tools.redis.client.util.ByteUtil;
-import pers.zyc.tools.utils.Pair;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -11,7 +11,7 @@ import java.util.List;
 /**
  * @author zhangyancheng
  */
-public abstract class BaseScan extends Request<BaseScan.ScanResult> {
+public abstract class BaseScan extends Request<ScanResult> {
 
 	protected BaseScan(byte[]... bulks) {
 		super(bulks);
@@ -38,12 +38,4 @@ public abstract class BaseScan extends Request<BaseScan.ScanResult> {
 			return new ScanResult(cursor, keys);
 		}
 	};
-
-	public static class ScanResult extends Pair<Long, List<String>> {
-
-		ScanResult(long cursor, List<String> keys) {
-			key(cursor);
-			value(keys);
-		}
-	}
 }

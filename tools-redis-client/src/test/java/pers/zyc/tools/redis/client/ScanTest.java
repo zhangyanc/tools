@@ -73,7 +73,11 @@ public class ScanTest {
 
 	@Test
 	public void test_SSCAN() throws Exception {
+		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
 
+		connectionPool.getConnection().send(new HSet(key, "k1", "v1")).get();
+		connectionPool.getConnection().send(new HSet(key, "k2", "v2")).get();
+		connectionPool.getConnection().send(new HSet(key, "k3", "v3")).get();
 	}
 
 	@Test
@@ -83,7 +87,7 @@ public class ScanTest {
 		//只有一个连接
 		ConnectionPool connectionPool = new ConnectionPool(config);
 		try {
-			System.out.println(connectionPool.getConnection().send(new SRandomMember("xxx", 10)).get());
+			System.out.println(connectionPool.getConnection().send(new SRandomMember("xxx")).get());
 		} finally {
 			connectionPool.stop();
 		}

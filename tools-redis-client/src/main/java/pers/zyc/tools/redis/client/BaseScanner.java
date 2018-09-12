@@ -1,7 +1,6 @@
 package pers.zyc.tools.redis.client;
 
 import pers.zyc.tools.redis.client.request.BaseScan;
-import pers.zyc.tools.redis.client.request.key.Scan;
 import pers.zyc.tools.redis.client.util.Future;
 import pers.zyc.tools.redis.client.util.Promise;
 import pers.zyc.tools.redis.client.util.ResponsePromise;
@@ -29,29 +28,16 @@ public abstract class BaseScanner<T> implements Scanner<T> {
 		return started && cursor == 0;
 	}
 
-	Future<T> scan(BaseScan scan) {
-		final Promise<Scan.ScanResult> promise =  connectionPool.getConnection().send(scan,
-				new ResponsePromise<BaseScan.ScanResult>(scan.getCast()) {
-
-					@Override
-					protected void onRespond() {
-						if (response instanceof Throwable) {
-							return;
-						}
-
-						BaseScan.ScanResult scanResult = (BaseScan.ScanResult) this.response;
-						started = true;
-						cursor = scanResult.key();
-					}
-		});
-
+	Future<T> scan(final BaseScan scan) {
 		return new Future<T>() {
+
+			final Promise<ScanResult> promise = sendScan(scan);
 
 			T result;
 
 			@Override
 			public T get() {
-				List<String> stringList = promise.get().value();
+				List<String> stringList = promise.get().getList();
 
 				synchronized (this) {
 					if (result == null) {
@@ -61,6 +47,22 @@ public abstract class BaseScanner<T> implements Scanner<T> {
 				return result;
 			}
 		};
+	}
+
+	private Promise<ScanResult> sendScan(BaseScan scan) {
+		return connectionPool.getConnection().send(scan,
+				new ResponsePromise<ScanResult>(scan.getCast()) {
+
+					@Override
+					protected void onRespond() {
+						if (response instanceof Throwable) {
+							return;
+						}
+
+						started = true;
+						cursor = ((ScanResult) this.response).getCursor();
+					}
+		});
 	}
 
 	/**
