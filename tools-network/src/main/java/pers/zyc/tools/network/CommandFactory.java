@@ -5,7 +5,7 @@ package pers.zyc.tools.network;
  */
 public interface CommandFactory {
 
-	int HEARTBEAT = 10;
+	int HEARTBEAT = 100;
 
 	Command createByType(int commandType);
 }

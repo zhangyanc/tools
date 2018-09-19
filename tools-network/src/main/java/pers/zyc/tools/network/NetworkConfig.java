@@ -4,6 +4,7 @@ package pers.zyc.tools.network;
  * @author zhangyancheng
  */
 public class NetworkConfig {
+	static final int MAX_FRAME_LENGTH = 16777216;//16M
 
 	private boolean tcpNoDelay = true;
 	private boolean reuseAddress = true;
@@ -14,7 +15,16 @@ public class NetworkConfig {
 
 	private int selectors = 0;
 	private int requestTimeout = 3000;
-	private int maxFrameLength = 4 * 1024 * 1024;
+	private int maxFrameLength = MAX_FRAME_LENGTH;
+
+	private int channelReadTimeout = 60000;
+	private int channelWriteTimeout = 20000;
+
+	private BufAllocator bufAllocator;
+
+	private CommandFactory commandFactory;
+
+	private RequestHandlerFactory requestHandlerFactory;
 
 	public boolean isTcpNoDelay() {
 		return tcpNoDelay;
@@ -50,5 +60,25 @@ public class NetworkConfig {
 
 	public int getMaxFrameLength() {
 		return maxFrameLength;
+	}
+
+	public int getChannelReadTimeout() {
+		return channelReadTimeout;
+	}
+
+	public int getChannelWriteTimeout() {
+		return channelWriteTimeout;
+	}
+
+	public BufAllocator getBufAllocator() {
+		return bufAllocator;
+	}
+
+	public CommandFactory getCommandFactory() {
+		return commandFactory;
+	}
+
+	public RequestHandlerFactory getRequestHandlerFactory() {
+		return requestHandlerFactory;
 	}
 }

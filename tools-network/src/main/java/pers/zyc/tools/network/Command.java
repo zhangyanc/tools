@@ -58,4 +58,7 @@ public abstract class Command implements Protocol {
 	 */
 	@Override
 	public abstract void decode(ByteBuf byteBuf) throws Exception;
+
+	protected void writeComplete(boolean writeSuccess) {
+	}
 }

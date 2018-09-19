@@ -28,7 +28,7 @@ public abstract class Request extends Command {
 		header.commandTime(requestTime);
 	}
 
-	public int getRequestId() {
+	public int getId() {
 		return header.getCommandId();
 	}
 

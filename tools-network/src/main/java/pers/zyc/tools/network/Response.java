@@ -25,6 +25,10 @@ public abstract class Response extends Command {
 		header.commandTime(requestTime);
 	}
 
+	public int getRequestId() {
+		return header.getCommandId();
+	}
+
 	@Override
 	public int getType() {
 		return header.getCommandType();
