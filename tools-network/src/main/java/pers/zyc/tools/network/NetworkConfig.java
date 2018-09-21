@@ -19,6 +19,9 @@ public class NetworkConfig {
 
 	private int channelReadTimeout = 60000;
 	private int channelWriteTimeout = 20000;
+	private int requestTimeoutDetectInterval = 1000;
+
+	private int heartbeatCommandType = 999;
 
 	private BufAllocator bufAllocator;
 
@@ -68,6 +71,14 @@ public class NetworkConfig {
 
 	public int getChannelWriteTimeout() {
 		return channelWriteTimeout;
+	}
+
+	public int getRequestTimeoutDetectInterval() {
+		return requestTimeoutDetectInterval;
+	}
+
+	public int getHeartbeatCommandType() {
+		return heartbeatCommandType;
 	}
 
 	public BufAllocator getBufAllocator() {

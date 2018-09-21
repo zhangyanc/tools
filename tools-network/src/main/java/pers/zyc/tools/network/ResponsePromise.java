@@ -30,7 +30,7 @@ class ResponsePromise extends CountDownLatch implements ResponseFuture {
 
 	@Override
 	public boolean isDown() {
-		return false;
+		return responseReference.get() != null;
 	}
 
 	@Override

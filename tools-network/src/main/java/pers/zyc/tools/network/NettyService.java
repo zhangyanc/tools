@@ -16,11 +16,12 @@ import pers.zyc.tools.utils.lifecycle.ThreadService;
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author zhangyancheng
  */
-public class NettyService extends ThreadService implements NetworkService, EventSource<ChannelEvent> {
+class NettyService extends ThreadService implements NetworkService, EventSource<ChannelEvent> {
 	private static final AttributeKey<Map<Integer, ResponsePromise>> RESPONSE_PROMISE_KEY =
 			AttributeKey.newInstance("CHANNEL_RESPONSE_PROMISE");
 
@@ -28,19 +29,20 @@ public class NettyService extends ThreadService implements NetworkService, Event
 
 	private final Logger logger = LoggerFactory.getLogger(getClass());
 
-	private final CommandProcessor commandProcessor = new CommandProcessor();
+	private final CommandHandler commandHandler = new CommandHandler();
+
+	private final ChannelStateHandler channelStateHandler = new ChannelStateHandler();
 
 	private final ConcurrentSet<Channel> requestedChannelSet = new ConcurrentSet<>();
 
 	private final Multicaster<EventListener<ChannelEvent>> channelEventMulticaster;
 
-	public NettyService(NetworkConfig networkConfig) {
+	NettyService(NetworkConfig networkConfig) {
 		this.networkConfig = networkConfig;
 
 		channelEventMulticaster = new Multicaster<EventListener<ChannelEvent>>() {
 			{
 				setExceptionHandler(new MulticastExceptionHandler() {
-
 					@Override
 					public Void handleException(Throwable cause, MulticastDetail detail) {
 						logger.error("{} multicast error, {}: {}", detail.args[0], detail.listener, cause.getMessage());
@@ -57,17 +59,20 @@ public class NettyService extends ThreadService implements NetworkService, Event
 
 			@Override
 			protected long getInterval() {
-				return 1000;
+				return networkConfig.getRequestTimeoutDetectInterval();
 			}
 
 			@Override
 			protected void execute() throws InterruptedException {
 				for (Channel channel : requestedChannelSet) {
-					Collection<ResponsePromise> responsePromises = channel.attr(RESPONSE_PROMISE_KEY).get().values();
-					for (ResponsePromise promise : responsePromises) {
+					Collection<ResponsePromise> promises = channel.attr(RESPONSE_PROMISE_KEY).get().values();
+					for (ResponsePromise promise : promises) {
 						if (promise.isTimeout()) {
-							responsePromises.remove(promise);
+							promises.remove(promise);
 						}
+					}
+					if (promises.isEmpty()) {
+						requestedChannelSet.remove(channel);
 					}
 				}
 			}
@@ -98,10 +103,10 @@ public class NettyService extends ThreadService implements NetworkService, Event
 		}
 
 		final ResponsePromise responsePromise = new ResponsePromise(requestTimeout);
-		channel.writeAndFlush(request).addListener(new ChannelFutureListener() {
-
+		channel.writeAndFlush(request).addListeners(new CommandSendFutureListener(request) {
 			@Override
 			public void operationComplete(ChannelFuture future) throws Exception {
+				super.operationComplete(future);
 				//单向请求发送后即响应
 				responsePromise.response(future.isSuccess() ? null : future.cause());
 			}
@@ -129,11 +134,11 @@ public class NettyService extends ThreadService implements NetworkService, Event
 		checkRunning();
 
 		final ResponsePromise responsePromise = new ResponsePromise(requestTimeout);
-
-		channel.writeAndFlush(request).addListener(new ChannelFutureListener() {
-
+		channel.writeAndFlush(request).addListener(new CommandSendFutureListener(request) {
 			@Override
 			public void operationComplete(ChannelFuture future) throws Exception {
+				super.operationComplete(future);
+
 				if (future.isSuccess()) {
 					requestedChannelSet.add(channel);
 					getResponsePromiseQueue(channel).put(request.getId(), responsePromise);
@@ -142,7 +147,6 @@ public class NettyService extends ThreadService implements NetworkService, Event
 				}
 			}
 		});
-
 		return responsePromise;
 	}
 
@@ -162,9 +166,19 @@ public class NettyService extends ThreadService implements NetworkService, Event
 		return new ChannelHandler[]{
 				new Encoder(),
 				new Decoder(),
-				new IdleStateHandler(networkConfig.getChannelReadTimeout(), networkConfig.getChannelWriteTimeout(), 0),
-				commandProcessor
+				new IdleStateHandler(networkConfig.getChannelReadTimeout(),
+						networkConfig.getChannelWriteTimeout(), 0, TimeUnit.MILLISECONDS),
+				channelStateHandler,
+				commandHandler
 		};
+	}
+
+	protected Heartbeat createHeartbeat() {
+		return new Heartbeat(networkConfig.getHeartbeatCommandType());
+	}
+
+	protected void requestHandleFailed(Channel channel, Request request, Throwable throwable) {
+		logger.error(request + " handle failed on " + channel, throwable);
 	}
 
 	protected abstract class PipelineAssembler extends ChannelInitializer<Channel> {
@@ -178,14 +192,14 @@ public class NettyService extends ThreadService implements NetworkService, Event
 	}
 
 	@ChannelHandler.Sharable
-	protected class CommandProcessor extends SimpleChannelInboundHandler<Command> {
+	protected class CommandHandler extends SimpleChannelInboundHandler<Command> {
 
 		@Override
 		protected void channelRead0(ChannelHandlerContext ctx, Command command) throws Exception {
 			final Channel channel = ctx.channel();
 			switch (command.getHeader().getType()) {
 				case Header.REQUEST:
-					if (command.getType() != CommandFactory.HEARTBEAT) {
+					if (command.getType() != networkConfig.getHeartbeatCommandType()) {
 						return;
 					}
 
@@ -194,7 +208,6 @@ public class NettyService extends ThreadService implements NetworkService, Event
 							.getHandler(request.getType());
 
 					requestHandler.getExecutor().execute(new Runnable() {
-
 						@Override
 						public void run() {
 							try {
@@ -203,15 +216,10 @@ public class NettyService extends ThreadService implements NetworkService, Event
 								if (!request.getHeader().isNeedAck() || response == null) {
 									return;
 								}
-								channel.writeAndFlush(response).addListener(new ChannelFutureListener() {
 
-									@Override
-									public void operationComplete(ChannelFuture future) throws Exception {
-										response.writeComplete(future.isSuccess());
-									}
-								});
+								channel.writeAndFlush(response).addListener(new CommandSendFutureListener(response));
 							} catch (Throwable throwable) {
-								channel.writeAndFlush(createErrorResponse(throwable));
+								requestHandleFailed(channel, request, throwable);
 							}
 						}
 					});
@@ -219,9 +227,12 @@ public class NettyService extends ThreadService implements NetworkService, Event
 				case Header.RESPONSE:
 					Response response = (Response) command;
 
-					ResponsePromise responsePromise = channel.attr(RESPONSE_PROMISE_KEY).get()
-							.remove(response.getRequestId());
+					Map<Integer, ResponsePromise> responsePromiseMap = channel.attr(RESPONSE_PROMISE_KEY).get();
+					ResponsePromise responsePromise = responsePromiseMap.remove(response.getRequestId());
 
+					if (responsePromiseMap.isEmpty()) {
+						requestedChannelSet.remove(channel);
+					}
 					if (responsePromise != null) {
 						responsePromise.response(response);
 					}
@@ -229,13 +240,28 @@ public class NettyService extends ThreadService implements NetworkService, Event
 				default: throw new RuntimeException("UnKnown type: " + command.getHeader().getType());
 			}
 		}
+	}
 
-		Response createErrorResponse(Throwable error) {
-			return null;
+	private class CommandSendFutureListener implements ChannelFutureListener {
+
+		final Command command;
+
+		CommandSendFutureListener(Command command) {
+			this.command = command;
+		}
+
+		@Override
+		public void operationComplete(ChannelFuture future) throws Exception {
+			command.writeComplete(future.isSuccess());
+			if (!future.isSuccess()) {
+				logger.error(command + " send failed on " + future.channel(), future.cause());
+				future.channel().close();
+			}
 		}
 	}
 
-	protected class ConnectionHandler extends ChannelDuplexHandler {
+	@ChannelHandler.Sharable
+	protected class ChannelStateHandler extends ChannelDuplexHandler {
 
 		@Override
 		public void channelActive(ChannelHandlerContext ctx) throws Exception {
@@ -256,28 +282,29 @@ public class NettyService extends ThreadService implements NetworkService, Event
 			if (evt == IdleStateEvent.READER_IDLE_STATE_EVENT) {
 				logger.warn("Read idle, {} will be closed", channel);
 
-				channel.close().awaitUninterruptibly();
-
 				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, channel,
 						ChannelEvent.EventType.READ_IDLE));
+
+				channel.close().awaitUninterruptibly();
 			} else if (evt == IdleStateEvent.WRITER_IDLE_STATE_EVENT) {
 				logger.info("Write idle, {} will send heartbeat", channel);
 
-				channel.writeAndFlush(new Heartbeat());
-
 				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, channel,
 						ChannelEvent.EventType.WRITE_IDLE));
+
+				Heartbeat hb = createHeartbeat();
+				channel.writeAndFlush(hb).addListener(new CommandSendFutureListener(hb));
 			}
 		}
 
 		@Override
 		public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-			logger.warn(ctx.channel() + " exception caught", cause);
-
-			ctx.channel().close().awaitUninterruptibly();
+			logger.error(ctx.channel() + " exception caught", cause);
 
 			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
 					ChannelEvent.EventType.EXCEPTION));
+
+			ctx.channel().close().awaitUninterruptibly();
 		}
 	}
 

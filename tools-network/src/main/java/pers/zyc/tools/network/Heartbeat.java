@@ -7,8 +7,8 @@ import io.netty.buffer.ByteBuf;
  */
 public class Heartbeat extends Request {
 
-	public Heartbeat() {
-		super(CommandFactory.HEARTBEAT);
+	public Heartbeat(int heartbeat) {
+		super(heartbeat);
 
 		//心跳不需要应答
 		header.needAck(false);
