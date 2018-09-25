@@ -132,6 +132,22 @@ public abstract class Multicaster<L extends Listener> implements Listenable<L> {
 		}
 	}
 
+	/**
+	 * @return 监听器集合
+	 */
+	public Set<L> getEventListeners() {
+		return eventListeners;
+	}
+
+	/**
+	 * 设置监听器集合
+	 *
+	 * @param eventListeners 监听器集合
+	 */
+	public void setEventListeners(Set<L> eventListeners) {
+		this.eventListeners = eventListeners;
+	}
+
 	public MulticastExceptionHandler getExceptionHandler() {
 		return exceptionHandler;
 	}
