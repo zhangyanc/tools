@@ -1,5 +1,7 @@
 package pers.zyc.tools.network;
 
+import java.util.concurrent.Executor;
+
 /**
  * @author zhangyancheng
  */
@@ -23,11 +25,15 @@ public class NetworkConfig {
 
 	private int heartbeatCommandType = 999;
 
+	private int maxProcessingRequests = -1;
+
 	private BufAllocator bufAllocator;
 
 	private CommandFactory commandFactory;
 
 	private RequestHandlerFactory requestHandlerFactory;
+
+	private Executor responseMulticastExecutor;
 
 	public boolean isTcpNoDelay() {
 		return tcpNoDelay;
@@ -81,6 +87,10 @@ public class NetworkConfig {
 		return heartbeatCommandType;
 	}
 
+	public int getMaxProcessingRequests() {
+		return maxProcessingRequests;
+	}
+
 	public BufAllocator getBufAllocator() {
 		return bufAllocator;
 	}
@@ -91,5 +101,9 @@ public class NetworkConfig {
 
 	public RequestHandlerFactory getRequestHandlerFactory() {
 		return requestHandlerFactory;
+	}
+
+	public Executor getResponseMulticastExecutor() {
+		return responseMulticastExecutor;
 	}
 }

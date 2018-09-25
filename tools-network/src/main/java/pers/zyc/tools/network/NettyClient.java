@@ -2,7 +2,6 @@ package pers.zyc.tools.network;
 
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelPipeline;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioSocketChannel;
 import pers.zyc.tools.utils.GeneralThreadFactory;
@@ -38,16 +37,11 @@ public class NettyClient extends NettyService {
 				//
 				.channel(NioSocketChannel.class)
 				//
-				.handler(new PipelineAssembler() {
-					@Override
-					protected void assemblePipeline(ChannelPipeline pipeline) {
-						pipeline.addLast(getChannelHandlers());
-					}
-				});
+				.handler(new PipelineAssembler());
 	}
 
 	@Override
 	protected void doStop() throws Exception {
-		super.doStop();
+		bootstrap.config().group().shutdownGracefully();
 	}
 }

@@ -2,7 +2,6 @@ package pers.zyc.tools.network;
 
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.ChannelOption;
-import io.netty.channel.ChannelPipeline;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.epoll.EpollEventLoopGroup;
 import io.netty.channel.epoll.EpollServerSocketChannel;
@@ -57,12 +56,7 @@ public class NettyServer extends NettyService {
 		bootstrap.group(acceptorLoopGroup, selectorLoopGroup)
 				.channel(channelClass)
 				.localAddress(serverConfig.getPort())
-				.childHandler(new PipelineAssembler() {
-					@Override
-					protected void assemblePipeline(ChannelPipeline pipeline) {
-						pipeline.addLast(getChannelHandlers());
-					}
-				});
+				.childHandler(new PipelineAssembler());
 
 		boolean started = false;
 		try {
@@ -78,6 +72,7 @@ public class NettyServer extends NettyService {
 
 	@Override
 	protected void doStop() throws Exception {
-		super.doStop();
+		bootstrap.config().group().shutdownGracefully();
+		bootstrap.config().childGroup().shutdownGracefully();
 	}
 }

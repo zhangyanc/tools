@@ -20,6 +20,9 @@ public class RequestException extends RuntimeException {
 		super(cause);
 	}
 
-	public static class TimeoutException extends RuntimeException {
+	public static class TimeoutException extends RequestException {
+	}
+
+	public static class TooMuchRequestException extends RequestException {
 	}
 }

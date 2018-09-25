@@ -10,47 +10,74 @@ import io.netty.util.AttributeKey;
 import io.netty.util.internal.ConcurrentSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import pers.zyc.tools.utils.GeneralThreadFactory;
 import pers.zyc.tools.utils.event.*;
 import pers.zyc.tools.utils.lifecycle.ThreadService;
 
 import java.util.Collection;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 /**
  * @author zhangyancheng
  */
 class NettyService extends ThreadService implements NetworkService, EventSource<ChannelEvent> {
+	/**
+	 * Channel保存Promise Map键
+	 */
 	private static final AttributeKey<Map<Integer, ResponsePromise>> RESPONSE_PROMISE_KEY =
 			AttributeKey.newInstance("CHANNEL_RESPONSE_PROMISE");
 
+	/**
+	 * 配置
+	 */
 	protected final NetworkConfig networkConfig;
 
 	private final Logger logger = LoggerFactory.getLogger(getClass());
 
-	private final CommandHandler commandHandler = new CommandHandler();
+	/**
+	 * 请求信号量，用于控制最大并发请求数，为null时表示不控制
+	 */
+	private final Semaphore requestPermits;
 
-	private final ChannelStateHandler channelStateHandler = new ChannelStateHandler();
-
+	/**
+	 * 所有发送了请求的Channel集合
+	 */
 	private final ConcurrentSet<Channel> requestedChannelSet = new ConcurrentSet<>();
 
+	/**
+	 * Channel事件发布器
+	 */
 	private final Multicaster<EventListener<ChannelEvent>> channelEventMulticaster;
 
-	NettyService(NetworkConfig networkConfig) {
+	/**
+	 * 日志记录广播异常
+	 */
+	private final MulticastExceptionHandler multicastExceptionHandler = new MulticastExceptionHandler() {
+
+		@Override
+		public Void handleException(Throwable cause, MulticastDetail detail) {
+			logger.error("Multicast error: " + detail, cause);
+			return null;
+		}
+	};
+
+	NettyService(final NetworkConfig networkConfig) {
 		this.networkConfig = networkConfig;
+
+		requestPermits = networkConfig.getMaxProcessingRequests() > 0 ?
+				new Semaphore(networkConfig.getMaxProcessingRequests()) : null;
 
 		channelEventMulticaster = new Multicaster<EventListener<ChannelEvent>>() {
 			{
-				setExceptionHandler(new MulticastExceptionHandler() {
-					@Override
-					public Void handleException(Throwable cause, MulticastDetail detail) {
-						logger.error("{} multicast error, {}: {}", detail.args[0], detail.listener, cause.getMessage());
-						return null;
-					}
-				});
+				setExceptionHandler(multicastExceptionHandler);
 			}
 		};
+
+		//设置当前服务线程名
+		setThreadFactory(new GeneralThreadFactory("TimeoutRequestClear"));
 	}
 
 	@Override
@@ -59,6 +86,7 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 
 			@Override
 			protected long getInterval() {
+				//超时请求检查间隔，超时清理的最大延迟为一个间隔
 				return networkConfig.getRequestTimeoutDetectInterval();
 			}
 
@@ -68,6 +96,7 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 					Collection<ResponsePromise> promises = channel.attr(RESPONSE_PROMISE_KEY).get().values();
 					for (ResponsePromise promise : promises) {
 						if (promise.isTimeout()) {
+							logger.info("Request: {} timeout, Channel: {}", promise.request, channel);
 							promises.remove(promise);
 						}
 					}
@@ -77,6 +106,14 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 				}
 			}
 		};
+	}
+
+	@Override
+	protected void doStop() throws Exception {
+		//结束所有等待中的请求
+		for (Channel channel : requestedChannelSet) {
+			respondAllChannelPromise(channel, new RequestException("Service stopped!"));
+		}
 	}
 
 	@Override
@@ -102,7 +139,7 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 			throw new IllegalArgumentException("Request need ack");
 		}
 
-		final ResponsePromise responsePromise = new ResponsePromise(requestTimeout);
+		final ResponsePromise responsePromise = acquirePromise(request, requestTimeout);
 		channel.writeAndFlush(request).addListeners(new CommandSendFutureListener(request) {
 			@Override
 			public void operationComplete(ChannelFuture future) throws Exception {
@@ -133,15 +170,17 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 	public ResponseFuture asyncSend(final Channel channel, final Request request, int requestTimeout) {
 		checkRunning();
 
-		final ResponsePromise responsePromise = new ResponsePromise(requestTimeout);
+		final ResponsePromise responsePromise = acquirePromise(request, requestTimeout);
+
 		channel.writeAndFlush(request).addListener(new CommandSendFutureListener(request) {
 			@Override
 			public void operationComplete(ChannelFuture future) throws Exception {
 				super.operationComplete(future);
 
 				if (future.isSuccess()) {
+					//请求发送成功（写入网络）后记录Promise，等待响应或者超时
 					requestedChannelSet.add(channel);
-					getResponsePromiseQueue(channel).put(request.getId(), responsePromise);
+					getChannelResponsePromiseMap(channel).put(request.getId(), responsePromise);
 				} else {
 					responsePromise.response(future.cause());
 				}
@@ -150,7 +189,7 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 		return responsePromise;
 	}
 
-	private static Map<Integer, ResponsePromise> getResponsePromiseQueue(Channel channel) {
+	private static Map<Integer, ResponsePromise> getChannelResponsePromiseMap(Channel channel) {
 		Map<Integer, ResponsePromise> responsePromiseMap = channel.attr(RESPONSE_PROMISE_KEY).get();
 		if (responsePromiseMap == null) {
 			Map<Integer, ResponsePromise> promiseMap = new ConcurrentHashMap<>();
@@ -162,33 +201,69 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 		return responsePromiseMap;
 	}
 
-	protected ChannelHandler[] getChannelHandlers() {
-		return new ChannelHandler[]{
-				new Encoder(),
-				new Decoder(),
-				new IdleStateHandler(networkConfig.getChannelReadTimeout(),
-						networkConfig.getChannelWriteTimeout(), 0, TimeUnit.MILLISECONDS),
-				channelStateHandler,
-				commandHandler
-		};
+	private ResponsePromise acquirePromise(Request request, int requestTimeout) {
+		ResponsePromise responsePromise = new ResponsePromise(requestTimeout, request, requestPermits);
+
+		responsePromise.multicaster.setExceptionHandler(multicastExceptionHandler);
+
+		if (networkConfig.getResponseMulticastExecutor() != null) {
+			responsePromise.multicaster.setMulticastExecutor(networkConfig.getResponseMulticastExecutor());
+		}
+		return responsePromise;
+	}
+
+	private void respondAllChannelPromise(Channel channel, Throwable cause) {
+		Collection<ResponsePromise> promises = channel.attr(RESPONSE_PROMISE_KEY).get().values();
+		for (ResponsePromise promise : promises) {
+			promise.response(cause);
+		}
+		requestedChannelSet.remove(channel);
+	}
+
+	protected void requestHandleFailed(Channel channel, Request request, Throwable throwable) {
+		logger.error(request + " handle failed, Channel: " + channel, throwable);
 	}
 
 	protected Heartbeat createHeartbeat() {
 		return new Heartbeat(networkConfig.getHeartbeatCommandType());
 	}
 
-	protected void requestHandleFailed(Channel channel, Request request, Throwable throwable) {
-		logger.error(request + " handle failed on " + channel, throwable);
+	private class CommandSendFutureListener implements ChannelFutureListener {
+
+		final Command command;
+
+		CommandSendFutureListener(Command command) {
+			this.command = command;
+		}
+
+		@Override
+		public void operationComplete(ChannelFuture future) throws Exception {
+			command.writeComplete(future.isSuccess());
+			if (!future.isSuccess()) {
+				logger.error(command + " send failed, Channel: " + future.channel(), future.cause());
+				future.channel().close();
+			}
+		}
 	}
 
-	protected abstract class PipelineAssembler extends ChannelInitializer<Channel> {
+	protected class PipelineAssembler extends ChannelInitializer<Channel> {
+
+		final CommandHandler commandHandler = new CommandHandler();
+		final NettyService.ChannelStateHandler channelStateHandler = new ChannelStateHandler();
 
 		@Override
 		protected void initChannel(Channel channel) throws Exception {
 			assemblePipeline(channel.pipeline());
 		}
 
-		protected abstract void assemblePipeline(ChannelPipeline pipeline);
+		protected void assemblePipeline(ChannelPipeline pipeline) {
+			pipeline.addLast(
+					new Encoder(), new Decoder(),
+					new IdleStateHandler(networkConfig.getChannelReadTimeout(),
+							networkConfig.getChannelWriteTimeout(), 0, TimeUnit.MILLISECONDS),
+					channelStateHandler, commandHandler
+			);
+		}
 	}
 
 	@ChannelHandler.Sharable
@@ -242,69 +317,58 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 		}
 	}
 
-	private class CommandSendFutureListener implements ChannelFutureListener {
-
-		final Command command;
-
-		CommandSendFutureListener(Command command) {
-			this.command = command;
-		}
-
-		@Override
-		public void operationComplete(ChannelFuture future) throws Exception {
-			command.writeComplete(future.isSuccess());
-			if (!future.isSuccess()) {
-				logger.error(command + " send failed on " + future.channel(), future.cause());
-				future.channel().close();
-			}
-		}
-	}
-
 	@ChannelHandler.Sharable
-	protected class ChannelStateHandler extends ChannelDuplexHandler {
+	protected class ChannelStateHandler extends ChannelInboundHandlerAdapter {
 
 		@Override
 		public void channelActive(ChannelHandlerContext ctx) throws Exception {
+			super.channelActive(ctx);
+			logger.info("Channel active, Channel: {}", ctx.channel());
 			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
 					ChannelEvent.EventType.CONNECT));
 		}
 
 		@Override
 		public void channelInactive(ChannelHandlerContext ctx) throws Exception {
+			super.channelInactive(ctx);
+			logger.info("Channel inactive, Channel: {}", ctx.channel());
 			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
 					ChannelEvent.EventType.CLOSE));
+
+			respondAllChannelPromise(ctx.channel(), new RequestException("Channel inactive"));
 		}
 
 		@Override
 		public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
-			final Channel channel = ctx.channel();
+			super.userEventTriggered(ctx, evt);
+			logger.info("User event triggered, Channel: {}, Event: {}", ctx.channel(), evt);
 
 			if (evt == IdleStateEvent.READER_IDLE_STATE_EVENT) {
-				logger.warn("Read idle, {} will be closed", channel);
-
-				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, channel,
+				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
 						ChannelEvent.EventType.READ_IDLE));
 
-				channel.close().awaitUninterruptibly();
+				logger.info("On read idle event, Close Channel");
+				ctx.channel().close();
 			} else if (evt == IdleStateEvent.WRITER_IDLE_STATE_EVENT) {
-				logger.info("Write idle, {} will send heartbeat", channel);
-
-				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, channel,
+				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
 						ChannelEvent.EventType.WRITE_IDLE));
 
-				Heartbeat hb = createHeartbeat();
-				channel.writeAndFlush(hb).addListener(new CommandSendFutureListener(hb));
+				logger.info("On write idle event, Send heartbeat");
+				Heartbeat heartbeat = createHeartbeat();
+				ctx.channel().writeAndFlush(heartbeat).addListener(new CommandSendFutureListener(heartbeat));
 			}
 		}
 
 		@Override
 		public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
+			super.exceptionCaught(ctx, cause);
 			logger.error(ctx.channel() + " exception caught", cause);
 
 			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
 					ChannelEvent.EventType.EXCEPTION));
 
-			ctx.channel().close().awaitUninterruptibly();
+			logger.info("On exception caught, Close Channel");
+			ctx.channel().close();
 		}
 	}
 
