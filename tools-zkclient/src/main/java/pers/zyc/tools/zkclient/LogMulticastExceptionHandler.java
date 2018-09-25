@@ -20,7 +20,7 @@ public class LogMulticastExceptionHandler implements MulticastExceptionHandler {
 
 	@Override
 	public Void handleException(Throwable throwable, MulticastDetail multicastDetail) {
-		logger.error("Event multicast error: {}, {}|{}", throwable, multicastDetail.listener, multicastDetail.method);
+		logger.error("Multicast error: " + multicastDetail, throwable);
 		return null;
 	}
 }

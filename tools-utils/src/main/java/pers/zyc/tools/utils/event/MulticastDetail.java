@@ -1,6 +1,7 @@
 package pers.zyc.tools.utils.event;
 
 import java.lang.reflect.Method;
+import java.util.Arrays;
 
 /**
  * @author zhangyancheng
@@ -14,5 +15,14 @@ public class MulticastDetail {
 		this.listener = listener;
 		this.method = method;
 		this.args = args;
+	}
+
+	@Override
+	public String toString() {
+		return "MulticastDetail{" +
+				"listener=" + listener +
+				", method=" + method +
+				", args=" + Arrays.toString(args) +
+				'}';
 	}
 }

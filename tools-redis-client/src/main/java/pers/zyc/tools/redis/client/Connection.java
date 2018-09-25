@@ -44,8 +44,7 @@ class Connection implements EventSource<ConnectionEvent>, Closeable {
 			setExceptionHandler(new MulticastExceptionHandler() {
 				@Override
 				public Void handleException(Throwable cause, MulticastDetail multicastDetail) {
-					LOGGER.error(String.format("Multicast error: Event[%s], listener[%s]",
-							multicastDetail.args[0], multicastDetail.listener), cause);
+					LOGGER.error("Multicast error: " + multicastDetail, cause);
 					return null;
 				}
 			});
