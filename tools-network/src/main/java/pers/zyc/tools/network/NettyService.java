@@ -12,18 +12,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.utils.GeneralThreadFactory;
 import pers.zyc.tools.utils.event.*;
+import pers.zyc.tools.utils.lifecycle.ServiceException;
 import pers.zyc.tools.utils.lifecycle.ThreadService;
 
 import java.util.Collection;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
+import java.util.Objects;
+import java.util.concurrent.*;
 
 /**
  * @author zhangyancheng
  */
-class NettyService extends ThreadService implements NetworkService, EventSource<ChannelEvent> {
+class NettyService extends ThreadService implements EventSource<ChannelEvent> {
 	/**
 	 * Channel保存Promise Map键
 	 */
@@ -31,26 +31,113 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 			AttributeKey.newInstance("CHANNEL_RESPONSE_PROMISE");
 
 	/**
-	 * 配置
+	 * {@link java.net.Socket#setTcpNoDelay(boolean)}
 	 */
-	protected final NetworkConfig networkConfig;
+	private boolean soTcpNoDelay = true;
 
-	private final Logger logger = LoggerFactory.getLogger(getClass());
+	/**
+	 * {@link java.net.Socket#setReuseAddress(boolean)}
+	 */
+	private boolean soReuseAddress = true;
+
+	/**
+	 * {@link java.net.Socket#setKeepAlive(boolean)}
+	 */
+	private boolean soKeepAlive = false;
+
+	/**
+	 * {@link java.net.Socket#setSoLinger(boolean, int)}
+	 */
+	private int soLinger = -1;
+
+	/**
+	 * {@link java.net.Socket#setSendBufferSize(int)}
+	 */
+	private int soSendBuffer = 8 * 1024;
+
+	/**
+	 * {@link java.net.Socket#setReceiveBufferSize(int)}
+	 */
+	private int soReceiveBuffer = 8 * 1024;
+
+	/**
+	 * 多路复用器个数（IO线程数），为0表示使用netty默认值
+	 */
+	private int selectors = 0;
+
+	/**
+	 * 默认请求超时时间（ms）
+	 */
+	private int requestTimeout = 3000;
+
+	/**
+	 * 网络包最大大小
+	 *
+	 * {@link io.netty.handler.codec.LengthFieldBasedFrameDecoder#maxFrameLength}
+	 */
+	private int maxFrameLength = Command.MAX_FRAME_LENGTH;
+
+	/**
+	 * 连接读空闲时间（ms），双向心跳模式中，一旦连接读空闲则对端已宕机，则关闭连接
+	 */
+	private int channelReadTimeout = 60000;
+
+	/**
+	 * 连接写空闲时间（ms），双向心跳模式中，连接写空闲则需要发送心跳包
+	 */
+	private int channelWriteTimeout = 20000;
+
+	/**
+	 * 请求超时清理周期（ms）
+	 */
+	private int requestTimeoutDetectInterval = 1000;
+
+	/**
+	 * 心跳命令类型，心跳为框架自带命令，配置类型避免与用户命令类型冲突
+	 */
+	private int heartbeatCommandType = 999;
+
+	/**
+	 * 允许同时处理的最大请求数（小于0表示不做最大限制）
+	 */
+	private int maxProcessingRequests = -1;
+
+	/**
+	 * Netty ByteBuf分配器，为null表示使用Netty默认行为
+	 *
+	 * 对于有些特殊的命令编码时提供自定义分配器可避免不必要的数据拷贝
+	 *
+	 * {@link io.netty.handler.codec.MessageToByteEncoder#allocateBuffer(ChannelHandlerContext, Object, boolean)}
+	 */
+	private BufAllocator bufAllocator;
+
+	/**
+	 * 用户命令工厂，解码时通过命令类型从工厂中获取一个命令实体解码出命令内容
+	 */
+	private CommandFactory commandFactory;
+
+	/**
+	 * 请求处理器工厂，处理请求时通过请求类型从工厂中获取请求处理器处理请求
+	 */
+	private RequestHandlerFactory requestHandlerFactory;
+
+	/**
+	 * 异步请求时，发送响应回调的执行器，为null表示在收到响应的线程中执行
+	 */
+	private Executor responseMulticastExecutor;
+
 
 	/**
 	 * 请求信号量，用于控制最大并发请求数，为null时表示不控制
 	 */
-	private final Semaphore requestPermits;
+	private Semaphore requestPermits;
 
 	/**
 	 * 所有发送了请求的Channel集合
 	 */
 	private final ConcurrentSet<Channel> requestedChannelSet = new ConcurrentSet<>();
 
-	/**
-	 * Channel事件发布器
-	 */
-	private final Multicaster<EventListener<ChannelEvent>> channelEventMulticaster;
+	private final Logger logger = LoggerFactory.getLogger(getClass());
 
 	/**
 	 * 日志记录广播异常
@@ -64,20 +151,22 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 		}
 	};
 
-	NettyService(final NetworkConfig networkConfig) {
-		this.networkConfig = networkConfig;
+	/**
+	 * Channel事件发布器
+	 */
+	private final Multicaster<EventListener<ChannelEvent>> channelEventMulticaster =
+			new Multicaster<EventListener<ChannelEvent>>() {
+				{
+					setExceptionHandler(multicastExceptionHandler);
+				}
+			};
 
-		requestPermits = networkConfig.getMaxProcessingRequests() > 0 ?
-				new Semaphore(networkConfig.getMaxProcessingRequests()) : null;
-
-		channelEventMulticaster = new Multicaster<EventListener<ChannelEvent>>() {
-			{
-				setExceptionHandler(multicastExceptionHandler);
-			}
-		};
-
+	@Override
+	protected void doStart() {
+		requestPermits = maxProcessingRequests > 0 ? new Semaphore(maxProcessingRequests) : null;
 		//设置当前服务线程名
 		setThreadFactory(new GeneralThreadFactory("TimeoutRequestClear"));
+		logger.info(getName() + " started");
 	}
 
 	@Override
@@ -87,7 +176,7 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 			@Override
 			protected long getInterval() {
 				//超时请求检查间隔，超时清理的最大延迟为一个间隔
-				return networkConfig.getRequestTimeoutDetectInterval();
+				return requestTimeoutDetectInterval;
 			}
 
 			@Override
@@ -112,8 +201,10 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 	protected void doStop() throws Exception {
 		//结束所有等待中的请求
 		for (Channel channel : requestedChannelSet) {
-			respondAllChannelPromise(channel, new RequestException("Service stopped!"));
+			respondAllChannelPromise(channel, new NetworkException("Service stopped!"));
 		}
+		super.doStop();
+		logger.info(getName() + " stopped");
 	}
 
 	@Override
@@ -126,13 +217,42 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 		channelEventMulticaster.removeListener(listener);
 	}
 
-	@Override
+	/**
+	 * 单向发送请求
+	 *
+	 * @param channel 连接
+	 * @param request 请求（必须是无需ack类型）
+	 * @throws IllegalArgumentException 参数错误
+	 * @throws NullPointerException 连接或者请求为空
+	 * @throws InterruptedException 发送过程中线程被中断
+	 * @throws ServiceException.NotRunningException 服务未运行
+	 * @throws NetworkException.TimeoutException 请求超时
+	 * @throws NetworkException.TooMuchRequestException 请求过多
+	 * @throws NetworkException 发送失败
+	 */
 	public void oneWaySend(Channel channel, Request request) throws InterruptedException {
-		oneWaySend(channel, request, networkConfig.getRequestTimeout());
+		oneWaySend(channel, request, requestTimeout);
 	}
 
-	@Override
+	/**
+	 * 单向发送请求
+	 *
+	 * @param channel 连接
+	 * @param request 请求（必须是无需ack类型）
+	 * @param requestTimeout 请求超时（ms）
+	 * @throws IllegalArgumentException 参数错误
+	 * @throws NullPointerException 连接或者请求为空
+	 * @throws InterruptedException 发送过程中线程被中断
+	 * @throws ServiceException.NotRunningException 服务未运行
+	 * @throws NetworkException.TimeoutException 请求超时
+	 * @throws NetworkException.TooMuchRequestException 请求过多
+	 * @throws NetworkException 发送失败
+	 */
 	public void oneWaySend(final Channel channel, Request request, int requestTimeout) throws InterruptedException {
+		if (!(requestTimeout > 0)) {
+			throw new IllegalArgumentException("requestTimeout " + requestTimeout + " <= 0");
+		}
+
 		checkRunning();
 
 		if (request.getHeader().isNeedAck()) {
@@ -151,26 +271,77 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 		responsePromise.get();
 	}
 
-	@Override
+	/**
+	 * 同步发送请求
+	 *
+	 * @param channel 连接
+	 * @param request 请求
+	 * @return 响应
+	 * @throws IllegalArgumentException 参数错误
+	 * @throws NullPointerException 连接或者请求为空
+	 * @throws InterruptedException 发送过程中线程被中断
+	 * @throws ServiceException.NotRunningException 服务未运行
+	 * @throws NetworkException.TimeoutException 请求超时
+	 * @throws NetworkException.TooMuchRequestException 请求过多
+	 * @throws NetworkException 发送失败
+	 */
 	public Response syncSend(Channel channel, Request request) throws InterruptedException {
 		return asyncSend(channel, request).get();
 	}
 
-	@Override
+	/**
+	 * 同步发送请求
+	 *
+	 * @param channel 连接
+	 * @param request 请求
+	 * @param requestTimeout 请求超时（ms）
+	 * @return 响应
+	 * @throws IllegalArgumentException 参数错误
+	 * @throws NullPointerException 连接或者请求为空
+	 * @throws InterruptedException 发送过程中线程被中断
+	 * @throws ServiceException.NotRunningException 服务未运行
+	 * @throws NetworkException.TimeoutException 请求超时
+	 * @throws NetworkException.TooMuchRequestException 请求过多
+	 * @throws NetworkException 其他网络异常
+	 */
 	public Response syncSend(Channel channel, Request request, int requestTimeout) throws InterruptedException {
 		return asyncSend(channel, request, requestTimeout).get();
 	}
 
-	@Override
+	/**
+	 * 异步发送请求
+	 *
+	 * @param channel 连接
+	 * @param request 请求
+	 * @return 响应Future
+	 * @throws IllegalArgumentException 参数错误
+	 * @throws NullPointerException 连接或者请求为空
+	 * @throws ServiceException.NotRunningException 服务未运行
+	 * @throws NetworkException.TooMuchRequestException 请求过多
+	 */
 	public ResponseFuture asyncSend(Channel channel, Request request) {
-		return asyncSend(channel, request, networkConfig.getRequestTimeout());
+		return asyncSend(channel, request, requestTimeout);
 	}
 
-	@Override
+	/**
+	 * 异步发送请求
+	 *
+	 * @param channel 连接
+	 * @param request 请求
+	 * @param requestTimeout 请求超时（ms）
+	 * @return 响应Future
+	 * @throws IllegalArgumentException 参数错误
+	 * @throws NullPointerException 连接或者请求为空
+	 * @throws ServiceException.NotRunningException 服务未运行
+	 * @throws NetworkException.TooMuchRequestException 请求过多
+	 */
 	public ResponseFuture asyncSend(final Channel channel, final Request request, int requestTimeout) {
+		if (!(requestTimeout > 0)) {
+			throw new IllegalArgumentException("requestTimeout " + requestTimeout + " <= 0");
+		}
 		checkRunning();
 
-		final ResponsePromise responsePromise = acquirePromise(request, requestTimeout);
+		final ResponsePromise responsePromise = acquirePromise(Objects.requireNonNull(request), requestTimeout);
 
 		channel.writeAndFlush(request).addListener(new CommandSendFutureListener(request) {
 			@Override
@@ -206,18 +377,20 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 
 		responsePromise.multicaster.setExceptionHandler(multicastExceptionHandler);
 
-		if (networkConfig.getResponseMulticastExecutor() != null) {
-			responsePromise.multicaster.setMulticastExecutor(networkConfig.getResponseMulticastExecutor());
+		if (responseMulticastExecutor != null) {
+			responsePromise.multicaster.setMulticastExecutor(responseMulticastExecutor);
 		}
 		return responsePromise;
 	}
 
 	private void respondAllChannelPromise(Channel channel, Throwable cause) {
-		Collection<ResponsePromise> promises = channel.attr(RESPONSE_PROMISE_KEY).get().values();
-		for (ResponsePromise promise : promises) {
-			promise.response(cause);
+		Map<Integer, ResponsePromise> responsePromiseMap = channel.attr(RESPONSE_PROMISE_KEY).get();
+		if (responsePromiseMap != null) {
+			for (ResponsePromise promise : responsePromiseMap.values()) {
+				promise.response(cause);
+			}
+			requestedChannelSet.remove(channel);
 		}
-		requestedChannelSet.remove(channel);
 	}
 
 	protected void requestHandleFailed(Channel channel, Request request, Throwable throwable) {
@@ -225,7 +398,7 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 	}
 
 	protected Heartbeat createHeartbeat() {
-		return new Heartbeat(networkConfig.getHeartbeatCommandType());
+		return new Heartbeat(heartbeatCommandType);
 	}
 
 	private class CommandSendFutureListener implements ChannelFutureListener {
@@ -246,10 +419,13 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 		}
 	}
 
+	/**
+	 * Pipeline装配器
+	 */
 	protected class PipelineAssembler extends ChannelInitializer<Channel> {
 
-		final CommandHandler commandHandler = new CommandHandler();
-		final NettyService.ChannelStateHandler channelStateHandler = new ChannelStateHandler();
+		final ChannelHandler commandHandler = new CommandHandler();
+		final ChannelHandler channelStateHandler = new ChannelStateHandler();
 
 		@Override
 		protected void initChannel(Channel channel) throws Exception {
@@ -259,13 +435,17 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 		protected void assemblePipeline(ChannelPipeline pipeline) {
 			pipeline.addLast(
 					new Encoder(), new Decoder(),
-					new IdleStateHandler(networkConfig.getChannelReadTimeout(),
-							networkConfig.getChannelWriteTimeout(), 0, TimeUnit.MILLISECONDS),
+					new IdleStateHandler(channelReadTimeout, channelWriteTimeout, 0, TimeUnit.MILLISECONDS),
 					channelStateHandler, commandHandler
 			);
 		}
 	}
 
+	/**
+	 * 命令处理器，处理入站数据
+	 *
+	 * 线程安全，可装配到多个ChannelPipeline
+	 */
 	@ChannelHandler.Sharable
 	protected class CommandHandler extends SimpleChannelInboundHandler<Command> {
 
@@ -274,36 +454,39 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 			final Channel channel = ctx.channel();
 			switch (command.getHeader().getType()) {
 				case Header.REQUEST:
-					if (command.getType() != networkConfig.getHeartbeatCommandType()) {
+					if (command.getType() == heartbeatCommandType) {
 						return;
 					}
 
 					final Request request = (Request) command;
-					final RequestHandler requestHandler = networkConfig.getRequestHandlerFactory()
-							.getHandler(request.getType());
-
-					requestHandler.getExecutor().execute(new Runnable() {
-						@Override
-						public void run() {
-							try {
-								final Response response = requestHandler.handle(request);
+					try {
+						final RequestHandler requestHandler = requestHandlerFactory.getHandler(request.getType());
+						requestHandler.getExecutor().execute(new Runnable() {
+							@Override
+							public void run() {
+								Response response;
+								try {
+									response = requestHandler.handle(request);
+								} catch (Throwable throwable) {
+									requestHandleFailed(channel, request, throwable);
+									return;
+								}
 
 								if (!request.getHeader().isNeedAck() || response == null) {
 									return;
 								}
-
 								channel.writeAndFlush(response).addListener(new CommandSendFutureListener(response));
-							} catch (Throwable throwable) {
-								requestHandleFailed(channel, request, throwable);
 							}
-						}
-					});
+						});
+					} catch (Exception e) {
+						logger.error("Request handler execute error", e);
+					}
 					break;
 				case Header.RESPONSE:
 					Response response = (Response) command;
 
 					Map<Integer, ResponsePromise> responsePromiseMap = channel.attr(RESPONSE_PROMISE_KEY).get();
-					ResponsePromise responsePromise = responsePromiseMap.remove(response.getRequestId());
+					ResponsePromise responsePromise = responsePromiseMap.remove(response.getId());
 
 					if (responsePromiseMap.isEmpty()) {
 						requestedChannelSet.remove(channel);
@@ -317,6 +500,11 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 		}
 	}
 
+	/**
+	 * 连接（Channel）状态处理器
+	 *
+	 * 线程安全，可装配到多个ChannelPipeline
+	 */
 	@ChannelHandler.Sharable
 	protected class ChannelStateHandler extends ChannelInboundHandlerAdapter {
 
@@ -335,7 +523,7 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
 					ChannelEvent.EventType.CLOSE));
 
-			respondAllChannelPromise(ctx.channel(), new RequestException("Channel inactive"));
+			respondAllChannelPromise(ctx.channel(), new NetworkException("Channel inactive"));
 		}
 
 		@Override
@@ -372,27 +560,37 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 		}
 	}
 
+	/**
+	 * 命令编码器
+	 */
 	protected class Encoder extends MessageToByteEncoder<Command> {
 
 		@Override
 		protected void encode(ChannelHandlerContext ctx, Command command,
 							  ByteBuf out) throws Exception {
-			command.encode(out);
+			command.encode(out);//编码命令
 		}
 
 		@Override
 		protected ByteBuf allocateBuffer(ChannelHandlerContext ctx, Command command,
 										 boolean preferDirect) throws Exception {
-			return networkConfig.getBufAllocator() == null ?
+			//分配ByteBuf
+			return bufAllocator == null ?
 					super.allocateBuffer(ctx, command, preferDirect) :
-					networkConfig.getBufAllocator().allocate(ctx, command, preferDirect);
+					bufAllocator.allocate(ctx, command, preferDirect);
 		}
 	}
 
+	/**
+	 * 命令解码器
+	 */
 	protected class Decoder extends LengthFieldBasedFrameDecoder {
 
 		Decoder() {
-			super(Math.min(networkConfig.getMaxFrameLength(), NetworkConfig.MAX_FRAME_LENGTH), 0, 3, -3, 3);
+			super(Math.min(maxFrameLength, Command.MAX_FRAME_LENGTH), 0,
+					Command.LENGTH_FIELD_LENGTH,
+					-Command.LENGTH_FIELD_LENGTH,
+					Command.LENGTH_FIELD_LENGTH);
 		}
 
 		@Override
@@ -402,12 +600,12 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 				//未完整包
 				return null;
 			}
+
 			Header header = new Header();
-			header.decode(frame);
+			header.decode(frame);//解码命令头
 
-			Command command = networkConfig.getCommandFactory().createByType(header.getCommandType());
-			command.decode(frame);
-
+			Command command = commandFactory.createByType(header);
+			command.decode(frame);//解码命令体
 			return command;
 		}
 
@@ -416,5 +614,150 @@ class NettyService extends ThreadService implements NetworkService, EventSource<
 			//只读一次, 无需retain
 			return buffer.slice(index, length);
 		}
+	}
+
+
+	public boolean isSoTcpNoDelay() {
+		return soTcpNoDelay;
+	}
+
+	public void setSoTcpNoDelay(boolean soTcpNoDelay) {
+		this.soTcpNoDelay = soTcpNoDelay;
+	}
+
+	public boolean isSoReuseAddress() {
+		return soReuseAddress;
+	}
+
+	public void setSoReuseAddress(boolean soReuseAddress) {
+		this.soReuseAddress = soReuseAddress;
+	}
+
+	public boolean isSoKeepAlive() {
+		return soKeepAlive;
+	}
+
+	public void setSoKeepAlive(boolean soKeepAlive) {
+		this.soKeepAlive = soKeepAlive;
+	}
+
+	public int getSoLinger() {
+		return soLinger;
+	}
+
+	public void setSoLinger(int soLinger) {
+		this.soLinger = soLinger;
+	}
+
+	public int getSoSendBuffer() {
+		return soSendBuffer;
+	}
+
+	public void setSoSendBuffer(int soSendBuffer) {
+		this.soSendBuffer = soSendBuffer;
+	}
+
+	public int getSoReceiveBuffer() {
+		return soReceiveBuffer;
+	}
+
+	public void setSoReceiveBuffer(int soReceiveBuffer) {
+		this.soReceiveBuffer = soReceiveBuffer;
+	}
+
+	public int getSelectors() {
+		return selectors;
+	}
+
+	public void setSelectors(int selectors) {
+		this.selectors = selectors;
+	}
+
+	public int getRequestTimeout() {
+		return requestTimeout;
+	}
+
+	public void setRequestTimeout(int requestTimeout) {
+		this.requestTimeout = requestTimeout;
+	}
+
+	public int getMaxFrameLength() {
+		return maxFrameLength;
+	}
+
+	public void setMaxFrameLength(int maxFrameLength) {
+		this.maxFrameLength = maxFrameLength;
+	}
+
+	public int getChannelReadTimeout() {
+		return channelReadTimeout;
+	}
+
+	public void setChannelReadTimeout(int channelReadTimeout) {
+		this.channelReadTimeout = channelReadTimeout;
+	}
+
+	public int getChannelWriteTimeout() {
+		return channelWriteTimeout;
+	}
+
+	public void setChannelWriteTimeout(int channelWriteTimeout) {
+		this.channelWriteTimeout = channelWriteTimeout;
+	}
+
+	public int getRequestTimeoutDetectInterval() {
+		return requestTimeoutDetectInterval;
+	}
+
+	public void setRequestTimeoutDetectInterval(int requestTimeoutDetectInterval) {
+		this.requestTimeoutDetectInterval = requestTimeoutDetectInterval;
+	}
+
+	public int getHeartbeatCommandType() {
+		return heartbeatCommandType;
+	}
+
+	public void setHeartbeatCommandType(int heartbeatCommandType) {
+		this.heartbeatCommandType = heartbeatCommandType;
+	}
+
+	public int getMaxProcessingRequests() {
+		return maxProcessingRequests;
+	}
+
+	public void setMaxProcessingRequests(int maxProcessingRequests) {
+		this.maxProcessingRequests = maxProcessingRequests;
+	}
+
+	public BufAllocator getBufAllocator() {
+		return bufAllocator;
+	}
+
+	public void setBufAllocator(BufAllocator bufAllocator) {
+		this.bufAllocator = bufAllocator;
+	}
+
+	public CommandFactory getCommandFactory() {
+		return commandFactory;
+	}
+
+	public void setCommandFactory(CommandFactory commandFactory) {
+		this.commandFactory = commandFactory;
+	}
+
+	public RequestHandlerFactory getRequestHandlerFactory() {
+		return requestHandlerFactory;
+	}
+
+	public void setRequestHandlerFactory(RequestHandlerFactory requestHandlerFactory) {
+		this.requestHandlerFactory = requestHandlerFactory;
+	}
+
+	public Executor getResponseMulticastExecutor() {
+		return responseMulticastExecutor;
+	}
+
+	public void setResponseMulticastExecutor(Executor responseMulticastExecutor) {
+		this.responseMulticastExecutor = responseMulticastExecutor;
 	}
 }

@@ -9,5 +9,5 @@ public interface ResponseFutureListener extends Listener {
 
 	void responseReceived(Request request, Response response);
 
-	void exceptionCaught(Request request, RequestException re);
+	void exceptionCaught(Request request, NetworkException re);
 }

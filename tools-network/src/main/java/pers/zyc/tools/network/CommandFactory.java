@@ -5,7 +5,11 @@ package pers.zyc.tools.network;
  */
 public interface CommandFactory {
 
-	int HEARTBEAT = 100;
-
-	Command createByType(int commandType);
+	/**
+	 * 命令解码时通过已解码的命令头获取命令实体
+	 *
+	 * @param header 命令头
+	 * @return 命令实体
+	 */
+	Command createByType(Header header);
 }

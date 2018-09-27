@@ -12,16 +12,34 @@ public class Header implements Protocol {
 	static final int REQUEST = 0;
 	static final int RESPONSE = 1;
 
+	/**
+	 * 命令头类型，标识命令是请求（0）还是响应（1）
+	 */
 	private int headerType;
 
+	/**
+	 * 是否需要ack，标识命令是否需要应答，一般来说请求需要应答，响应不需要应答
+	 */
 	private boolean needAck;
 
+	/**
+	 * 命令ID，每个请求需要有唯一id，请求的响应id需要与请求id相同
+	 */
 	private int commandId;
 
+	/**
+	 * 命令类型
+	 */
 	private int commandType;
 
+	/**
+	 * 命令版本号
+	 */
 	private int commandVersion;
 
+	/**
+	 * 命令时间
+	 */
 	private long commandTime;
 
 	private int status;
@@ -43,7 +61,7 @@ public class Header implements Protocol {
 	}
 
 	public Header commandType(int commandType) {
-		setCommandId(commandType);
+		setCommandType(commandType);
 		return this;
 	}
 
@@ -121,6 +139,7 @@ public class Header implements Protocol {
 	@Override
 	public void decode(ByteBuf byteBuf) throws Exception {
 		this.headerType(byteBuf.readByte())
+			.needAck(byteBuf.readBoolean())
 			.commandVersion(byteBuf.readByte())
 			.commandId(byteBuf.readInt())
 			.commandType(byteBuf.readInt())

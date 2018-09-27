@@ -27,7 +27,7 @@ class ResponsePromise implements ResponseFuture {
 		this.request = request;
 
 		if (requestPermits != null && !requestPermits.tryAcquire()) {
-			throw new RequestException.TooMuchRequestException();
+			throw new NetworkException.TooMuchRequestException();
 		}
 		this.requestPermits = requestPermits;
 
@@ -43,7 +43,7 @@ class ResponsePromise implements ResponseFuture {
 		if (createTime + requestTimeout > TimeMillis.INSTANCE.get()) {
 			return false;
 		}
-		response(new RequestException.TimeoutException());
+		response(new NetworkException.TimeoutException());
 		return true;
 	}
 
@@ -55,11 +55,7 @@ class ResponsePromise implements ResponseFuture {
 			multicaster.getMulticastExecutor().execute(new Runnable() {
 				@Override
 				public void run() {
-					if (exceptional) {
-						listener.exceptionCaught(request, (RequestException) response);
-					} else {
-						listener.responseReceived(request, (Response) response);
-					}
+					multicast(listener);
 				}
 			});
 		}
@@ -75,6 +71,13 @@ class ResponsePromise implements ResponseFuture {
 		return response != null;
 	}
 
+	private Response cast() {
+		if (response instanceof NetworkException) {
+			throw (NetworkException) response;
+		}
+		return (Response) response;
+	}
+
 	@Override
 	public Response get() throws InterruptedException {
 		synchronized (this) {
@@ -83,13 +86,6 @@ class ResponsePromise implements ResponseFuture {
 			}
 		}
 		return cast();
-	}
-
-	private Response cast() {
-		if (response instanceof RequestException) {
-			throw (RequestException) response;
-		}
-		return (Response) response;
 	}
 
 	@Override
@@ -107,7 +103,7 @@ class ResponsePromise implements ResponseFuture {
 		}
 
 		if (timeout <= 0) {
-			throw new RequestException.TimeoutException();
+			throw new NetworkException.TimeoutException();
 		}
 		return cast();
 	}
@@ -118,22 +114,27 @@ class ResponsePromise implements ResponseFuture {
 		}
 
 		exceptional = resp instanceof Throwable;
-		if (exceptional && !(resp instanceof RequestException)) {
-			resp = new RequestException((Throwable) resp);
+		if (exceptional && !(resp instanceof NetworkException)) {
+			resp = new NetworkException((Throwable) resp);
 		}
 		response = resp;
+		notifyAll();
 
 		if (requestPermits != null) {
 			requestPermits.release();
 		}
 
 		if (multicaster.hasListeners()) {
-			if (exceptional) {
-				multicaster.listeners.exceptionCaught(request, (RequestException) response);
-			} else {
-				assert response instanceof Response;
-				multicaster.listeners.responseReceived(request, (Response) response);
-			}
+			multicast(multicaster.listeners);
+		}
+	}
+
+	private void multicast(ResponseFutureListener listener) {
+		if (exceptional) {
+			listener.exceptionCaught(request, (NetworkException) response);
+		} else {
+			assert response instanceof Response;
+			listener.responseReceived(request, (Response) response);
 		}
 	}
 }

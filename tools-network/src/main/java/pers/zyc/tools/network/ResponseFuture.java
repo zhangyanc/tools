@@ -19,8 +19,8 @@ public interface ResponseFuture extends Listenable<ResponseFutureListener> {
 	 *
 	 * @return 响应
 	 * @throws InterruptedException 阻塞过程中线程被中断
-	 * @throws RequestException.TimeoutException 超时
-	 * @throws RequestException 其他异常都将被包装为此RE返回
+	 * @throws NetworkException.TimeoutException 超时
+	 * @throws NetworkException 其他异常都将被包装为此RE返回
 	 */
 	Response get() throws InterruptedException;
 
@@ -32,8 +32,8 @@ public interface ResponseFuture extends Listenable<ResponseFutureListener> {
 	 * @param timeout 等待时间（ms）
 	 * @return 响应
 	 * @throws InterruptedException 阻塞过程中线程被中断
-	 * @throws RequestException.TimeoutException 超时
-	 * @throws RequestException 其他异常都将被包装为此RE返回
+	 * @throws NetworkException.TimeoutException 超时
+	 * @throws NetworkException 其他异常都将被包装为此RE返回
 	 */
 	Response get(long timeout) throws InterruptedException;
 }

@@ -20,7 +20,7 @@ public class Heartbeat extends Request {
 	}
 
 	@Override
-	public void decode(ByteBuf byteBuf) throws Exception {
+	public void decodeBody(ByteBuf byteBuf) throws Exception {
 		//心跳请求没有请求内容, 无需解码
 	}
 }
