@@ -1,8 +1,8 @@
 package pers.zyc.tools.network.echo.server;
 
-import pers.zyc.tools.network.Request;
-import pers.zyc.tools.network.RequestHandler;
 import pers.zyc.tools.network.Response;
+import pers.zyc.tools.network.SingleRequestSupportRequestHandler;
+import pers.zyc.tools.network.echo.Commands;
 import pers.zyc.tools.network.echo.Echo;
 import pers.zyc.tools.network.echo.EchoAck;
 
@@ -11,23 +11,25 @@ import java.util.concurrent.Executor;
 /**
  * @author zhangyancheng
  */
-public class EchoHandler implements RequestHandler {
+public class EchoHandler extends SingleRequestSupportRequestHandler<Echo> {
 
-	private static final Executor ECHO_EXECUTOR = new Executor() {
-		@Override
-		public void execute(Runnable command) {
-			command.run();
-		}
-	};
-
-	@Override
-	public Executor getExecutor() {
-		return ECHO_EXECUTOR;
+	{
+		//echo命令处理非常简单，在handle调用线程执行
+		setExecutor(new Executor() {
+			@Override
+			public void execute(Runnable command) {
+				command.run();
+			}
+		});
 	}
 
 	@Override
-	public Response handle(Request request) {
-		Echo echo = (Echo) request;
+	public int supportedRequestType() {
+		return Commands.ECHO;
+	}
+
+	@Override
+	protected Response handle0(Echo echo) {
 		return new EchoAck(echo.getId(), echo.getMsg());
 	}
 }

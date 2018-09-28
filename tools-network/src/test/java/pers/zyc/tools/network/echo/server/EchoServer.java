@@ -1,6 +1,6 @@
 package pers.zyc.tools.network.echo.server;
 
-import pers.zyc.tools.network.NettyServer;
+import pers.zyc.tools.network.NetServer;
 import pers.zyc.tools.network.echo.EchoCommandFactory;
 
 import java.io.IOException;
@@ -13,11 +13,12 @@ public class EchoServer {
 	public static final int PORT = 8806;
 
 	public static void main(String[] args) throws IOException {
-		NettyServer echoServer = new NettyServer();
+		NetServer echoServer = new NetServer();
 		echoServer.setPort(PORT);
 
-		echoServer.setRequestHandlerFactory(new EchoHandlerFactory(new EchoHandler()));
+		echoServer.setRequestHandlerFactory(new EchoHandlerFactory());
 		echoServer.setCommandFactory(new EchoCommandFactory());
+
 		echoServer.start();
 
 		char quit = (char) System.in.read();
