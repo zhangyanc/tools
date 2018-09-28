@@ -10,7 +10,7 @@ import java.io.IOException;
  */
 public class EchoServer {
 
-	public static final int PORT = 8806;
+	public static final int PORT = 7;
 
 	public static void main(String[] args) throws IOException {
 		NetServer echoServer = new NetServer();
