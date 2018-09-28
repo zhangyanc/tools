@@ -81,24 +81,24 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	private int maxFrameLength = Command.MAX_FRAME_LENGTH;
 
 	/**
-	 * 连接读空闲时间（ms），双向心跳模式中，一旦连接读空闲则对端已宕机，则关闭连接
+	 * 连接读空闲时间（ms）
 	 */
 	private int channelReadTimeout = 60000;
 
 	/**
-	 * 连接写空闲时间（ms），双向心跳模式中，连接写空闲则需要发送心跳包
+	 * 连接写空闲时间（ms）
 	 */
 	private int channelWriteTimeout = 20000;
+
+	/**
+	 * 连接读写都空闲时间（ms）
+	 */
+	private int channelAllTimeout = 0;
 
 	/**
 	 * 请求超时清理周期（ms）
 	 */
 	private int requestTimeoutDetectInterval = 1000;
-
-	/**
-	 * 心跳命令类型，心跳为框架自带命令，配置类型避免与用户命令类型冲突
-	 */
-	private int heartbeatCommandType = 999;
 
 	/**
 	 * 允许同时处理的最大请求数（小于0表示不做最大限制）
@@ -119,7 +119,6 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	 * 异步请求时，发送响应回调的执行器，为null表示在收到响应的线程中执行
 	 */
 	private Executor responseMulticastExecutor;
-
 
 	/**
 	 * 请求信号量，用于控制最大并发请求数，为null时表示不控制
@@ -158,8 +157,25 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	@Override
 	protected void doStart() {
 		requestPermits = maxProcessingRequests > 0 ? new Semaphore(maxProcessingRequests) : null;
+
 		//设置当前服务线程名
 		setThreadFactory(new GeneralThreadFactory("TimeoutRequestClear"));
+
+		//添加连接事件监听器，异常时关闭连接，连接关闭时清理所有通过此连接发送的请求
+		addListener(new EventListener<ChannelEvent>() {
+			@Override
+			public void onEvent(ChannelEvent event) {
+				switch (event.eventType) {
+					case EXCEPTION:
+						event.channel.close();
+						break;
+					case CLOSE:
+						respondAllChannelPromise(event.channel, new NetworkException("Channel closed!"));
+						break;
+					default:
+				}
+			}
+		});
 		logger.info(getName() + " started");
 	}
 
@@ -198,6 +214,7 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 			respondAllChannelPromise(channel, new NetworkException("Service stopped!"));
 		}
 		super.doStop();
+		channelEventMulticaster.removeAllListeners();
 		logger.info(getName() + " stopped");
 	}
 
@@ -216,16 +233,14 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	 *
 	 * @param channel 连接
 	 * @param request 请求（必须是无需ack类型）
-	 * @throws IllegalArgumentException 参数错误
-	 * @throws NullPointerException 连接或者请求为空
 	 * @throws InterruptedException 发送过程中线程被中断
 	 * @throws ServiceException.NotRunningException 服务未运行
 	 * @throws NetworkException.TimeoutException 请求超时
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 * @throws NetworkException 发送失败
 	 */
-	public void oneWaySend(Channel channel, Request request) throws InterruptedException {
-		oneWaySend(channel, request, requestTimeout);
+	public void sendOneWay(Channel channel, Request request) throws InterruptedException {
+		sendOneWay(channel, request, requestTimeout);
 	}
 
 	/**
@@ -234,19 +249,16 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	 * @param channel 连接
 	 * @param request 请求（必须是无需ack类型）
 	 * @param requestTimeout 请求超时（ms）
-	 * @throws IllegalArgumentException 参数错误
-	 * @throws NullPointerException 连接或者请求为空
 	 * @throws InterruptedException 发送过程中线程被中断
 	 * @throws ServiceException.NotRunningException 服务未运行
 	 * @throws NetworkException.TimeoutException 请求超时
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 * @throws NetworkException 发送失败
 	 */
-	public void oneWaySend(final Channel channel, Request request, int requestTimeout) throws InterruptedException {
+	public void sendOneWay(final Channel channel, Request request, int requestTimeout) throws InterruptedException {
 		if (!(requestTimeout > 0)) {
 			throw new IllegalArgumentException("requestTimeout " + requestTimeout + " <= 0");
 		}
-
 		checkRunning();
 
 		if (request.getHeader().isNeedAck()) {
@@ -271,16 +283,14 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	 * @param channel 连接
 	 * @param request 请求
 	 * @return 响应
-	 * @throws IllegalArgumentException 参数错误
-	 * @throws NullPointerException 连接或者请求为空
 	 * @throws InterruptedException 发送过程中线程被中断
 	 * @throws ServiceException.NotRunningException 服务未运行
 	 * @throws NetworkException.TimeoutException 请求超时
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 * @throws NetworkException 发送失败
 	 */
-	public Response syncSend(Channel channel, Request request) throws InterruptedException {
-		return asyncSend(channel, request).get();
+	public Response sendSync(Channel channel, Request request) throws InterruptedException {
+		return sendAsync(channel, request).get();
 	}
 
 	/**
@@ -290,16 +300,14 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	 * @param request 请求
 	 * @param requestTimeout 请求超时（ms）
 	 * @return 响应
-	 * @throws IllegalArgumentException 参数错误
-	 * @throws NullPointerException 连接或者请求为空
 	 * @throws InterruptedException 发送过程中线程被中断
 	 * @throws ServiceException.NotRunningException 服务未运行
 	 * @throws NetworkException.TimeoutException 请求超时
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 * @throws NetworkException 其他网络异常
 	 */
-	public Response syncSend(Channel channel, Request request, int requestTimeout) throws InterruptedException {
-		return asyncSend(channel, request, requestTimeout).get();
+	public Response sendSync(Channel channel, Request request, int requestTimeout) throws InterruptedException {
+		return sendAsync(channel, request, requestTimeout).get();
 	}
 
 	/**
@@ -308,13 +316,11 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	 * @param channel 连接
 	 * @param request 请求
 	 * @return 响应Future
-	 * @throws IllegalArgumentException 参数错误
-	 * @throws NullPointerException 连接或者请求为空
 	 * @throws ServiceException.NotRunningException 服务未运行
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 */
-	public ResponseFuture asyncSend(Channel channel, Request request) {
-		return asyncSend(channel, request, requestTimeout);
+	public ResponseFuture sendAsync(Channel channel, Request request) {
+		return sendAsync(channel, request, requestTimeout);
 	}
 
 	/**
@@ -324,19 +330,16 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	 * @param request 请求
 	 * @param requestTimeout 请求超时（ms）
 	 * @return 响应Future
-	 * @throws IllegalArgumentException 参数错误
-	 * @throws NullPointerException 连接或者请求为空
 	 * @throws ServiceException.NotRunningException 服务未运行
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 */
-	public ResponseFuture asyncSend(final Channel channel, final Request request, int requestTimeout) {
+	public ResponseFuture sendAsync(final Channel channel, final Request request, int requestTimeout) {
 		if (!(requestTimeout > 0)) {
 			throw new IllegalArgumentException("requestTimeout " + requestTimeout + " <= 0");
 		}
 		checkRunning();
 
 		final ResponsePromise responsePromise = acquirePromise(Objects.requireNonNull(request), requestTimeout);
-
 		channel.writeAndFlush(request).addListener(new CommandSendFutureListener(request) {
 			@Override
 			public void operationComplete(ChannelFuture future) throws Exception {
@@ -366,11 +369,12 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 		return responsePromiseMap;
 	}
 
-	private ResponsePromise acquirePromise(Request request, int requestTimeout) {
+	private ResponsePromise acquirePromise(Request request, int requestTimeout) throws
+			NetworkException.TooMuchRequestException{
+
 		ResponsePromise responsePromise = new ResponsePromise(requestTimeout, request, requestPermits);
-
+		//设置广播执行器以及广播异常处理
 		responsePromise.multicaster.setExceptionHandler(multicastExceptionHandler);
-
 		if (responseMulticastExecutor != null) {
 			responsePromise.multicaster.setMulticastExecutor(responseMulticastExecutor);
 		}
@@ -387,14 +391,23 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 		}
 	}
 
-	protected void requestHandleFailed(Channel channel, Request request, Throwable throwable) {
-		logger.error(request + " handle failed, Channel: " + channel, throwable);
+	/**
+	 * 请求处理异常
+	 *
+	 * @param channel 连接
+	 * @param request 请求
+	 * @param e 异常
+	 */
+	protected void requestHandleFailed(Channel channel, Request request, Exception e) {
+		logger.error(request + " handle failed, Channel: " + channel, e);
 	}
 
-	protected Heartbeat createHeartbeat() {
-		return new Heartbeat(heartbeatCommandType);
-	}
-
+	/**
+	 * write监听器
+	 *
+	 * 因为exceptionCaught只能捕获入栈处理异常，因此写操作应注册此监听器，
+	 * 用于在操作失败时（连接异常？）关闭连接
+	 */
 	private class CommandSendFutureListener implements ChannelFutureListener {
 
 		final Command command;
@@ -406,8 +419,9 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 		@Override
 		public void operationComplete(ChannelFuture future) throws Exception {
 			command.writeComplete(future.isSuccess());
+
 			if (!future.isSuccess()) {
-				logger.error(command + " send failed, Channel: " + future.channel(), future.cause());
+				logger.error(command + " send failed, close Channel: " + future.channel(), future.cause());
 				future.channel().close();
 			}
 		}
@@ -428,9 +442,16 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 
 		protected void assemblePipeline(ChannelPipeline pipeline) {
 			pipeline.addLast(
-					new Encoder(), new Decoder(),
-					new IdleStateHandler(channelReadTimeout, channelWriteTimeout, 0, TimeUnit.MILLISECONDS),
-					channelStateHandler, commandHandler
+					new Encoder(),
+					new Decoder(),
+					new IdleStateHandler(
+							channelReadTimeout,
+							channelWriteTimeout,
+							channelAllTimeout,
+							TimeUnit.MILLISECONDS
+					),
+					channelStateHandler,
+					commandHandler
 			);
 		}
 	}
@@ -448,10 +469,6 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 			final Channel channel = ctx.channel();
 			switch (command.getHeader().getType()) {
 				case Header.REQUEST:
-					if (command.getType() == heartbeatCommandType) {
-						return;
-					}
-
 					final Request request = (Request) command;
 					try {
 						final RequestHandler requestHandler = requestHandlerFactory.getHandler(request.getType());
@@ -461,8 +478,8 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 								Response response;
 								try {
 									response = requestHandler.handle(request);
-								} catch (Throwable throwable) {
-									requestHandleFailed(channel, request, throwable);
+								} catch (Exception e) {
+									requestHandleFailed(channel, request, e);
 									return;
 								}
 
@@ -506,18 +523,14 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 		public void channelActive(ChannelHandlerContext ctx) throws Exception {
 			super.channelActive(ctx);
 			logger.debug("Channel active, Channel: {}", ctx.channel());
-			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NetService.this, ctx.channel(),
-					ChannelEvent.EventType.CONNECT));
+			publishChannelEvent(ctx.channel(), ChannelEvent.EventType.CONNECT);
 		}
 
 		@Override
 		public void channelInactive(ChannelHandlerContext ctx) throws Exception {
 			super.channelInactive(ctx);
 			logger.debug("Channel inactive, Channel: {}", ctx.channel());
-			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NetService.this, ctx.channel(),
-					ChannelEvent.EventType.CLOSE));
-
-			respondAllChannelPromise(ctx.channel(), new NetworkException("Channel inactive"));
+			publishChannelEvent(ctx.channel(), ChannelEvent.EventType.CLOSE);
 		}
 
 		@Override
@@ -525,19 +538,22 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 			super.userEventTriggered(ctx, evt);
 			logger.debug("User event triggered, Channel: {}, Event: {}", ctx.channel(), evt);
 
-			if (evt == IdleStateEvent.READER_IDLE_STATE_EVENT) {
-				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NetService.this, ctx.channel(),
-						ChannelEvent.EventType.READ_IDLE));
-
-				logger.debug("On read idle event, Close Channel");
-				ctx.channel().close();
-			} else if (evt == IdleStateEvent.WRITER_IDLE_STATE_EVENT) {
-				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NetService.this, ctx.channel(),
-						ChannelEvent.EventType.WRITE_IDLE));
-
-				logger.debug("On write idle event, Send heartbeat");
-				Heartbeat heartbeat = createHeartbeat();
-				ctx.channel().writeAndFlush(heartbeat).addListener(new CommandSendFutureListener(heartbeat));
+			if (evt instanceof IdleStateEvent) {
+				ChannelEvent.EventType eventType;
+				switch (((IdleStateEvent) evt).state()) {
+					case READER_IDLE:
+						eventType = ChannelEvent.EventType.READ_IDLE;
+						break;
+					case WRITER_IDLE:
+						eventType = ChannelEvent.EventType.WRITE_IDLE;
+						break;
+					case ALL_IDLE:
+						eventType = ChannelEvent.EventType.ALL_IDLE;
+						break;
+					default:
+						throw new Error();
+				}
+				publishChannelEvent(ctx.channel(), eventType);
 			}
 		}
 
@@ -545,12 +561,11 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 		public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
 			super.exceptionCaught(ctx, cause);
 			logger.error(ctx.channel() + " exception caught", cause);
+			publishChannelEvent(ctx.channel(), ChannelEvent.EventType.EXCEPTION);
+		}
 
-			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NetService.this, ctx.channel(),
-					ChannelEvent.EventType.EXCEPTION));
-
-			logger.debug("On exception caught, Close Channel");
-			ctx.channel().close();
+		private void publishChannelEvent(Channel channel, ChannelEvent.EventType eventType) {
+			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NetService.this, channel, eventType));
 		}
 	}
 
@@ -696,20 +711,20 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 		this.channelWriteTimeout = channelWriteTimeout;
 	}
 
+	public int getChannelAllTimeout() {
+		return channelAllTimeout;
+	}
+
+	public void setChannelAllTimeout(int channelAllTimeout) {
+		this.channelAllTimeout = channelAllTimeout;
+	}
+
 	public int getRequestTimeoutDetectInterval() {
 		return requestTimeoutDetectInterval;
 	}
 
 	public void setRequestTimeoutDetectInterval(int requestTimeoutDetectInterval) {
 		this.requestTimeoutDetectInterval = requestTimeoutDetectInterval;
-	}
-
-	public int getHeartbeatCommandType() {
-		return heartbeatCommandType;
-	}
-
-	public void setHeartbeatCommandType(int heartbeatCommandType) {
-		this.heartbeatCommandType = heartbeatCommandType;
 	}
 
 	public int getMaxProcessingRequests() {

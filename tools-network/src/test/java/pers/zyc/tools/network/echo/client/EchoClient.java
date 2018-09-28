@@ -23,7 +23,7 @@ public class EchoClient {
 		while (i-- > 0) {
 			Channel channel = echoClient.createChannel("localhost", EchoServer.PORT);
 			Echo echo = new Echo(TimeMillis.INSTANCE.get() + " - " + Math.random());
-			Response response = echoClient.syncSend(channel, echo, 1000);
+			Response response = echoClient.sendSync(channel, echo, 1000);
 
 			EchoAck ack = (EchoAck) response;
 
@@ -31,7 +31,6 @@ public class EchoClient {
 				throw new Error();
 			}
 			channel.close().awaitUninterruptibly();
-
 			Thread.sleep(1000);
 		}
 		echoClient.stop();

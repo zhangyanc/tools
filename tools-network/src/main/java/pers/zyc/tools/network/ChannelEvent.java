@@ -13,18 +13,27 @@ public class ChannelEvent extends SourcedEvent<NetService> {
 		 * 连接就绪
 		 */
 		CONNECT,
+
 		/**
 		 * 连接关闭
 		 */
 		CLOSE,
+
 		/**
 		 * 连接读空闲
 		 */
 		READ_IDLE,
+
 		/**
 		 * 连接写空闲
 		 */
 		WRITE_IDLE,
+
+		/**
+		 * 读写都空闲
+		 */
+		ALL_IDLE,
+
 		/**
 		 * 连接异常
 		 */
