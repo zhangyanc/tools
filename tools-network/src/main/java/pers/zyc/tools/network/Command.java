@@ -1,6 +1,7 @@
 package pers.zyc.tools.network;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.channel.ChannelHandlerContext;
 
 import java.util.Objects;
 
@@ -10,22 +11,38 @@ import java.util.Objects;
 public abstract class Command implements Protocol {
 
 	/**
-	 * 单次网络发送，最大字节数
+	 * 3字节长度
+	 */
+	static final int LENGTH_FIELD_LENGTH = 3;
+
+	/**
+	 * 单次网络发送，最大字节数（3字节int最大值）
 	 */
 	static final int MAX_FRAME_LENGTH = 16777216;//16M
 
-	static final int LENGTH_FIELD_LENGTH = 3;
-
+	/**
+	 * 命令头部
+	 */
 	protected final Header header;
 
 	Command(Header header) {
 		this.header = Objects.requireNonNull(header);
 	}
 
+	/**
+	 * 返回命令头部
+	 *
+	 * @return 命令头部
+	 */
 	public Header getHeader() {
 		return header;
 	}
 
+	/**
+	 * 返回命令id
+	 *
+	 * @return 命令id
+	 */
 	public int getId() {
 		return header.getCommandId();
 	}
@@ -49,31 +66,31 @@ public abstract class Command implements Protocol {
 	public void encode(ByteBuf byteBuf) throws Exception {
 		validate();
 
-		int begin = byteBuf.writerIndex();
+		int writerBegin = byteBuf.writerIndex();
+		//空出长度位
+		byteBuf.writerIndex(writerBegin + LENGTH_FIELD_LENGTH);
 
-		//预估大小, 提前扩容
-		int estimatedSize = begin + 3 + header.getEstimatedSize() + getEstimatedSize();
-		if (byteBuf.capacity() < estimatedSize) {
-			byteBuf.capacity(estimatedSize);
-		}
-
-		byteBuf.writerIndex(begin + 3);//写长度(先填0占位)
-
-		header.encode(byteBuf);
-
+		encodeHead(byteBuf);
 		encodeBody(byteBuf);
 
-		int end = byteBuf.writerIndex();
-		//回写3字节总长度
-		byteBuf.writerIndex(begin);
-		byteBuf.writeMedium(end - begin);
-		byteBuf.writerIndex(end);
+		int writerEnd = byteBuf.writerIndex();
+		//回写总长度
+		byteBuf.writerIndex(writerBegin);
+		byteBuf.writeMedium(writerEnd - writerBegin);
+		byteBuf.writerIndex(writerEnd);
 	}
 
+	/**
+	 * 编码命令头
+	 */
+	protected void encodeHead(ByteBuf byteBuf) throws Exception {
+		header.encode(byteBuf);
+	}
+
+	/**
+	 * 编码命令体（命令内容本身）
+	 */
 	protected abstract void encodeBody(ByteBuf byteBuf) throws Exception;
-
-	protected void writeComplete(boolean success) {
-	}
 
 	/**
 	 * 解码响应, Header已经解码, 因此子类重写并解码时已经是body部分
@@ -87,5 +104,33 @@ public abstract class Command implements Protocol {
 		validate();
 	}
 
+	/**
+	 * 解码命令体（命令内容本身）
+	 */
 	protected abstract void decodeBody(ByteBuf byteBuf) throws Exception;
+
+	/**
+	 * 命令写网络完成
+	 *
+	 * @param success 是否写入成功
+	 */
+	protected void writeComplete(boolean success) {
+	}
+
+	/**
+	 * 命令编码前分配ByteBuf
+	 *
+	 * @param ctx ctx
+	 * @param preferDirect 优先直接内存
+	 * @return 分配用于当前命令编码的ByteBuf
+	 */
+	protected ByteBuf allocateBuffer(ChannelHandlerContext ctx, boolean preferDirect) {
+		//预估初始化大小
+		int estimatedCapacity = LENGTH_FIELD_LENGTH + header.getEstimatedSize() + getEstimatedSize();
+		if (preferDirect) {
+			return ctx.alloc().ioBuffer(estimatedCapacity, MAX_FRAME_LENGTH);
+		} else {
+			return ctx.alloc().heapBuffer(estimatedCapacity, MAX_FRAME_LENGTH);
+		}
+	}
 }

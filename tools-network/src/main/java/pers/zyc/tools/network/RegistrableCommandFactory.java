@@ -5,34 +5,42 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
+ * 可注册命令工厂
+ *
  * @author zhangyancheng
  */
 public class RegistrableCommandFactory implements CommandFactory {
 
-	private final Map<Integer, Constructor<? extends Command>> commandClassMap = new HashMap<>();
+	/**
+	 * 命令构造器Map
+	 */
+	private final Map<Integer, Constructor<? extends Command>> commandConstructorMap = new HashMap<>();
 
 	@Override
 	public Command createByType(Header header) {
 		try {
-			return commandClassMap.get(header.getCommandType()).newInstance(header);
+			Constructor<? extends Command> constructor = commandConstructorMap.get(header.getCommandType());
+			if (constructor != null) {
+				return constructor.newInstance(header);
+			}
 		} catch (Exception ignored) {
-			return null;
 		}
+		return null;
 	}
 
+	/**
+	 * 注册命令，命令类必须提供单独入参为Header对象的构造方法
+	 *
+	 * @param commandType 命令类型
+	 * @param commandClass 命令类
+	 */
 	public void register(int commandType, Class<? extends Command> commandClass) {
 		try {
 			Constructor<? extends Command> constructor = commandClass.getConstructor(Header.class);
 			constructor.newInstance(new Header());
-			commandClassMap.put(commandType, constructor);
+			commandConstructorMap.put(commandType, constructor);
 		} catch (Exception e) {
 			throw new RuntimeException(e);
-		}
-	}
-
-	public void registerAll(Map<Integer, Class<? extends Command>> commandClassMap) {
-		for (Map.Entry<Integer, Class<? extends Command>> entry : commandClassMap.entrySet()) {
-			register(entry.getKey(), entry.getValue());
 		}
 	}
 }

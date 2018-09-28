@@ -15,7 +15,7 @@ import java.net.SocketAddress;
 /**
  * @author zhangyancheng
  */
-public class NettyClient extends NettyService {
+public class NetClient extends NetService {
 
 	/**
 	 * 连接超时时间（ms）
@@ -24,7 +24,7 @@ public class NettyClient extends NettyService {
 
 	private final Bootstrap bootstrap = new Bootstrap();
 
-	public NettyClient() {
+	public NetClient() {
 	}
 
 	@Override

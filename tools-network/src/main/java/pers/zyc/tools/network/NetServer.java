@@ -16,7 +16,7 @@ import java.util.concurrent.ThreadFactory;
 /**
  * @author zhangyancheng
  */
-public class NettyServer extends NettyService {
+public class NetServer extends NetService {
 
 	/**
 	 * 是否使用epoll

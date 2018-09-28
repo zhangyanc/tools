@@ -42,9 +42,6 @@ public class Header implements Protocol {
 	 */
 	private long commandTime;
 
-	private int status;
-	private String error;
-
 	public Header headerType(int headerType) {
 		setHeaderType(headerType);
 		return this;
@@ -75,16 +72,6 @@ public class Header implements Protocol {
 		return this;
 	}
 
-	public Header status(int status) {
-		setStatus(status);
-		return this;
-	}
-
-	public Header error(String error) {
-		setError(error);
-		return this;
-	}
-
 	public boolean isRequest() {
 		return headerType == REQUEST;
 	}
@@ -96,14 +83,7 @@ public class Header implements Protocol {
 
 	@Override
 	public int getEstimatedSize() {
-		if (isRequest()) {
-			return REQUEST_HEADER_LENGTH;
-		}
-		int size = REQUEST_HEADER_LENGTH + 4;
-		if (error != null) {
-			size += error.length();
-		}
-		return size;
+		return REQUEST_HEADER_LENGTH;
 	}
 
 	@Override
@@ -123,17 +103,6 @@ public class Header implements Protocol {
 		byteBuf.writeInt(commandId);
 		byteBuf.writeInt(commandType);
 		byteBuf.writeLong(commandTime);
-
-		if (!isRequest()) {
-			byteBuf.writeInt(status);
-			if (error == null) {
-				byteBuf.writeInt(0);
-			} else {
-				byte[] errorMsg = error.getBytes(UTF_8);
-				byteBuf.writeInt(errorMsg.length);
-				byteBuf.writeBytes(errorMsg);
-			}
-		}
 	}
 
 	@Override
@@ -144,16 +113,6 @@ public class Header implements Protocol {
 			.commandId(byteBuf.readInt())
 			.commandType(byteBuf.readInt())
 			.commandTime(byteBuf.readLong());
-
-		if (!isRequest()) {
-			setStatus(byteBuf.readInt());
-			int errorMsgLength = byteBuf.readInt();
-			if (errorMsgLength > 0) {
-				byte[] errorMsg = new byte[errorMsgLength];
-				byteBuf.readBytes(errorMsg);
-				setError(new String(errorMsg, UTF_8));
-			}
-		}
 
 		validate();
 	}
@@ -204,21 +163,5 @@ public class Header implements Protocol {
 
 	public void setCommandTime(long commandTime) {
 		this.commandTime = commandTime;
-	}
-
-	public int getStatus() {
-		return status;
-	}
-
-	public void setStatus(int status) {
-		this.status = status;
-	}
-
-	public String getError() {
-		return error;
-	}
-
-	public void setError(String error) {
-		this.error = error;
 	}
 }

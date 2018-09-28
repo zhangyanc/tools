@@ -18,12 +18,15 @@ import pers.zyc.tools.utils.lifecycle.ThreadService;
 import java.util.Collection;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 
 /**
  * @author zhangyancheng
  */
-class NettyService extends ThreadService implements EventSource<ChannelEvent> {
+class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	/**
 	 * Channel保存Promise Map键
 	 */
@@ -101,15 +104,6 @@ class NettyService extends ThreadService implements EventSource<ChannelEvent> {
 	 * 允许同时处理的最大请求数（小于0表示不做最大限制）
 	 */
 	private int maxProcessingRequests = -1;
-
-	/**
-	 * Netty ByteBuf分配器，为null表示使用Netty默认行为
-	 *
-	 * 对于有些特殊的命令编码时提供自定义分配器可避免不必要的数据拷贝
-	 *
-	 * {@link io.netty.handler.codec.MessageToByteEncoder#allocateBuffer(ChannelHandlerContext, Object, boolean)}
-	 */
-	private BufAllocator bufAllocator;
 
 	/**
 	 * 用户命令工厂，解码时通过命令类型从工厂中获取一个命令实体解码出命令内容
@@ -511,16 +505,16 @@ class NettyService extends ThreadService implements EventSource<ChannelEvent> {
 		@Override
 		public void channelActive(ChannelHandlerContext ctx) throws Exception {
 			super.channelActive(ctx);
-			logger.info("Channel active, Channel: {}", ctx.channel());
-			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
+			logger.debug("Channel active, Channel: {}", ctx.channel());
+			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NetService.this, ctx.channel(),
 					ChannelEvent.EventType.CONNECT));
 		}
 
 		@Override
 		public void channelInactive(ChannelHandlerContext ctx) throws Exception {
 			super.channelInactive(ctx);
-			logger.info("Channel inactive, Channel: {}", ctx.channel());
-			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
+			logger.debug("Channel inactive, Channel: {}", ctx.channel());
+			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NetService.this, ctx.channel(),
 					ChannelEvent.EventType.CLOSE));
 
 			respondAllChannelPromise(ctx.channel(), new NetworkException("Channel inactive"));
@@ -529,19 +523,19 @@ class NettyService extends ThreadService implements EventSource<ChannelEvent> {
 		@Override
 		public void userEventTriggered(ChannelHandlerContext ctx, Object evt) throws Exception {
 			super.userEventTriggered(ctx, evt);
-			logger.info("User event triggered, Channel: {}, Event: {}", ctx.channel(), evt);
+			logger.debug("User event triggered, Channel: {}, Event: {}", ctx.channel(), evt);
 
 			if (evt == IdleStateEvent.READER_IDLE_STATE_EVENT) {
-				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
+				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NetService.this, ctx.channel(),
 						ChannelEvent.EventType.READ_IDLE));
 
-				logger.info("On read idle event, Close Channel");
+				logger.debug("On read idle event, Close Channel");
 				ctx.channel().close();
 			} else if (evt == IdleStateEvent.WRITER_IDLE_STATE_EVENT) {
-				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
+				channelEventMulticaster.listeners.onEvent(new ChannelEvent(NetService.this, ctx.channel(),
 						ChannelEvent.EventType.WRITE_IDLE));
 
-				logger.info("On write idle event, Send heartbeat");
+				logger.debug("On write idle event, Send heartbeat");
 				Heartbeat heartbeat = createHeartbeat();
 				ctx.channel().writeAndFlush(heartbeat).addListener(new CommandSendFutureListener(heartbeat));
 			}
@@ -552,10 +546,10 @@ class NettyService extends ThreadService implements EventSource<ChannelEvent> {
 			super.exceptionCaught(ctx, cause);
 			logger.error(ctx.channel() + " exception caught", cause);
 
-			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NettyService.this, ctx.channel(),
+			channelEventMulticaster.listeners.onEvent(new ChannelEvent(NetService.this, ctx.channel(),
 					ChannelEvent.EventType.EXCEPTION));
 
-			logger.info("On exception caught, Close Channel");
+			logger.debug("On exception caught, Close Channel");
 			ctx.channel().close();
 		}
 	}
@@ -574,10 +568,7 @@ class NettyService extends ThreadService implements EventSource<ChannelEvent> {
 		@Override
 		protected ByteBuf allocateBuffer(ChannelHandlerContext ctx, Command command,
 										 boolean preferDirect) throws Exception {
-			//分配ByteBuf
-			return bufAllocator == null ?
-					super.allocateBuffer(ctx, command, preferDirect) :
-					bufAllocator.allocate(ctx, command, preferDirect);
+			return command.allocateBuffer(ctx, preferDirect);
 		}
 	}
 
@@ -727,14 +718,6 @@ class NettyService extends ThreadService implements EventSource<ChannelEvent> {
 
 	public void setMaxProcessingRequests(int maxProcessingRequests) {
 		this.maxProcessingRequests = maxProcessingRequests;
-	}
-
-	public BufAllocator getBufAllocator() {
-		return bufAllocator;
-	}
-
-	public void setBufAllocator(BufAllocator bufAllocator) {
-		this.bufAllocator = bufAllocator;
 	}
 
 	public CommandFactory getCommandFactory() {

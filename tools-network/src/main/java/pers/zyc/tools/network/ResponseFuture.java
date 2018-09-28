@@ -3,17 +3,21 @@ package pers.zyc.tools.network;
 import pers.zyc.tools.utils.event.Listenable;
 
 /**
+ * 异步请求，响应Future
+ *
  * @author zhangyancheng
  */
 public interface ResponseFuture extends Listenable<ResponseFutureListener> {
 
 	/**
-	 * @return 响应是否已返回
+	 * 是否已完成（异常或者响应返回）
+	 *
+	 * @return 是否完成
 	 */
 	boolean isDown();
 
 	/**
-	 * 获取响应，如果未结束将会阻塞等待直到响应返回或者超时
+	 * 获取响应，如果未完成将会阻塞直到完成或者超时
 	 *
 	 * 超时时间为请求发送时设置的超时时间
 	 *
@@ -25,7 +29,7 @@ public interface ResponseFuture extends Listenable<ResponseFutureListener> {
 	Response get() throws InterruptedException;
 
 	/**
-	 * 获取响应，如果未结束将会阻塞等待直到响应返回或者超时
+	 * 获取响应，如果未完成将会阻塞直到完成或者超时
 	 *
 	 * 传入的超时时间只有比请求发送时设置的超时时间小才有意义
 	 *
