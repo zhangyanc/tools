@@ -404,9 +404,6 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 
 	/**
 	 * write监听器
-	 *
-	 * 因为exceptionCaught只能捕获入栈处理异常，因此写操作应注册此监听器，
-	 * 用于在操作失败时（连接异常？）关闭连接
 	 */
 	private class CommandSendFutureListener implements ChannelFutureListener {
 
@@ -421,8 +418,8 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 			command.writeComplete(future.isSuccess());
 
 			if (!future.isSuccess()) {
-				logger.error(command + " send failed, close Channel: " + future.channel(), future.cause());
-				future.channel().close();
+				logger.error("{} send failed, error: {}, Channel{}",
+						command, future.cause().getMessage(), future.channel());
 			}
 		}
 	}
@@ -517,7 +514,20 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	 * 线程安全，可装配到多个ChannelPipeline
 	 */
 	@ChannelHandler.Sharable
-	protected class ChannelStateHandler extends ChannelInboundHandlerAdapter {
+	protected class ChannelStateHandler extends ChannelDuplexHandler implements ChannelFutureListener {
+
+		@Override
+		public void operationComplete(ChannelFuture future) throws Exception {
+			if (!future.isSuccess()) {
+				logger.error(future.channel() + " outbound exception caught", future.cause());
+				publishChannelEvent(future.channel(), ChannelEvent.EventType.EXCEPTION);
+			}
+		}
+
+		@Override
+		public void write(ChannelHandlerContext ctx, Object msg, ChannelPromise promise) throws Exception {
+			ctx.write(msg, promise.addListener(this));
+		}
 
 		@Override
 		public void channelActive(ChannelHandlerContext ctx) throws Exception {
@@ -560,7 +570,7 @@ class NetService extends ThreadService implements EventSource<ChannelEvent> {
 		@Override
 		public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
 			super.exceptionCaught(ctx, cause);
-			logger.error(ctx.channel() + " exception caught", cause);
+			logger.error(ctx.channel() + " outbound exception caught", cause);
 			publishChannelEvent(ctx.channel(), ChannelEvent.EventType.EXCEPTION);
 		}
 
