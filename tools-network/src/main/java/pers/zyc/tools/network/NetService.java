@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit;
 /**
  * @author zhangyancheng
  */
-class NetService extends ThreadService implements EventSource<ChannelEvent> {
+public class NetService extends ThreadService implements EventSource<ChannelEvent> {
 	/**
 	 * Channel保存Promise Map键
 	 */
