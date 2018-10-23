@@ -1,5 +1,6 @@
 package pers.zyc.tools.network;
 
+import io.netty.channel.Channel;
 import pers.zyc.tools.utils.TimeMillis;
 
 import java.util.concurrent.atomic.AtomicInteger;
@@ -14,6 +15,11 @@ public abstract class Request extends Command {
 	 * 请求id生成器
 	 */
 	private static final AtomicInteger REQUEST_ID = new AtomicInteger();
+
+	/**
+	 * 发送或者接收到请求的连接
+	 */
+	private Channel channel;
 
 	public Request(int requestType) {
 		super(
@@ -50,5 +56,13 @@ public abstract class Request extends Command {
 
 	public Request(Header header) {
 		super(header);
+	}
+
+	public Channel getChannel() {
+		return channel;
+	}
+
+	public void setChannel(Channel channel) {
+		this.channel = channel;
 	}
 }

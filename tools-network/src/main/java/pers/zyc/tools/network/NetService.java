@@ -231,7 +231,6 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	/**
 	 * 单向发送请求
 	 *
-	 * @param channel 连接
 	 * @param request 请求（必须是无需ack类型）
 	 * @throws InterruptedException 发送过程中线程被中断
 	 * @throws ServiceException.NotRunningException 服务未运行
@@ -239,14 +238,13 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 * @throws NetworkException 发送失败
 	 */
-	public void sendOneWay(Channel channel, Request request) throws InterruptedException {
-		sendOneWay(channel, request, requestTimeout);
+	public void sendOneWay(Request request) throws InterruptedException {
+		sendOneWay(request, requestTimeout);
 	}
 
 	/**
 	 * 单向发送请求
 	 *
-	 * @param channel 连接
 	 * @param request 请求（必须是无需ack类型）
 	 * @param requestTimeout 请求超时（ms）
 	 * @throws InterruptedException 发送过程中线程被中断
@@ -255,7 +253,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 * @throws NetworkException 发送失败
 	 */
-	public void sendOneWay(final Channel channel, Request request, int requestTimeout) throws InterruptedException {
+	public void sendOneWay(Request request, int requestTimeout) throws InterruptedException {
 		if (!(requestTimeout > 0)) {
 			throw new IllegalArgumentException("requestTimeout " + requestTimeout + " <= 0");
 		}
@@ -265,6 +263,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 			throw new IllegalArgumentException("Request need ack");
 		}
 
+		Channel channel = request.getChannel();
 		final ResponsePromise responsePromise = acquirePromise(request, requestTimeout);
 		channel.writeAndFlush(request).addListeners(new CommandSendFutureListener(request) {
 			@Override
@@ -280,7 +279,6 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	/**
 	 * 同步发送请求
 	 *
-	 * @param channel 连接
 	 * @param request 请求
 	 * @return 响应
 	 * @throws InterruptedException 发送过程中线程被中断
@@ -289,14 +287,13 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 * @throws NetworkException 发送失败
 	 */
-	public Response sendSync(Channel channel, Request request) throws InterruptedException {
-		return sendAsync(channel, request).get();
+	public Response sendSync(Request request) throws InterruptedException {
+		return sendAsync(request).get();
 	}
 
 	/**
 	 * 同步发送请求
 	 *
-	 * @param channel 连接
 	 * @param request 请求
 	 * @param requestTimeout 请求超时（ms）
 	 * @return 响应
@@ -306,39 +303,38 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 * @throws NetworkException 其他网络异常
 	 */
-	public Response sendSync(Channel channel, Request request, int requestTimeout) throws InterruptedException {
-		return sendAsync(channel, request, requestTimeout).get();
+	public Response sendSync(Request request, int requestTimeout) throws InterruptedException {
+		return sendAsync(request, requestTimeout).get();
 	}
 
 	/**
 	 * 异步发送请求
 	 *
-	 * @param channel 连接
 	 * @param request 请求
 	 * @return 响应Future
 	 * @throws ServiceException.NotRunningException 服务未运行
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 */
-	public ResponseFuture sendAsync(Channel channel, Request request) {
-		return sendAsync(channel, request, requestTimeout);
+	public ResponseFuture sendAsync(Request request) {
+		return sendAsync(request, requestTimeout);
 	}
 
 	/**
 	 * 异步发送请求
 	 *
-	 * @param channel 连接
 	 * @param request 请求
 	 * @param requestTimeout 请求超时（ms）
 	 * @return 响应Future
 	 * @throws ServiceException.NotRunningException 服务未运行
 	 * @throws NetworkException.TooMuchRequestException 请求过多
 	 */
-	public ResponseFuture sendAsync(final Channel channel, final Request request, int requestTimeout) {
+	public ResponseFuture sendAsync(final Request request, int requestTimeout) {
 		if (!(requestTimeout > 0)) {
 			throw new IllegalArgumentException("requestTimeout " + requestTimeout + " <= 0");
 		}
 		checkRunning();
 
+		final Channel channel = request.getChannel();
 		final ResponsePromise responsePromise = acquirePromise(Objects.requireNonNull(request), requestTimeout);
 		channel.writeAndFlush(request).addListener(new CommandSendFutureListener(request) {
 			@Override
@@ -467,6 +463,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 			switch (command.getHeader().getType()) {
 				case Header.REQUEST:
 					final Request request = (Request) command;
+					request.setChannel(channel);
 					try {
 						final RequestHandler requestHandler = requestHandlerFactory.getHandler(request.getType());
 						requestHandler.getExecutor().execute(new Runnable() {
@@ -487,7 +484,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 							}
 						});
 					} catch (Exception e) {
-						logger.error("Request handler execute error", e);
+						logger.error("Request handle error", e);
 					}
 					break;
 				case Header.RESPONSE:
