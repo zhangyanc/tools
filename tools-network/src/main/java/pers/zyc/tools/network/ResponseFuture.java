@@ -14,7 +14,7 @@ public interface ResponseFuture extends Listenable<ResponseFutureListener> {
 	 *
 	 * @return 是否完成
 	 */
-	boolean isDown();
+	boolean isDone();
 
 	/**
 	 * 获取响应，如果未完成将会阻塞直到完成或者超时

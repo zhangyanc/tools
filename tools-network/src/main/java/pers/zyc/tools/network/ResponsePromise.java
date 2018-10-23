@@ -43,9 +43,14 @@ class ResponsePromise implements ResponseFuture {
 	private Object result;
 
 	/**
+	 * 是否完成
+	 */
+	private volatile boolean done;
+
+	/**
 	 * 是否发生了异常
 	 */
-	private boolean exceptional = false;
+	private boolean exceptional;
 
 	ResponsePromise(int requestTimeout,
 					Request request,
@@ -84,7 +89,7 @@ class ResponsePromise implements ResponseFuture {
 
 	@Override
 	public synchronized void addListener(final ResponseFutureListener listener) {
-		if (!isDown()) {
+		if (!done) {
 			multicaster.addListener(listener);
 		} else {
 			//已经完成则给当前监听器通知结果
@@ -103,8 +108,8 @@ class ResponsePromise implements ResponseFuture {
 	}
 
 	@Override
-	public synchronized boolean isDown() {
-		return result != null;
+	public boolean isDone() {
+		return done;
 	}
 
 	@Override
@@ -119,7 +124,7 @@ class ResponsePromise implements ResponseFuture {
 		}
 
 		synchronized (this) {
-			while (!isDown() && timeout > 0) {
+			while (!done && timeout > 0) {
 				long now = TimeMillis.INSTANCE.get();
 				wait(timeout);
 				timeout -= TimeMillis.INSTANCE.get() - now;
@@ -142,9 +147,15 @@ class ResponsePromise implements ResponseFuture {
 	 * @param result 响应或者异常
 	 */
 	synchronized void response(Object result) {
-		if (this.result != null) {
+		if (done) {
 			//超时线程和响应线程存在并发
 			return;
+		}
+		done = true;
+
+		//获取了许可，请求结束了需要释放掉
+		if (requestPermits != null) {
+			requestPermits.release();
 		}
 
 		exceptional = result instanceof Throwable;
@@ -152,24 +163,19 @@ class ResponsePromise implements ResponseFuture {
 			result = new NetworkException((Throwable) result);
 		}
 		this.result = result;
-		notifyAll();
-
-		//获取了许可，请求结束了必须释放掉
-		if (requestPermits != null) {
-			requestPermits.release();
-		}
 
 		//给所有添加的监听器广播结果
 		if (multicaster.hasListeners()) {
 			multicast(multicaster.listeners);
 		}
+
+		notifyAll();
 	}
 
 	private void multicast(ResponseFutureListener listener) {
 		if (exceptional) {
 			listener.exceptionCaught(request, (NetworkException) result);
 		} else {
-			assert result instanceof Response;
 			listener.responseReceived(request, (Response) result);
 		}
 	}
