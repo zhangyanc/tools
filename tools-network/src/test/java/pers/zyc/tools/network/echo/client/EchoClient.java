@@ -1,6 +1,5 @@
 package pers.zyc.tools.network.echo.client;
 
-import io.netty.channel.Channel;
 import pers.zyc.tools.network.NetClient;
 import pers.zyc.tools.network.Response;
 import pers.zyc.tools.network.echo.Echo;
@@ -21,16 +20,17 @@ public class EchoClient {
 
 		int i = 10;
 		while (i-- > 0) {
-			Channel channel = echoClient.createChannel("localhost", EchoServer.PORT);
 			Echo echo = new Echo(TimeMillis.INSTANCE.get() + " - " + Math.random());
-			Response response = echoClient.sendSync(channel, echo, 1000);
+			echo.setChannel(echoClient.createChannel("localhost", EchoServer.PORT));
+
+			Response response = echoClient.sendSync(echo, 1000);
 
 			EchoAck ack = (EchoAck) response;
 
 			if (!echo.getMsg().equals(ack.getMsg())) {
 				throw new Error();
 			}
-			channel.close().awaitUninterruptibly();
+			echo.getChannel().close().awaitUninterruptibly();
 			Thread.sleep(1000);
 		}
 		echoClient.stop();

@@ -18,9 +18,12 @@ public class DaytimeClient {
 		daytimeClient.start();
 
 		Channel channel = daytimeClient.createChannel("localhost", DaytimeServer.PORT);
-		int i = 10;
+		int i = 5;
 		while (i-- > 0) {
-			DaytimeAck ack = (DaytimeAck) daytimeClient.sendSync(channel, new Daytime());
+			Daytime daytime = new Daytime();
+			daytime.setChannel(channel);
+
+			DaytimeAck ack = (DaytimeAck) daytimeClient.sendSync(daytime);
 			System.out.println(ack.getDaytime());
 			Thread.sleep(2000);
 		}

@@ -5,6 +5,8 @@ package pers.zyc.tools.network;
  */
 public interface Commands {
 
+	int HEARTBEAT = 100;
+
 	int ECHO = 10;
 
 	int ECHO_ACK = 11;
