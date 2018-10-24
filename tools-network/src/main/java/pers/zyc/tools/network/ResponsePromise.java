@@ -3,9 +3,6 @@ package pers.zyc.tools.network;
 import pers.zyc.tools.utils.TimeMillis;
 import pers.zyc.tools.utils.event.Multicaster;
 
-import java.util.HashSet;
-import java.util.concurrent.Semaphore;
-
 /**
  * @author zhangyancheng
  */
@@ -24,18 +21,12 @@ class ResponsePromise implements ResponseFuture {
 	/**
 	 * 响应最后期限
 	 */
-	private final long deadline;
-
-	/**
-	 * 请求许可
-	 */
-	private final Semaphore requestPermits;
-
+	final long deadline;
 
 	/**
 	 * 响应广播器
 	 */
-	final Multicaster<ResponseFutureListener> multicaster;
+	private final Multicaster<ResponseFutureListener> multicaster;
 
 	/**
 	 * 请求结果（响应或者异常）
@@ -52,39 +43,11 @@ class ResponsePromise implements ResponseFuture {
 	 */
 	private boolean exceptional;
 
-	ResponsePromise(int requestTimeout,
-					Request request,
-					Semaphore requestPermits) {
+	ResponsePromise(Request request, int requestTimeout, Multicaster<ResponseFutureListener> multicaster) {
+		this.request = request;
 		this.requestTimeout = requestTimeout;
 		this.deadline = requestTimeout + TimeMillis.INSTANCE.get();
-		this.request = request;
-
-		//如果设置了请求许可则必需获取许可才能发送请求（构造当前对象）
-		if (requestPermits != null && !requestPermits.tryAcquire()) {
-			throw new NetworkException.TooMuchRequestException();
-		}
-		this.requestPermits = requestPermits;
-
-		this.multicaster = new Multicaster<ResponseFutureListener>() {
-			{
-				//添加、删除、迭代集合都在锁内, 因此监听器集合可设置为非线程安全的HashSet实例
-				setEventListeners(new HashSet<ResponseFutureListener>());
-			}
-		};
-	}
-
-	/**
-	 * 检查请求是否超时
-	 *
-	 * @return 是否超时
-	 */
-	boolean isTimeout() {
-		if (deadline > TimeMillis.INSTANCE.get()) {
-			return false;
-		}
-		//超期，响应超时异常
-		response(new NetworkException.TimeoutException());
-		return true;
+		this.multicaster = multicaster;
 	}
 
 	@Override
@@ -146,17 +109,12 @@ class ResponsePromise implements ResponseFuture {
 	 *
 	 * @param result 响应或者异常
 	 */
-	synchronized void response(Object result) {
+	synchronized boolean response(Object result) {
 		if (done) {
 			//超时线程和响应线程存在并发
-			return;
+			return false;
 		}
 		done = true;
-
-		//获取了许可，请求结束了需要释放掉
-		if (requestPermits != null) {
-			requestPermits.release();
-		}
 
 		exceptional = result instanceof Throwable;
 		if (exceptional && !(result instanceof NetworkException)) {
@@ -170,6 +128,7 @@ class ResponsePromise implements ResponseFuture {
 		}
 
 		notifyAll();
+		return true;
 	}
 
 	private void multicast(ResponseFutureListener listener) {

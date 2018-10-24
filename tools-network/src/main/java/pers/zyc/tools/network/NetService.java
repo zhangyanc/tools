@@ -11,17 +11,16 @@ import io.netty.util.internal.ConcurrentSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.utils.GeneralThreadFactory;
+import pers.zyc.tools.utils.TimeMillis;
 import pers.zyc.tools.utils.event.*;
 import pers.zyc.tools.utils.lifecycle.ServiceException;
 import pers.zyc.tools.utils.lifecycle.ThreadService;
 
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executor;
-import java.util.concurrent.Semaphore;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 
 /**
  * @author zhangyancheng
@@ -118,7 +117,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	/**
 	 * 异步请求时，发送响应回调的执行器，为null表示在收到响应的线程中执行
 	 */
-	private Executor responseMulticastExecutor;
+	private ExecutorService multicastExecutor;
 
 	/**
 	 * 请求信号量，用于控制最大并发请求数，为null时表示不控制
@@ -139,27 +138,34 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 
 		@Override
 		public Void handleException(Throwable cause, MulticastDetail detail) {
-			logger.error("Multicast error: " + detail, cause);
+			logger.error("Multicast error on method " + detail.method.getName(), cause);
 			return null;
 		}
 	};
 
 	/**
-	 * Channel事件发布器
+	 * Channel事件广播器
 	 */
 	private final Multicaster<EventListener<ChannelEvent>> channelEventMulticaster =
-			new Multicaster<EventListener<ChannelEvent>>() {
-				{
-					setExceptionHandler(multicastExceptionHandler);
-				}
-			};
+			new Multicaster<EventListener<ChannelEvent>>() {};
 
 	@Override
 	protected void doStart() {
+		if (multicastExecutor == null) {
+			multicastExecutor = Executors.newSingleThreadExecutor(new GeneralThreadFactory("Multicaster") {
+				{
+					setDaemon(true);
+				}
+			});
+		}
+
+		channelEventMulticaster.setMulticastExecutor(multicastExecutor);
+		channelEventMulticaster.setExceptionHandler(multicastExceptionHandler);
+
 		requestPermits = maxProcessingRequests > 0 ? new Semaphore(maxProcessingRequests) : null;
 
 		//设置当前服务线程名
-		setThreadFactory(new GeneralThreadFactory("TimeoutRequestClear"));
+		setThreadFactory(new GeneralThreadFactory("TimeoutRequestCleaner"));
 
 		//添加连接事件监听器，异常时关闭连接，连接关闭时清理所有通过此连接发送的请求
 		addListener(new EventListener<ChannelEvent>() {
@@ -194,8 +200,9 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 				for (Channel channel : requestedChannelSet) {
 					Collection<ResponsePromise> promises = channel.attr(RESPONSE_PROMISE_KEY).get().values();
 					for (ResponsePromise promise : promises) {
-						if (promise.isTimeout()) {
-							logger.info("Request: {} timeout, Channel: {}", promise.request, channel);
+						if (promise.deadline <= TimeMillis.INSTANCE.get()) {
+							logger.debug("Request: {} timeout, Channel: {}", promise.request, channel);
+							respondPromise(promise, new NetworkException.TimeoutException());
 							promises.remove(promise);
 						}
 					}
@@ -214,7 +221,6 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 			respondAllChannelPromise(channel, new NetworkException("Service stopped!"));
 		}
 		super.doStop();
-		channelEventMulticaster.removeAllListeners();
 		logger.info(getName() + " stopped");
 	}
 
@@ -269,8 +275,8 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 			@Override
 			public void operationComplete(ChannelFuture future) throws Exception {
 				super.operationComplete(future);
-				//单向请求发送后即响应
-				responsePromise.response(future.isSuccess() ? null : future.cause());
+				//单向请求发送后响应
+				respondPromise(responsePromise, future.isSuccess() ? null : future.cause());
 			}
 		});
 		responsePromise.get();
@@ -346,7 +352,8 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 					requestedChannelSet.add(channel);
 					getChannelResponsePromiseMap(channel).put(request.getId(), responsePromise);
 				} else {
-					responsePromise.response(future.cause());
+					//发送失败后响应
+					respondPromise(responsePromise, future.cause());
 				}
 			}
 		});
@@ -365,16 +372,26 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 		return responsePromiseMap;
 	}
 
-	private ResponsePromise acquirePromise(Request request, int requestTimeout) throws
-			NetworkException.TooMuchRequestException{
-
-		ResponsePromise responsePromise = new ResponsePromise(requestTimeout, request, requestPermits);
-		//设置广播执行器以及广播异常处理
-		responsePromise.multicaster.setExceptionHandler(multicastExceptionHandler);
-		if (responseMulticastExecutor != null) {
-			responsePromise.multicaster.setMulticastExecutor(responseMulticastExecutor);
+	private void respondPromise(ResponsePromise promise, Object response) {
+		if (promise.response(response)) {
+			if (requestPermits != null) {
+				requestPermits.release();
+			}
 		}
-		return responsePromise;
+	}
+
+	private ResponsePromise acquirePromise(Request request, int requestTimeout) {
+		//如果设置了请求许可则必需获取许可才能发送请求
+		if (requestPermits != null && !requestPermits.tryAcquire()) {
+			throw new NetworkException.TooMuchRequestException();
+		}
+		return new ResponsePromise(request, requestTimeout, new Multicaster<ResponseFutureListener>() {
+			{
+				setMulticastExecutor(multicastExecutor);
+				setExceptionHandler(multicastExceptionHandler);
+				setEventListeners(new HashSet<ResponseFutureListener>());
+			}
+		});
 	}
 
 	private void respondAllChannelPromise(Channel channel, Throwable cause) {
@@ -497,7 +514,10 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 						requestedChannelSet.remove(channel);
 					}
 					if (responsePromise != null) {
-						responsePromise.response(response);
+						//收到response后响应
+						respondPromise(responsePromise, response);
+					} else {
+						logger.warn("ID[{}] {} not matched!", response.getId(), response);
 					}
 					break;
 				default: throw new RuntimeException("UnKnown type: " + command.getHeader().getType());
@@ -516,7 +536,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 		@Override
 		public void operationComplete(ChannelFuture future) throws Exception {
 			if (!future.isSuccess()) {
-				logger.error(future.channel() + " outbound exception caught", future.cause());
+				logger.error(future.channel() + " write error", future.cause());
 				publishChannelEvent(future.channel(), ChannelEvent.EventType.EXCEPTION);
 			}
 		}
@@ -567,7 +587,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 		@Override
 		public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
 			super.exceptionCaught(ctx, cause);
-			logger.error(ctx.channel() + " outbound exception caught", cause);
+			logger.error(ctx.channel() + " exception caught", cause);
 			publishChannelEvent(ctx.channel(), ChannelEvent.EventType.EXCEPTION);
 		}
 
@@ -758,11 +778,11 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 		this.requestHandlerFactory = requestHandlerFactory;
 	}
 
-	public Executor getResponseMulticastExecutor() {
-		return responseMulticastExecutor;
+	public ExecutorService getMulticastExecutor() {
+		return multicastExecutor;
 	}
 
-	public void setResponseMulticastExecutor(Executor responseMulticastExecutor) {
-		this.responseMulticastExecutor = responseMulticastExecutor;
+	public void setMulticastExecutor(ExecutorService multicastExecutor) {
+		this.multicastExecutor = multicastExecutor;
 	}
 }
