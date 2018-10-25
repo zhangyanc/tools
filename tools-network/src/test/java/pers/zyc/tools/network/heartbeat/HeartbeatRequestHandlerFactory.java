@@ -19,7 +19,7 @@ public class HeartbeatRequestHandlerFactory implements RequestHandlerFactory {
 
 		@Override
 		public int supportedRequestType() {
-			return Commands.HEARTBEAT;
+			return Heartbeat.CMD_TYPE;
 		}
 
 		@Override

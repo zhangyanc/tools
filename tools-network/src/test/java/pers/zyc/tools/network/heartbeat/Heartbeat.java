@@ -2,7 +2,6 @@ package pers.zyc.tools.network.heartbeat;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
-import pers.zyc.tools.network.Commands;
 import pers.zyc.tools.network.Header;
 import pers.zyc.tools.network.Request;
 
@@ -11,8 +10,10 @@ import pers.zyc.tools.network.Request;
  */
 public class Heartbeat extends Request {
 
+	public static final int CMD_TYPE = 100;
+
 	public Heartbeat(Channel channel) {
-		super(Commands.HEARTBEAT, false);
+		super(CMD_TYPE, false);
 		setChannel(channel);
 	}
 
