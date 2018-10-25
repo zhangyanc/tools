@@ -33,29 +33,14 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 			AttributeKey.newInstance("CHANNEL_RESPONSE_PROMISE");
 
 	/**
-	 * {@link java.net.Socket#setTcpNoDelay(boolean)}
+	 * 连接超时时间（ms）
 	 */
-	private boolean soTcpNoDelay = true;
+	private int connectTimeout = 3000;
 
 	/**
 	 * {@link java.net.Socket#setReuseAddress(boolean)}
 	 */
 	private boolean soReuseAddress = true;
-
-	/**
-	 * {@link java.net.Socket#setKeepAlive(boolean)}
-	 */
-	private boolean soKeepAlive = false;
-
-	/**
-	 * {@link java.net.Socket#setSoLinger(boolean, int)}
-	 */
-	private int soLinger = -1;
-
-	/**
-	 * {@link java.net.Socket#setSendBufferSize(int)}
-	 */
-	private int soSendBuffer = 8 * 1024;
 
 	/**
 	 * {@link java.net.Socket#setReceiveBufferSize(int)}
@@ -649,13 +634,12 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 		}
 	}
 
-
-	public boolean isSoTcpNoDelay() {
-		return soTcpNoDelay;
+	public int getConnectTimeout() {
+		return connectTimeout;
 	}
 
-	public void setSoTcpNoDelay(boolean soTcpNoDelay) {
-		this.soTcpNoDelay = soTcpNoDelay;
+	public void setConnectTimeout(int connectTimeout) {
+		this.connectTimeout = connectTimeout;
 	}
 
 	public boolean isSoReuseAddress() {
@@ -664,30 +648,6 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 
 	public void setSoReuseAddress(boolean soReuseAddress) {
 		this.soReuseAddress = soReuseAddress;
-	}
-
-	public boolean isSoKeepAlive() {
-		return soKeepAlive;
-	}
-
-	public void setSoKeepAlive(boolean soKeepAlive) {
-		this.soKeepAlive = soKeepAlive;
-	}
-
-	public int getSoLinger() {
-		return soLinger;
-	}
-
-	public void setSoLinger(int soLinger) {
-		this.soLinger = soLinger;
-	}
-
-	public int getSoSendBuffer() {
-		return soSendBuffer;
-	}
-
-	public void setSoSendBuffer(int soSendBuffer) {
-		this.soSendBuffer = soSendBuffer;
 	}
 
 	public int getSoReceiveBuffer() {

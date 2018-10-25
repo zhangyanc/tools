@@ -18,19 +18,30 @@ import java.net.SocketAddress;
 public class NetClient extends NetService {
 
 	/**
-	 * 连接超时时间（ms）
+	 * {@link java.net.Socket#setTcpNoDelay(boolean)}
 	 */
-	private int connectTimeout = 3000;
+	private boolean soTcpNoDelay = true;
+
+	/**
+	 * {@link java.net.Socket#setKeepAlive(boolean)}
+	 */
+	private boolean soKeepAlive = false;
+
+	/**
+	 * {@link java.net.Socket#setSoLinger(boolean, int)}
+	 */
+	private int soLinger = -1;
+
+	/**
+	 * {@link java.net.Socket#setSendBufferSize(int)}
+	 */
+	private int soSendBuffer = 8 * 1024;
 
 	private final Bootstrap bootstrap = new Bootstrap();
-
-	public NetClient() {
-	}
 
 	@Override
 	protected void doStart() {
 		super.doStart();
-
 		bootstrap
 				.option(ChannelOption.TCP_NODELAY, isSoTcpNoDelay())
 				.option(ChannelOption.SO_REUSEADDR, isSoReuseAddress())
@@ -50,12 +61,36 @@ public class NetClient extends NetService {
 		super.doStop();
 	}
 
-	public int getConnectTimeout() {
-		return connectTimeout;
+	public boolean isSoTcpNoDelay() {
+		return soTcpNoDelay;
 	}
 
-	public void setConnectTimeout(int connectTimeout) {
-		this.connectTimeout = connectTimeout;
+	public void setSoTcpNoDelay(boolean soTcpNoDelay) {
+		this.soTcpNoDelay = soTcpNoDelay;
+	}
+
+	public boolean isSoKeepAlive() {
+		return soKeepAlive;
+	}
+
+	public void setSoKeepAlive(boolean soKeepAlive) {
+		this.soKeepAlive = soKeepAlive;
+	}
+
+	public int getSoLinger() {
+		return soLinger;
+	}
+
+	public void setSoLinger(int soLinger) {
+		this.soLinger = soLinger;
+	}
+
+	public int getSoSendBuffer() {
+		return soSendBuffer;
+	}
+
+	public void setSoSendBuffer(int soSendBuffer) {
+		this.soSendBuffer = soSendBuffer;
 	}
 
 	/**
@@ -64,11 +99,10 @@ public class NetClient extends NetService {
 	 * @param host 主机
 	 * @param port 端口号
 	 * @return 连接
-	 * @throws InterruptedException 等待连接过程中线程被中断
 	 * @throws ServiceException.NotRunningException 服务未运行
 	 * @throws NetworkException 连接异常
 	 */
-	public Channel createChannel(String host, int port) throws InterruptedException {
+	public Channel createChannel(String host, int port) {
 		return createChannel(InetSocketAddress.createUnresolved(host, port));
 	}
 
@@ -77,20 +111,21 @@ public class NetClient extends NetService {
 	 *
 	 * @param remoteAddress 对端socket地址
 	 * @return 连接
-	 * @throws InterruptedException 等待连接过程中线程被中断
 	 * @throws ServiceException.NotRunningException 服务未运行
 	 * @throws NetworkException 连接异常
 	 */
-	public Channel createChannel(SocketAddress remoteAddress) throws InterruptedException {
+	public Channel createChannel(SocketAddress remoteAddress) {
 		checkRunning();
 
-		ChannelFuture connectFuture = bootstrap.connect(remoteAddress).await();
+		ChannelFuture connectFuture = bootstrap.connect(remoteAddress).awaitUninterruptibly();
 		if (connectFuture.isSuccess()) {
 			Channel channel = connectFuture.channel();
 			if (channel.isActive()) {
 				return channel;
 			}
+			throw new NetworkException("Channel created, but isn't active, remote: " + remoteAddress.toString());
 		}
-		throw new NetworkException("Connect exception", connectFuture.cause());
+		throw new NetworkException("Channel create failed: " + connectFuture.cause().getMessage() +
+				", remote: " + remoteAddress.toString());
 	}
 }

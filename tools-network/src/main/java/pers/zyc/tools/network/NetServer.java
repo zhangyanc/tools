@@ -21,7 +21,7 @@ public class NetServer extends NetService {
 	/**
 	 * 是否使用epoll
 	 */
-	private boolean useEpoll = Epoll.isAvailable();
+	private boolean useEPoll;
 
 	/**
 	 * 等待接受连接队列大小
@@ -41,22 +41,18 @@ public class NetServer extends NetService {
 	@Override
 	protected void doStart() {
 		super.doStart();
-
 		bootstrap
-				.option(ChannelOption.TCP_NODELAY, isSoTcpNoDelay())
 				.option(ChannelOption.SO_BACKLOG, getBacklog())
 				.option(ChannelOption.SO_REUSEADDR, isSoReuseAddress())
-				.option(ChannelOption.SO_KEEPALIVE, isSoKeepAlive())
-				.option(ChannelOption.SO_LINGER, getSoLinger())
-				.option(ChannelOption.SO_SNDBUF, getSoSendBuffer())
-				.option(ChannelOption.SO_RCVBUF, getSoReceiveBuffer());
+				.option(ChannelOption.SO_RCVBUF, getSoReceiveBuffer())
+				.option(ChannelOption.CONNECT_TIMEOUT_MILLIS, getConnectTimeout());
 
 		ThreadFactory acceptorThreadFactory = new GeneralThreadFactory("IO-ACCEPTOR"),
 					  selectorThreadFactory = new GeneralThreadFactory("IO-SELECTOR-");
 
 		EventLoopGroup acceptorLoopGroup, selectorLoopGroup;
 		Class<? extends ServerSocketChannel> channelClass;
-		if (isUseEpoll()) {
+		if (useEPoll && Epoll.isAvailable()) {
 			acceptorLoopGroup = new EpollEventLoopGroup(1, acceptorThreadFactory);
 			selectorLoopGroup = new EpollEventLoopGroup(getSelectors(), selectorThreadFactory);
 			channelClass = EpollServerSocketChannel.class;
@@ -71,16 +67,7 @@ public class NetServer extends NetService {
 				.localAddress(getPort())
 				.childHandler(new PipelineAssembler());
 
-		boolean started = false;
-		try {
-			started = bootstrap.bind().await().isSuccess();
-		} catch (InterruptedException e) {
-			Thread.currentThread().interrupt();
-		}
-
-		if (!started) {
-			throw new IllegalStateException("Server bind to " + getPort() + " start failed.");
-		}
+		bootstrap.bind().syncUninterruptibly();
 	}
 
 	@Override
@@ -90,12 +77,12 @@ public class NetServer extends NetService {
 		super.doStop();
 	}
 
-	public boolean isUseEpoll() {
-		return useEpoll;
+	public boolean isUseEPoll() {
+		return useEPoll;
 	}
 
-	public void setUseEpoll(boolean useEpoll) {
-		this.useEpoll = useEpoll;
+	public void setUseEPoll(boolean useEPoll) {
+		this.useEPoll = useEPoll;
 	}
 
 	public int getBacklog() {
