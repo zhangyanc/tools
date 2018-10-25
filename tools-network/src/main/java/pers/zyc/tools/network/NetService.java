@@ -445,8 +445,8 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 							channelAllTimeout,
 							TimeUnit.MILLISECONDS
 					),
-					channelStateHandler,
-					commandHandler
+					commandHandler,
+					channelStateHandler
 			);
 		}
 	}
@@ -465,29 +465,25 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 			switch (command.getHeader().getType()) {
 				case Header.REQUEST:
 					final Request request = (Request) command;
-					request.setChannel(channel);
-					try {
-						final RequestHandler requestHandler = requestHandlerFactory.getHandler(request.getType());
-						requestHandler.getExecutor().execute(new Runnable() {
-							@Override
-							public void run() {
-								Response response;
-								try {
-									response = requestHandler.handle(request);
-								} catch (Exception e) {
-									requestHandleFailed(channel, request, e);
-									return;
-								}
-
-								if (!request.getHeader().isNeedAck() || response == null) {
-									return;
-								}
-								channel.writeAndFlush(response).addListener(new CommandSendFutureListener(response));
+					final RequestHandler requestHandler = requestHandlerFactory.getHandler(request.getType());
+					requestHandler.getExecutor().execute(new Runnable() {
+						@Override
+						public void run() {
+							request.setChannel(channel);
+							Response response;
+							try {
+								response = requestHandler.handle(request);
+							} catch (Exception e) {
+								requestHandleFailed(channel, request, e);
+								return;
 							}
-						});
-					} catch (Exception e) {
-						logger.error("Request handle error", e);
-					}
+
+							if (!request.getHeader().isNeedAck() || response == null) {
+								return;
+							}
+							channel.writeAndFlush(response).addListener(new CommandSendFutureListener(response));
+						}
+					});
 					break;
 				case Header.RESPONSE:
 					Response response = (Response) command;
@@ -571,7 +567,6 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 
 		@Override
 		public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-			super.exceptionCaught(ctx, cause);
 			logger.error(ctx.channel() + " exception caught", cause);
 			publishChannelEvent(ctx.channel(), ChannelEvent.EventType.EXCEPTION);
 		}
