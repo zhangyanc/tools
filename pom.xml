@@ -15,12 +15,12 @@
 
     <modules>
         <module>tools-dependencies-bom</module>
-        <module>tools-parent</module>
         <module>tools-jmx-client</module>
-        <module>tools-redis-client</module>
-        <module>tools-spring-validation-ext</module>
-        <module>tools-utils</module>
-        <module>tools-zkclient</module>
         <module>tools-network</module>
+        <module>tools-parent</module>
+        <module>tools-redis-client</module>
+        <module>tools-utils</module>
+        <module>tools-validation</module>
+        <module>tools-zkclient</module>
     </modules>
 </project>

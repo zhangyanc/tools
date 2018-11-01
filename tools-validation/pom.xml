@@ -10,7 +10,7 @@
     </parent>
     <modelVersion>4.0.0</modelVersion>
 
-    <artifactId>tools-spring-validation-ext</artifactId>
+    <artifactId>tools-validation</artifactId>
 
     <dependencies>
         <dependency>

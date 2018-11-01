@@ -36,7 +36,7 @@
 			</dependency>
 			<dependency>
 				<groupId>pers.zyc.tools</groupId>
-				<artifactId>tools-spring-validation-ext</artifactId>
+				<artifactId>tools-validation</artifactId>
 				<version>${revision}</version>
 			</dependency>
 			<dependency>
