@@ -26,7 +26,7 @@ public abstract class AutoCastRequest<R> extends Request<R> {
 		Type genericType = ((ParameterizedType)
 				getClass().getGenericSuperclass()).getActualTypeArguments()[0];
 		//通过子类标记的泛型类型获取对应的响应转换器
-		cast = (ResponseCast<R>) getCastByteGenericType(genericType);
+		cast = (ResponseCast<R>) getCastByGenericType(genericType);
 	}
 
 	public AutoCastRequest(ResponseCast<R> cast, byte[]... bulks) {
@@ -44,7 +44,7 @@ public abstract class AutoCastRequest<R> extends Request<R> {
 	 */
 	private static final Map<Type, ResponseCast<?>> RESPONSE_CAST_MAP = new ConcurrentHashMap<>();
 
-	private static ResponseCast<?> getCastByteGenericType(Type genericType) {
+	private static ResponseCast<?> getCastByGenericType(Type genericType) {
 		if (genericType == null) {
 			return null;
 		}

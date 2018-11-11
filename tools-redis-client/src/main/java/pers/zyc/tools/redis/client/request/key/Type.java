@@ -30,13 +30,9 @@ public class Type extends AutoCastRequest<String> {
 
 	public Type(String key) {
 		super(
+				TYPE_CAST,
 				ByteUtil.toByteArray(key)
 		);
-	}
-
-	@Override
-	public ResponseCast<String> getCast() {
-		return TYPE_CAST;
 	}
 
 	private static final ResponseCast<String> TYPE_CAST = new ResponseCast<String>() {

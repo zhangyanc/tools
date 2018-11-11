@@ -22,9 +22,8 @@ import pers.zyc.tools.redis.client.request.AutoCastRequest;
  */
 public class Ping extends AutoCastRequest<Void> {
 
-	@Override
-	public ResponseCast<Void> getCast() {
-		return PING_CAST;
+	public Ping() {
+		super(PING_CAST);
 	}
 
 	private static final ResponseCast<Void> PING_CAST = new ResponseCast<Void>() {
