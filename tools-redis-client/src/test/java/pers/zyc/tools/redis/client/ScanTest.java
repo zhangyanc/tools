@@ -6,7 +6,7 @@ import org.junit.Before;
 import org.junit.Test;
 import pers.zyc.tools.redis.client.request.hash.HSet;
 import pers.zyc.tools.redis.client.request.server.DBSize;
-import pers.zyc.tools.redis.client.request.set.SRandomMember;
+import pers.zyc.tools.redis.client.request.set.SAdd;
 import pers.zyc.tools.utils.TimeMillis;
 
 import java.util.HashMap;
@@ -73,23 +73,21 @@ public class ScanTest {
 
 	@Test
 	public void test_SSCAN() throws Exception {
-		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		String key1 = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		String key2 = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
 
-		connectionPool.getConnection().send(new HSet(key, "k1", "v1")).get();
-		connectionPool.getConnection().send(new HSet(key, "k2", "v2")).get();
-		connectionPool.getConnection().send(new HSet(key, "k3", "v3")).get();
+		connectionPool.getConnection().send(new SAdd(key1, "a", "b", "c")).get();
+		connectionPool.getConnection().send(new SAdd(key2, "d")).get();
+
+		SetScanner setScanner = new SetScanner(key1, connectionPool);
+		Assert.assertEquals(3, setScanner.scan().get().size());
+
+		setScanner = new SetScanner(key2, connectionPool);
+		Assert.assertEquals(1, setScanner.scan().get().size());
 	}
 
 	@Test
-	public void case_SRandomMember() throws Exception {
-		ClientConfig config = new ClientConfig("redis://" +TESTABLE_REDIS_SERVER +
-				"?minConnectionIdle=1&maxConnectionTotal=1");
-		//只有一个连接
-		ConnectionPool connectionPool = new ConnectionPool(config);
-		try {
-			System.out.println(connectionPool.getConnection().send(new SRandomMember("xxx")).get());
-		} finally {
-			connectionPool.stop();
-		}
+	public void test_ZSCAN() throws Exception {
+
 	}
 }
