@@ -140,8 +140,24 @@ public interface ResponseCast<R> {
 	ResponseCast<Map<String, String>> STRING_MAP = new ResponseCast<Map<String, String>>() {
 
 		@Override
+		@SuppressWarnings("unchecked")
 		public Map<String, String> cast(Object response) {
-			return null;
+			if (response == null) {
+				return Collections.emptyMap();
+			}
+
+			if (response instanceof List) {
+				List<byte[]> byteRespList = (List<byte[]>) response;
+
+				Map<String, String> result = new HashMap<>(byteRespList.size() / 2);
+				for (int i = 0; i < byteRespList.size(); i += 2) {
+					result.put(ByteUtil.bytesToString(byteRespList.get(i)),
+							byteRespList.get(i) == null ? null : ByteUtil.bytesToString(byteRespList.get(i)));
+				}
+				return result;
+			}
+
+			throw new RedisClientException("Cannot cast " + String.valueOf(response) + " to Map<String, String>");
 		}
 	};
 

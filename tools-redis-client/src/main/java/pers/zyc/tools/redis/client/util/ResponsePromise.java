@@ -57,8 +57,8 @@ public class ResponsePromise<R> extends CountDownLatch implements Promise<R> {
 		} else {
 			try {
 				this.response = responseCast.cast(response);
-			} catch (Throwable caseException) {
-				exception(caseException);
+			} catch (Throwable castException) {
+				exception(castException);
 			}
 		}
 		onRespond();
