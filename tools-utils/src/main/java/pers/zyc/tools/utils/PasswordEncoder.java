@@ -1,5 +1,6 @@
 package pers.zyc.tools.utils;
 
+import java.nio.charset.Charset;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Arrays;
@@ -9,6 +10,7 @@ import java.util.concurrent.ThreadLocalRandom;
  * @author zhangyancheng
  */
 public class PasswordEncoder {
+	private static final int HEX = 16;
 	private static final int SALT_LENGTH = 8;
 
 	private final byte[] secret;
@@ -26,7 +28,7 @@ public class PasswordEncoder {
 		createDigest(algorithm);
 	}
 
-	private MessageDigest createDigest(String algorithm) {
+	private static MessageDigest createDigest(String algorithm) {
 		try {
 			return MessageDigest.getInstance(algorithm);
 		} catch (NoSuchAlgorithmException e) {
@@ -44,8 +46,8 @@ public class PasswordEncoder {
 		char[] chars = new char[bytes.length * 2];
 		int i = 0;
 		for (int b : bytes) {
-			chars[i++] = Character.forDigit((b & 0xff) >> 4, 16);
-			chars[i++] = Character.forDigit((b & 0x0f), 16);
+			chars[i++] = Character.forDigit((b & 0xff) >> 4, HEX);
+			chars[i++] = Character.forDigit((b & 0x0f), HEX);
 		}
 		return new String(chars);
 	}
@@ -55,31 +57,28 @@ public class PasswordEncoder {
 		byte[] bytes = new byte[chars.length / 2];
 		for (int i = 0; i < bytes.length; i++) {
 			int j = i * 2;
-			bytes[i] = (byte) ((Character.digit(chars[j], 16) << 4) | Character.digit(chars[j + 1], 16));
+			bytes[i] = (byte) ((Character.digit(chars[j], HEX) << 4) | Character.digit(chars[j + 1], HEX));
 		}
 		return bytes;
 	}
 
-	public String encode(String originalPwd) {
-		return hexEncode(digest(originalPwd.getBytes(), createSalt(SALT_LENGTH)));
+	public String encode(String password) {
+		return hexEncode(digest(password, createSalt(SALT_LENGTH)));
 	}
 
-	public boolean match(String originalPwd, String encodedPwd) {
+	public boolean match(String password, String encodedPwd) {
 		byte[] decodedBytes = hexDecode(encodedPwd);
 		byte[] salt = new byte[SALT_LENGTH];
-		System.arraycopy(decodedBytes, decodedBytes.length - 8, salt, 0, SALT_LENGTH);
-		return Arrays.equals(decodedBytes, digest(originalPwd.getBytes(), salt));
+		System.arraycopy(decodedBytes, decodedBytes.length - SALT_LENGTH, salt, 0, SALT_LENGTH);
+		return MessageDigest.isEqual(decodedBytes, digest(password, salt));
 	}
 
-	private byte[] digest(byte[] pwdBytes, byte[] salt) {
-		byte[] digest = new byte[pwdBytes.length + secret.length + salt.length];
-		System.arraycopy(pwdBytes, 0, digest, 0, pwdBytes.length);
-		System.arraycopy(secret, 0, digest, pwdBytes.length, secret.length);
-		System.arraycopy(salt, 0, digest, pwdBytes.length + secret.length, salt.length);
+	private byte[] digest(String password, byte[] salt) {
 		MessageDigest messageDigest = createDigest(algorithm);
-		for (int i = 0; i < 3; i++) {
-			digest = messageDigest.digest(digest);
-		}
+		messageDigest.update(salt);
+		messageDigest.update(secret);
+		messageDigest.update(password.getBytes(Charset.forName("UTF-8")));
+		byte[] digest = messageDigest.digest(messageDigest.digest());
 		digest = Arrays.copyOf(digest, digest.length + SALT_LENGTH);
 		System.arraycopy(salt, 0, digest, digest.length - SALT_LENGTH, SALT_LENGTH);
 		return digest;
