@@ -43,10 +43,10 @@ public class PasswordEncoder {
 	}
 
 	private static String hexEncode(byte[] bytes) {
-		char[] chars = new char[bytes.length * 2];
+		char[] chars = new char[bytes.length << 1];
 		int i = 0;
 		for (int b : bytes) {
-			chars[i++] = Character.forDigit((b & 0xff) >> 4, HEX);
+			chars[i++] = Character.forDigit((b & 0xf0) >> 4, HEX);
 			chars[i++] = Character.forDigit((b & 0x0f), HEX);
 		}
 		return new String(chars);
@@ -54,10 +54,9 @@ public class PasswordEncoder {
 
 	private static byte[] hexDecode(String hexString) {
 		char[] chars = hexString.toCharArray();
-		byte[] bytes = new byte[chars.length / 2];
+		byte[] bytes = new byte[chars.length >> 1];
 		for (int i = 0; i < bytes.length; i++) {
-			int j = i * 2;
-			bytes[i] = (byte) ((Character.digit(chars[j], HEX) << 4) | Character.digit(chars[j + 1], HEX));
+			bytes[i] = (byte) ((Character.digit(chars[i << 1], HEX) << 4) | Character.digit(chars[(i << 1) + 1], HEX));
 		}
 		return bytes;
 	}
