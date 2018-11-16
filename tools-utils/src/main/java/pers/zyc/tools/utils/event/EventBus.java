@@ -111,10 +111,10 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
 	 */
 	protected void doDispatch() throws InterruptedException {
 		if (mergeInterval > 0) {
-					/*
-					 * 尝试取出所有事件, 如果没有取到需要检查是否空闲, 取到则合并发布事件
-					 * 专有事件不合并仍按照顺序依次发布, 非专有事件则只发布最后一个(合并)
-					 */
+			/*
+			 * 尝试取出所有事件, 如果没有取到需要检查是否空闲, 取到则合并发布事件
+			 * 专有事件不合并仍按照顺序依次发布, 非专有事件则只发布最后一个(合并)
+			 */
 			MergedEvents mergedEvents = new MergedEvents();
 			if (eventQueue.drainTo(mergedEvents) == 0) {
 				checkIdle();
