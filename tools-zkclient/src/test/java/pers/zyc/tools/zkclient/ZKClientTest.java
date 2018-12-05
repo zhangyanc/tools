@@ -43,7 +43,6 @@ public class ZKClientTest extends BaseClientTest {
 
 		Assert.assertFalse(zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS));
 
-		createSwitch();
 		zkSwitch.open();
 
 		Assert.assertTrue(zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS));
