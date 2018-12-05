@@ -35,11 +35,12 @@ abstract class Reactor extends Service implements ConnectionListener, Watcher {
 	/**
 	 * 使ZooKeeper事件(所有节点watcher接受的WatchedEvent)处理异步化
 	 */
-	private final EventBus<WatchedEvent> watchedEventBus = new EventBus<>();
+	private final EventBus<WatchedEvent> watchedEventBus;
 
 	Reactor(String path, ZKClient zkClient) {
 		this.path = path;
 		this.zkClient = zkClient;
+		this.watchedEventBus = new EventBus.Builder<WatchedEvent>().name(getName()).build();
 
 		zkClient.addListener(new ClientDestroyListener() {
 
@@ -52,7 +53,9 @@ abstract class Reactor extends Service implements ConnectionListener, Watcher {
 
 	@Override
 	protected void doStart() {
-		watchedEventBus.name(getName()).addListeners(new WatchedEventListener()).start();
+		watchedEventBus.addListener(new WatchedEventListener());
+		watchedEventBus.start();
+
 		//注册连接监听器, 重连成功后注册watcher
 		zkClient.addConnectionListener(this);
 		if (zkClient.isConnected()) {

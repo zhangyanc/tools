@@ -17,37 +17,12 @@ import java.util.concurrent.*;
  * @author zhangyancheng
  */
 public class EventBus<E> extends ThreadService implements Listenable<EventListener<E>> {
-	/**
-	 * 派发线程名
-	 */
-	private String name;
-	/**
-	 * 空闲时间(ms, 默认不检查空闲), 超过空闲时间没有事件触发onIdle
-	 */
-	private long idleTime;
-	/**
-	 * 事件合并周期(ms, 默认不进行合并), 周期内如果有多个事件, 只发布最后一个
-	 */
-	private long mergeInterval;
-	/**
-	 * 派发线程单次从阻塞队列中获取事件的超时时间(ms)
-	 */
-	private long internalPollTimeout = 1000;
 
-	/**
-	 * 上次事件事件, 用于计算是否空闲
-	 */
-	private long lastEventTime;
-
-	/**
-	 * 事件队列容量
-	 */
-	private int eventQueueCapacity = Integer.MAX_VALUE;
-
-	/**
-	 * 事件队列
-	 */
-	private BlockingQueue<Ownership> eventQueue = new LinkedBlockingDeque<>();
+	private final String name;
+	private final long mergeInterval;
+	private final long internalPollTimeout;
+	private final BlockingQueue<Ownership> eventQueue;
+	private final EventBusIdleCallback<E> idleCallback;
 	
 	/**
 	 * 保存onEvent的方法引用, 用于出错处理
@@ -58,6 +33,23 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
 	 * 事件广播器
 	 */
 	private final Multicaster<EventListener<E>> multicaster = new Multicaster<EventListener<E>>() {};
+
+	/**
+	 * 上次事件事件, 用于计算是否空闲
+	 */
+	private long lastEventTime;
+
+	private EventBus(String name,
+					long mergeInterval,
+					int eventQueueCapacity,
+					long internalPollTimeout,
+					EventBusIdleCallback<E> idleCallback) {
+		this.name = name;
+		this.mergeInterval = mergeInterval;
+		this.internalPollTimeout = internalPollTimeout;
+		this.idleCallback = idleCallback;
+		this.eventQueue = new LinkedBlockingQueue<>(eventQueueCapacity);
+	}
 
 	@Override
 	public String getName() {
@@ -76,8 +68,6 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
 
 	@Override
 	protected void doStart() {
-		super.doStart();
-		eventQueue = new LinkedBlockingQueue<>(eventQueueCapacity);
 		lastEventTime = TimeMillis.INSTANCE.get();
 	}
 
@@ -109,7 +99,7 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
 	 *
 	 * @throws InterruptedException 线程中断
 	 */
-	protected void doDispatch() throws InterruptedException {
+	private void doDispatch() throws InterruptedException {
 		if (mergeInterval > 0) {
 			/*
 			 * 尝试取出所有事件, 如果没有取到需要检查是否空闲, 取到则合并发布事件
@@ -149,21 +139,24 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
 	}
 
 	/**
-	 * 检查是否需要触发空闲
+	 * 检查是否需要触发空闲回调
 	 */
-	protected void checkIdle() {
-		if (idleTime > 0 && (TimeMillis.INSTANCE.get() - lastEventTime) >= idleTime) {
+	private void checkIdle() {
+		if (idleCallback != null) {
+			if ((TimeMillis.INSTANCE.get() - lastEventTime) >= idleCallback.getIdleTimeMillis()) {
+				idleCallback.onIdle(this);
+			}
 			lastEventTime = TimeMillis.INSTANCE.get();
-			onIdle();
 		}
 	}
 
 	/**
 	 * 专有事件通知
+	 *
 	 * @param event 事件
 	 * @param eventOwner 事件专有监听器
 	 */
-	protected void inform(final E event, final EventListener<E> eventOwner) {
+	private void inform(final E event, final EventListener<E> eventOwner) {
 		multicaster.getMulticastExecutor().execute(new Runnable() {
 			@Override
 			public void run() {
@@ -181,12 +174,6 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
 			}
 		});
     }
-	
-	/**
-	 * 空闲, 由子类制定逻辑
-	 */
-	protected void onIdle() {
-	}
 
 	/**
 	 * 添加事件, 如果队列满则阻塞至队列有空余或者被中断
@@ -281,81 +268,6 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
     }
 
 	/**
-	 * 设置EventBus名称, 同时也是派发线程名
-	 */
-	public EventBus<E> name(String name) {
-		this.name = name;
-		return this;
-	}
-
-	/**
-	 * 设置事件队列容量
-	 * @param eventQueueCapacity 事件队列容量, 默认为无界队列
-	 */
-	public EventBus<E> eventQueueCapacity(int eventQueueCapacity) {
-		this.eventQueueCapacity = eventQueueCapacity;
-		return this;
-	}
-
-	/**
-	 * 设置空闲时间, 空闲时间段内无事件触发空闲
-	 * @param idleTime 空闲时间(ms), 大于0为有效值
-	 */
-	public EventBus<E> idleTime(long idleTime) {
-		this.idleTime = idleTime;
-		return this;
-	}
-
-	/**
-	 * 设置事件合并间隔(ms), 间隔段内如果有多个事件默认只发布最后一个
-	 * @param mergeInterval 事件合并间隔(ms), 大于0为有效值
-	 */
-	public EventBus<E> mergeInterval(long mergeInterval) {
-		this.mergeInterval = mergeInterval;
-		return this;
-	}
-
-	/**
-	 * 设置派发线程单次从阻塞队列中获取事件的超时时间
-	 * @param internalPollTimeout 派发线程单次从阻塞队列中获取事件的超时时间(ms), 默认为1000ms
-	 */
-	public EventBus<E> internalPollTimeout(long internalPollTimeout) {
-		this.internalPollTimeout = internalPollTimeout;
-		return this;
-	}
-
-	/**
-	 * 设置事件广播执行器
-	 * @param multicastExecutor 广播执行器, 默认为同步执行器
-	 * @see Multicaster
-	 */
-	public EventBus<E> multicastExecutor(Executor multicastExecutor) {
-		this.multicaster.setMulticastExecutor(multicastExecutor);
-		return this;
-	}
-
-	/**
-	 * 设置事件广播异常处理器
-	 * @param multicastExceptionHandler 事件广播异常处理器, 默认不处理异常
-	 */
-	public EventBus<E> multicastExceptionHandler(MulticastExceptionHandler multicastExceptionHandler) {
-		this.multicaster.setExceptionHandler(multicastExceptionHandler);
-		return this;
-	}
-
-	/**
-	 * 添加多个监听器
-	 * @param listeners 监听器
-	 */
-	@SuppressWarnings("unchecked")
-	public EventBus<E> addListeners(EventListener<E>... listeners) {
-		for (EventListener<E> listener : listeners) {
-			addListener(listener);
-		}
-		return this;
-	}
-
-	/**
 	 * 事件-监听器元组
 	 */
 	private class Ownership extends Pair<E, EventListener<E>> {
@@ -390,4 +302,112 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
             throw new UnsupportedOperationException();
         }
     }
+
+    public static class Builder<E> {
+		private boolean autoStart;
+		private String name;
+		private int eventQueueCapacity = Integer.MAX_VALUE;
+		private EventBusIdleCallback<E> idleCallback;
+		private long mergeInterval;
+		private long internalPollTimeout = 1000;
+		private Executor multicastExecutor;
+		private MulticastExceptionHandler multicastExceptionHandler;
+
+		/**
+		 * 构建事件总线，构建后总线配置属性将无法再被修改
+		 *
+		 * @return 事件总线
+		 */
+		public EventBus<E> build() {
+			EventBus<E> eventBus = new EventBus<>(name, mergeInterval, eventQueueCapacity,
+					internalPollTimeout, idleCallback);
+			if (multicastExecutor != null) {
+				eventBus.multicaster.setMulticastExecutor(multicastExecutor);
+			}
+			if (multicastExceptionHandler != null) {
+				eventBus.multicaster.setExceptionHandler(multicastExceptionHandler);
+			}
+			if (autoStart) {
+				eventBus.start();
+			}
+			return eventBus;
+		}
+
+		/**
+		 * 设置构建后自动启动事件总线
+		 */
+		public Builder<E> autoStart() {
+			this.autoStart = true;
+			return this;
+		}
+
+		/**
+		 * 设置EventBus名称, 同时也是派发线程名
+		 */
+		public Builder<E> name(String name) {
+			this.name = name;
+			return this;
+		}
+
+		/**
+		 * 设置事件队列容量
+		 *
+		 * @param eventQueueCapacity 事件队列容量, 默认为无界队列
+		 */
+		public Builder<E> eventQueueCapacity(int eventQueueCapacity) {
+			this.eventQueueCapacity = eventQueueCapacity;
+			return this;
+		}
+
+		/**
+		 * 设置空闲回调
+		 *
+		 * @param idleCallback 空闲回调
+		 */
+		public Builder<E> idleCallback(EventBusIdleCallback<E> idleCallback) {
+			this.idleCallback = idleCallback;
+			return this;
+		}
+
+		/**
+		 * 设置事件合并间隔(ms), 间隔段内如果有多个事件默认只发布最后一个（默认不合并）
+		 *
+		 * @param mergeInterval 事件合并间隔(ms), 大于0为有效值
+		 */
+		public Builder<E> mergeInterval(long mergeInterval) {
+			this.mergeInterval = mergeInterval;
+			return this;
+		}
+
+		/**
+		 * 设置派发线程单次从阻塞队列中获取事件的超时时间
+		 *
+		 * @param internalPollTimeout 派发线程单次从阻塞队列中获取事件的超时时间(ms), 默认为1000ms
+		 */
+		public Builder<E> internalPollTimeout(long internalPollTimeout) {
+			this.internalPollTimeout = internalPollTimeout;
+			return this;
+		}
+
+		/**
+		 * 设置事件广播执行器
+		 *
+		 * @param multicastExecutor 广播执行器, 默认为同步执行器，即在派发线程中执行事件广播
+		 * @see Multicaster
+		 */
+		public Builder<E> multicastExecutor(Executor multicastExecutor) {
+			this.multicastExecutor = multicastExecutor;
+			return this;
+		}
+
+		/**
+		 * 设置事件广播异常处理器
+		 *
+		 * @param multicastExceptionHandler 事件广播异常处理器, 默认不处理异常
+		 */
+		public Builder<E> multicastExceptionHandler(MulticastExceptionHandler multicastExceptionHandler) {
+			this.multicastExceptionHandler = multicastExceptionHandler;
+			return this;
+		}
+	}
 }
