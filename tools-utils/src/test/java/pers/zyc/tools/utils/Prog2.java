@@ -5,7 +5,7 @@ import java.util.concurrent.Callable;
 /**
  * @author zhangyancheng
  */
-public class Test implements Callable<Long> {
+public class Prog2 implements Callable<Long> {
 
     volatile boolean closed = false;
 
@@ -24,26 +24,26 @@ public class Test implements Callable<Long> {
 
     static class Delegate implements Callable<Long> {
 
-        private Test test;
+        private Prog2 prog2;
 
-        public Delegate(Test test) {
-            this.test = test;
+        public Delegate(Prog2 prog2) {
+            this.prog2 = prog2;
         }
 
         @Override
         protected void finalize() throws Throwable {
-            test.close();
+            prog2.close();
         }
 
         @Override
         public Long call() throws Exception {
-            Long result = test.call();
+            Long result = prog2.call();
             return result;
         }
     }
 
     private static Callable create() {
-        return new Delegate(new Test());
+        return new Delegate(new Prog2());
     }
 
     public static void main(String[] args) throws Exception {
