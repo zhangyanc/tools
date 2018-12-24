@@ -1,5 +1,7 @@
 package pers.zyc.tools.utils.retry;
 
+import pers.zyc.tools.utils.SystemMillis;
+
 import java.util.Objects;
 
 /**
@@ -20,9 +22,9 @@ public class ConditionalRetryPolicy extends BaseRetryPolicy {
 	protected boolean await(long awaitTime) throws InterruptedException {
 		synchronized (retryCondition.getMutex()) {
 			while (!retryCondition.check() && awaitTime > 0) {
-				long now = System.currentTimeMillis();
+				long now = SystemMillis.current();
 				retryCondition.getMutex().wait(awaitTime);
-				awaitTime -= System.currentTimeMillis() - now;
+				awaitTime -= SystemMillis.current() - now;
 			}
 			//条件到达或者已到retry time
 		}

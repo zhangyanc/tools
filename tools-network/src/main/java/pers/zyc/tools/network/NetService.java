@@ -11,7 +11,7 @@ import io.netty.util.internal.ConcurrentSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.utils.GeneralThreadFactory;
-import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.tools.utils.SystemMillis;
 import pers.zyc.tools.utils.event.*;
 import pers.zyc.tools.utils.lifecycle.ServiceException;
 import pers.zyc.tools.utils.lifecycle.ThreadService;
@@ -185,7 +185,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 				for (Channel channel : requestedChannelSet) {
 					Collection<ResponsePromise> promises = channel.attr(RESPONSE_PROMISE_KEY).get().values();
 					for (ResponsePromise promise : promises) {
-						if (promise.deadline <= TimeMillis.INSTANCE.get()) {
+						if (promise.deadline <= SystemMillis.current()) {
 							logger.debug("Request: {} timeout, Channel: {}", promise.request, channel);
 							respondPromise(promise, new NetworkException.TimeoutException());
 							promises.remove(promise);

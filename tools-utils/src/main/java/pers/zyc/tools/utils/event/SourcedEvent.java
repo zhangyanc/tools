@@ -1,6 +1,6 @@
 package pers.zyc.tools.utils.event;
 
-import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.tools.utils.SystemMillis;
 
 import java.util.EventObject;
 
@@ -12,7 +12,7 @@ public class SourcedEvent<S extends EventSource> extends EventObject {
 
     public SourcedEvent(S source) {
         super(source);
-        this.eventTime = TimeMillis.INSTANCE.get();
+        this.eventTime = SystemMillis.current();
     }
 
     /**

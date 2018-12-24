@@ -1,13 +1,16 @@
 package pers.zyc.tools.utils.event;
 
 import pers.zyc.tools.utils.Pair;
-import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.tools.utils.SystemMillis;
 import pers.zyc.tools.utils.lifecycle.ServiceException;
 import pers.zyc.tools.utils.lifecycle.ThreadService;
 
 import java.lang.reflect.Method;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.Executor;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 事件异步派发
@@ -68,7 +71,7 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
 
 	@Override
 	protected void doStart() {
-		lastEventTime = TimeMillis.INSTANCE.get();
+		lastEventTime = SystemMillis.current();
 	}
 
 	@Override
@@ -109,7 +112,7 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
 			if (eventQueue.drainTo(mergedEvents) == 0) {
 				checkIdle();
 			} else {
-				lastEventTime = TimeMillis.INSTANCE.get();
+				lastEventTime = SystemMillis.current();
 
 				List<Ownership> events = mergedEvents.events;
 				for (int i = 0; i < events.size(); i++) {
@@ -128,7 +131,7 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
 			if (event == null) {
 				checkIdle();
 			} else {
-				lastEventTime = TimeMillis.INSTANCE.get();
+				lastEventTime = SystemMillis.current();
 				if (event.value() != null) {
 					inform(event.key(), event.value());
 				} else {
@@ -143,10 +146,10 @@ public class EventBus<E> extends ThreadService implements Listenable<EventListen
 	 */
 	private void checkIdle() {
 		if (idleCallback != null) {
-			if ((TimeMillis.INSTANCE.get() - lastEventTime) >= idleCallback.getIdleTimeMillis()) {
+			if ((SystemMillis.current() - lastEventTime) >= idleCallback.getIdleTimeMillis()) {
 				idleCallback.onIdle(this);
 			}
-			lastEventTime = TimeMillis.INSTANCE.get();
+			lastEventTime = SystemMillis.current();
 		}
 	}
 

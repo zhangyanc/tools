@@ -10,7 +10,7 @@ import org.slf4j.LoggerFactory;
 import pers.zyc.tools.redis.client.exception.RedisClientException;
 import pers.zyc.tools.redis.client.util.Promise;
 import pers.zyc.tools.redis.client.util.ResponsePromise;
-import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.tools.utils.SystemMillis;
 import pers.zyc.tools.utils.event.EventListener;
 import pers.zyc.tools.utils.lifecycle.ThreadService;
 
@@ -85,7 +85,7 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 			@Override
 			protected void execute() throws InterruptedException {
 				for (Map.Entry<Connection, ResponsePromise<?>> entry : requestingMap.entrySet()) {
-					if (entry.getValue().getCreateTime() + config.getRequestTimeout() <= TimeMillis.INSTANCE.get()) {
+					if (entry.getValue().getCreateTime() + config.getRequestTimeout() <= SystemMillis.current()) {
 						entry.getKey().timeout();
 					}
 				}

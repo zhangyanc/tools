@@ -1,7 +1,7 @@
 package pers.zyc.tools.network;
 
 import io.netty.channel.Channel;
-import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.tools.utils.SystemMillis;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -27,7 +27,7 @@ public abstract class Request extends Command {
 				.headerType(Header.REQUEST)
 				.needAck(true)
 				.commandId(REQUEST_ID.incrementAndGet())
-				.commandTime(TimeMillis.INSTANCE.get())
+				.commandTime(SystemMillis.current())
 				.commandType(requestType)
 		);
 	}
@@ -38,7 +38,7 @@ public abstract class Request extends Command {
 				.headerType(Header.REQUEST)
 				.needAck(needAck)
 				.commandId(REQUEST_ID.incrementAndGet())
-				.commandTime(TimeMillis.INSTANCE.get())
+				.commandTime(SystemMillis.current())
 				.commandType(requestType)
 		);
 	}

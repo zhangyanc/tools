@@ -1,6 +1,6 @@
 package pers.zyc.tools.network;
 
-import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.tools.utils.SystemMillis;
 import pers.zyc.tools.utils.event.Multicaster;
 
 /**
@@ -46,7 +46,7 @@ class ResponsePromise implements ResponseFuture {
 	ResponsePromise(Request request, int requestTimeout, Multicaster<ResponseFutureListener> multicaster) {
 		this.request = request;
 		this.requestTimeout = requestTimeout;
-		this.deadline = requestTimeout + TimeMillis.INSTANCE.get();
+		this.deadline = requestTimeout + SystemMillis.current();
 		this.multicaster = multicaster;
 	}
 
@@ -88,9 +88,9 @@ class ResponsePromise implements ResponseFuture {
 
 		synchronized (this) {
 			while (!done && timeout > 0) {
-				long now = TimeMillis.INSTANCE.get();
+				long now = SystemMillis.current();
 				wait(timeout);
-				timeout -= TimeMillis.INSTANCE.get() - now;
+				timeout -= SystemMillis.current() - now;
 			}
 		}
 

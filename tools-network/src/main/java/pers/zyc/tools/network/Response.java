@@ -1,6 +1,6 @@
 package pers.zyc.tools.network;
 
-import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.tools.utils.SystemMillis;
 
 /**
  * 响应基类
@@ -15,7 +15,7 @@ public abstract class Response extends Command {
 				.headerType(Header.RESPONSE)
 				.needAck(false)
 				.commandId(requestId)
-				.commandTime(TimeMillis.INSTANCE.get())
+				.commandTime(SystemMillis.current())
 				.commandType(responseType)
 		);
 	}

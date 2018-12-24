@@ -4,7 +4,7 @@ import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
-import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.tools.utils.SystemMillis;
 
 /**
  * Nonstandard unit tests.
@@ -31,26 +31,26 @@ public class RedisClientTest {
 
 	@Test
 	public void case_SET_RandomKey_OKStatus() {
-		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		String key = "TestKey-random_" + SystemMillis.current() + "" + Math.random();
 		redisClient.set(key, "val");
 	}
 
 	@Test
 	public void case_DELETE_ExistKey_OKStatus() {
-		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		String key = "TestKey-random_" + SystemMillis.current() + "" + Math.random();
 		redisClient.set(key, "val");
 		Assert.assertEquals(1, redisClient.del(key));
 	}
 
 	@Test
 	public void case_GET_NotExistKey_Null() {
-		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		String key = "TestKey-random_" + SystemMillis.current() + "" + Math.random();
 		Assert.assertNull(redisClient.get(key));
 	}
 
 	@Test
 	public void case_GET_ExistsKey_Value() {
-		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		String key = "TestKey-random_" + SystemMillis.current() + "" + Math.random();
 		String value = "val";
 
 		redisClient.set(key, value);
@@ -59,7 +59,7 @@ public class RedisClientTest {
 
 	@Test
 	public void case_STRLEN_LargeKey_Equal() {
-		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		String key = "TestKey-random_" + SystemMillis.current() + "" + Math.random();
 		byte[] largeBytes = new byte[1024 * 1024 * 5];//1M
 		redisClient.set(key, new String(largeBytes));
 		Assert.assertEquals(largeBytes.length, redisClient.strlen(key));
@@ -67,14 +67,14 @@ public class RedisClientTest {
 
 	@Test
 	public void case_APPEND_NotExistKey_ValueSet() {
-		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		String key = "TestKey-random_" + SystemMillis.current() + "" + Math.random();
 		String value = "val";
 		Assert.assertEquals(value.length(), redisClient.append(key, value));
 	}
 
 	@Test
 	public void case_APPEND_ExistKey_ValueAppend() {
-		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		String key = "TestKey-random_" + SystemMillis.current() + "" + Math.random();
 		String value = "val";
 		Assert.assertEquals(value.length(), redisClient.append(key, value));
 		Assert.assertEquals(value.length() * 2, redisClient.append(key, value));

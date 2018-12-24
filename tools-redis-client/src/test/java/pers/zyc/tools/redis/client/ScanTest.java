@@ -7,7 +7,7 @@ import org.junit.Test;
 import pers.zyc.tools.redis.client.request.hash.HSet;
 import pers.zyc.tools.redis.client.request.server.DBSize;
 import pers.zyc.tools.redis.client.request.set.SAdd;
-import pers.zyc.tools.utils.TimeMillis;
+import pers.zyc.tools.utils.SystemMillis;
 
 import java.util.HashMap;
 import java.util.HashSet;
@@ -51,7 +51,7 @@ public class ScanTest {
 
 	@Test
 	public void test_HSCAN() throws Exception {
-		String key = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		String key = "TestKey-random_" + SystemMillis.current() + "" + Math.random();
 
 		connectionPool.getConnection().send(new HSet(key, "k1", "v1")).get();
 		connectionPool.getConnection().send(new HSet(key, "k2", "v2")).get();
@@ -73,8 +73,8 @@ public class ScanTest {
 
 	@Test
 	public void test_SSCAN() throws Exception {
-		String key1 = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
-		String key2 = "TestKey-random_" + TimeMillis.INSTANCE.get() + "" + Math.random();
+		String key1 = "TestKey-random_" + SystemMillis.current() + "" + Math.random();
+		String key2 = "TestKey-random_" + SystemMillis.current() + "" + Math.random();
 
 		connectionPool.getConnection().send(new SAdd(key1, "a", "b", "c")).get();
 		connectionPool.getConnection().send(new SAdd(key2, "d")).get();
