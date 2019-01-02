@@ -430,6 +430,11 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 	}
 
 	@Override
+	public byte[] getData(String path, Stat stat) throws KeeperException, InterruptedException {
+		return getData(path, null, stat);
+	}
+
+	@Override
 	public byte[] getData(String path, Watcher watcher) throws KeeperException, InterruptedException {
 		return getData(path, watcher, null);
 	}
@@ -483,6 +488,11 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 				}
 			}
 		});
+	}
+
+	@Override
+	public List<String> getChildren(String path) throws KeeperException, InterruptedException {
+		return getChildren(path, null);
 	}
 
 	@Override
