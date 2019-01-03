@@ -272,7 +272,7 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 	 * 移除唯一性数据
 	 */
 	private byte[] removeIdentityData(byte[] data) {
-		if (data.length == 0 || data[0] != MAGIC_BYTE) {
+		if (data == null || data.length == 0 || data[0] != MAGIC_BYTE) {
 			return data;
 		}
 		byte[] realData = new byte[data.length - 21];
