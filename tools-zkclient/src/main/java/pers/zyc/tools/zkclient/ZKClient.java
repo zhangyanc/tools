@@ -459,6 +459,11 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 	}
 
 	@Override
+	public Stat setData(String path, byte[] data) throws KeeperException, InterruptedException {
+		return setData(path, data, -1);
+	}
+
+	@Override
 	public Stat setData(final String path, final byte[] data, final int version) throws
 			KeeperException, InterruptedException {
 

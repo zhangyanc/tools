@@ -30,6 +30,8 @@ interface ZooKeeperOperations {
 
 	byte[] getData(String path, Watcher watcher, Stat stat) throws KeeperException, InterruptedException;
 
+	Stat setData(String path, byte[] data) throws KeeperException, InterruptedException;
+
 	Stat setData(String path, byte[] data, int version) throws KeeperException, InterruptedException;
 
 	List<String> getChildren(String path) throws KeeperException, InterruptedException;
