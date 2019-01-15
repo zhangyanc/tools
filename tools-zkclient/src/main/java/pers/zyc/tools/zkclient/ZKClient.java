@@ -206,7 +206,7 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 		}
 	}
 
-	ZooKeeper getZooKeeper() {
+	public ZooKeeper getZooKeeper() {
 		return connector.getZooKeeper();
 	}
 
