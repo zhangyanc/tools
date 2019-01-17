@@ -15,7 +15,8 @@ import static org.apache.zookeeper.Watcher.Event.EventType.None;
  *
  * @author zhangyancheng
  */
-abstract class Reactor extends Service implements ConnectionListener, Watcher {
+abstract class Reactor extends Service implements ClientDestroyListener,
+		ConnectionListener, Watcher, EventListener<WatchedEvent> {
 
 	/**
 	 * 连接成功(包括启动时已连接、自动重连成功、session切换)后的watcher注册事件
@@ -40,20 +41,13 @@ abstract class Reactor extends Service implements ConnectionListener, Watcher {
 	Reactor(String path, ZKClient zkClient) {
 		this.path = path;
 		this.zkClient = zkClient;
-		this.watchedEventBus = new EventBus.Builder<WatchedEvent>().name(getName()).build();
-
-		zkClient.addListener(new ClientDestroyListener() {
-
-			@Override
-			public void onDestroy() {
-				stop();
-			}
-		});
+		watchedEventBus = new EventBus.Builder<WatchedEvent>().name(getName()).build();
+		zkClient.addListener(this);
 	}
 
 	@Override
 	protected void doStart() {
-		watchedEventBus.addListener(new WatchedEventListener());
+		watchedEventBus.addListener(this);
 		watchedEventBus.start();
 
 		//注册连接监听器, 重连成功后注册watcher
@@ -80,18 +74,16 @@ abstract class Reactor extends Service implements ConnectionListener, Watcher {
 	}
 
 	@Override
+	public void onDestroy() {
+		stop();
+	}
+
+	@Override
 	public void onConnected(boolean newSession) {
 	}
 
 	@Override
 	public void onDisconnected(boolean sessionClosed) {
-	}
-
-	@Override
-	public void process(WatchedEvent event) {
-		if (event.getType() != None) {
-			enqueueEvent(event);
-		}
 	}
 
 	/**
@@ -103,12 +95,16 @@ abstract class Reactor extends Service implements ConnectionListener, Watcher {
 		watchedEventBus.offer(event);
 	}
 
-	private class WatchedEventListener implements EventListener<WatchedEvent> {
-
-		@Override
-		public void onEvent(WatchedEvent event) {
-			react(event);
+	@Override
+	public void process(WatchedEvent event) {
+		if (event.getType() != None) {
+			enqueueEvent(event);
 		}
+	}
+
+	@Override
+	public void onEvent(WatchedEvent event) {
+		react(event);
 	}
 
 	/**

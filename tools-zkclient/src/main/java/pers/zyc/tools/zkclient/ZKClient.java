@@ -6,7 +6,6 @@ import org.apache.zookeeper.data.Stat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.utils.event.Listenable;
-import pers.zyc.tools.utils.event.MulticastExceptionHandler;
 import pers.zyc.tools.utils.event.Multicaster;
 import pers.zyc.tools.utils.retry.*;
 import pers.zyc.tools.zkclient.listener.ClientDestroyListener;
@@ -22,6 +21,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.zip.Adler32;
 
 import static org.apache.zookeeper.KeeperException.*;
 
@@ -35,13 +35,9 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 	 */
 	private static final byte MAGIC_BYTE = '^';
 
-	/**
-	 * 异常处理器, 所有事件发布异常都将记录日志
-	 */
-	private static final MulticastExceptionHandler EXCEPTION_HANDLER = new LogMulticastExceptionHandler(LOGGER);
 	private final Multicaster<ClientDestroyListener> multicaster = new Multicaster<ClientDestroyListener>() {
 		{
-			setExceptionHandler(EXCEPTION_HANDLER);
+			setExceptionHandler(new LogMulticastExceptionHandler(LOGGER));
 		}
 	};
 
@@ -252,18 +248,20 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 		return new NodeEventDurableWatcher(nodePath, this);
 	}
 
+	public Election createElection(String electionPath, Elector.Mode mode) {
+		return createElection(electionPath, mode, null);
+	}
+
 	/**
 	 * 获取给定节点上的选举器, 如果不存在则新建
 	 *
 	 * @param electionPath 选举节点
 	 *                     1. 节点必须符合zookeeper path格式,且不能是临时节点
 	 *                     2. 选举节点必须存在, 且不能被删除, 否则选举将发生错误
+	 * @param mode 选举模式
+	 * @param memberData 数据
 	 * @return 选举器
 	 */
-	public Election createElection(String electionPath) {
-		return createElection(electionPath, Elector.Mode.FOLLOWER, new byte[0]);
-	}
-
 	public Election createElection(String electionPath, Elector.Mode mode, byte[] memberData) {
 		return new LeaderElection(electionPath, this, mode, memberData);
 	}
@@ -271,26 +269,37 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 	/**
 	 * 移除唯一性数据
 	 */
-	private byte[] removeIdentityData(byte[] data) {
-		if (data == null || data.length == 0 || data[0] != MAGIC_BYTE) {
+	private static byte[] removeIdentityData(byte[] data) {
+		if (data == null || data.length < 25 || data[0] != MAGIC_BYTE) {
 			return data;
 		}
-		byte[] realData = new byte[data.length - 21];
-		ByteBuffer buf = ByteBuffer.wrap(data, 21, realData.length);
-		buf.get(realData);
+		Adler32 checksum = new Adler32();
+		checksum.update(data, 0, 21);
+		if (checksum.getValue() != ByteBuffer.wrap(data, 21, 4).getInt()) {
+			return data;
+		}
+
+		byte[] realData = new byte[data.length - 25];
+		ByteBuffer.wrap(data, 25, realData.length).get(realData);
 		return realData;
 	}
 
 	/**
-	 * create、setData请求时设置请求唯一性数据
+	 * create、setData请求时设置请求唯一性数据(设置后在获取数据时将无法区分null和byte[0])
 	 */
-	private byte[] appendIdentityData(byte[] data, int rId) {
-		byte[] appendedData = new byte[21 + data.length];
+	static byte[] appendIdentityData(byte[] data, byte[] idBytes, int rId) {
+		int relLength = data == null ? 0 : data.length;
+		byte[] appendedData = new byte[25 + relLength];
 		ByteBuffer buf = ByteBuffer.wrap(appendedData);
-		buf.put(MAGIC_BYTE);//1 字节魔数
-		buf.put(idBytes);	//16字节id
-		buf.putInt(rId);	//4 字节请求id
-		buf.put(data);
+		buf.put(MAGIC_BYTE);//  1字节魔数
+		buf.put(idBytes);	// 16字节id
+		buf.putInt(rId);	//  4字节请求id
+		Adler32 checksum = new Adler32();
+		checksum.update(appendedData, 0, 21);
+		buf.putInt((int) checksum.getValue());// 4字节校验和
+		if (relLength > 0) {
+			buf.put(data);
+		}
 		return appendedData;
 	}
 
@@ -336,7 +345,7 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 
 		return doRetry(new IdempotentRequest<String>() {
 
-			final byte[] newData = appendIdentityData(data, rId);
+			final byte[] newData = appendIdentityData(data, idBytes, rId);
 			final String newPath = createMode.isSequential() ? path + id : path;
 
 			@Override
@@ -473,7 +482,7 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 
 		return doRetry(new IdempotentRequest<Stat>() {
 
-			final byte[] newData = appendIdentityData(data, rId);
+			final byte[] newData = appendIdentityData(data, idBytes, rId);
 
 			@Override
 			protected Stat doRequest() throws Exception {

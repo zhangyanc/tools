@@ -13,7 +13,6 @@ import pers.zyc.tools.utils.lifecycle.ServiceState;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.locks.Condition;
 
 /**
@@ -73,7 +72,7 @@ class LeaderElection extends Reactor implements Election {
 				   Mode electorMode, byte[] memberData) {
 
 		super(electionPath, zkClient);
-		this.memberData = Objects.requireNonNull(memberData);
+		this.memberData = memberData;
 		this.electorMode = electorMode;
 
 		start();
