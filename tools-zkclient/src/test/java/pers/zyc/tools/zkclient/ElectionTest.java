@@ -1,12 +1,15 @@
 package pers.zyc.tools.zkclient;
 
 import org.apache.zookeeper.*;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import pers.zyc.tools.utils.event.EventListener;
 
-import java.util.concurrent.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 /**
@@ -43,24 +46,33 @@ public class ElectionTest extends BaseClientTest {
 		return new TestMember(member.substring(member.lastIndexOf("/") + 1), session);
 	}
 
+	private ZKSwitch zkSwitch;
+	private ZKClient zkClient;
+
 	@Before
 	public void setUp() throws Exception {
-		createZKClient(CONNECT_STRING, SESSION_TIMEOUT, 2, 3000);
-		createSwitch();
-		createCli();
+		zkSwitch = createSwitch();
 		zkSwitch.open();
 
+		zkClient = createZKClient(CONNECT_STRING, SESSION_TIMEOUT, 2, 3000);
 		zkClient.waitToConnected(ZK_SERVER_START_TIMEOUT, TimeUnit.MILLISECONDS);
 
+		ZKCli cli = createCli();
 		cli.executeLine("rmr " + ELECTION_PATH);
 		cli.executeLine("create " + ELECTION_PATH + " a");
+	}
+
+	@After
+	public void tearDown() {
+		zkClient.destroy();
+		zkSwitch.close();
 	}
 
 	@Test
 	public void case_Elect_FirstFollowerTakeLeader() throws Exception {
 		addMember(Elector.Mode.OBSERVER);
 
-		Election election = zkClient.createElection(ELECTION_PATH);
+		Election election = zkClient.createElection(ELECTION_PATH, Elector.Mode.FOLLOWER);
 
 		final CountDownLatch cdl = new CountDownLatch(1);
 		election.addListener(new EventListener<ElectionEvent>() {
@@ -80,7 +92,7 @@ public class ElectionTest extends BaseClientTest {
 
 		Assert.assertTrue(election.mode() == Elector.Mode.FOLLOWER);
 		Assert.assertEquals(election.electionPath(), ELECTION_PATH);
-		Assert.assertArrayEquals(election.memberData(), new byte[0]);
+		Assert.assertNull(election.memberData());
 
 		Assert.assertTrue(election.isLeader());
 		Assert.assertTrue(election.leader().equals(election.member()));
@@ -91,7 +103,7 @@ public class ElectionTest extends BaseClientTest {
 
 		TestMember firstFollower = addMember(Elector.Mode.FOLLOWER);
 
-		Election election = zkClient.createElection(ELECTION_PATH, Elector.Mode.FOLLOWER, new byte[0]);
+		Election election = zkClient.createElection(ELECTION_PATH, Elector.Mode.FOLLOWER);
 
 		Thread.sleep(1000);
 		Assert.assertTrue(election.leader().equals(firstFollower.member));
@@ -122,7 +134,7 @@ public class ElectionTest extends BaseClientTest {
 	public void case_Elect_Reelect() throws Exception {
 		addMember(Elector.Mode.OBSERVER);
 
-		final Election election = zkClient.createElection(ELECTION_PATH, Elector.Mode.FOLLOWER, new byte[0]);
+		final Election election = zkClient.createElection(ELECTION_PATH, Elector.Mode.FOLLOWER);
 
 		final AtomicReference<Election.EventType> electionEvent = new AtomicReference<>();
 		final Semaphore semaphore = new Semaphore(0);

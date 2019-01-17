@@ -3,12 +3,10 @@ package pers.zyc.tools.zkclient;
 import org.apache.zookeeper.WatchedEvent;
 import org.apache.zookeeper.Watcher;
 import org.apache.zookeeper.ZooKeeper;
-import org.junit.After;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.zkclient.listener.ConnectionListener;
 
-import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -71,36 +69,28 @@ public class BaseClientTest {
 
 	final Logger logger = LoggerFactory.getLogger(getClass());
 
-	ZKSwitch zkSwitch;
-	ZKClient zkClient;
-	ZKCli cli;
-
-	void createZKClient() {
-		zkClient = new ZKClient(CONNECT_STRING, SESSION_TIMEOUT);
+	static ZKClient createZKClient() {
+		return new ZKClient(CONNECT_STRING, SESSION_TIMEOUT);
 	}
 
-	void createZKClient(String connectStr, int sessionTimeout) {
-		zkClient = new ZKClient(connectStr, sessionTimeout);
+	static ZKClient createZKClient(String connectStr, int sessionTimeout) {
+		return new ZKClient(connectStr, sessionTimeout);
 	}
 
-	void createZKClient(String connectStr, int sessionTimeout, int retryTimes, int retryPerWaitTimeout) {
-		zkClient = new ZKClient(connectStr, sessionTimeout, retryTimes, retryPerWaitTimeout);
+	static ZKClient createZKClient(String connectStr, int sessionTimeout, int retryTimes, int retryPerWaitTimeout) {
+		return new ZKClient(connectStr, sessionTimeout, retryTimes, retryPerWaitTimeout);
 	}
 
-	void createCli() throws IOException {
-		createCli(CONNECT_STRING);
+	static ZKCli createCli() throws Exception {
+		return new ZKCli(CONNECT_STRING);
 	}
 
-	void createCli(String connectStr) throws IOException {
-		cli = new ZKCli(connectStr);
+	static ZKSwitch createSwitch() throws InterruptedException {
+		return createSwitch(ZK_DIR);
 	}
 
-	void createSwitch() throws InterruptedException {
-		createSwitch(ZK_DIR);
-	}
-
-	void createSwitch(String zkDir) throws InterruptedException {
-		zkSwitch = new ZKSwitch(zkDir);
+	static ZKSwitch createSwitch(String zkDir) throws InterruptedException {
+		return new ZKSwitch(zkDir);
 	}
 
 	static void makeZooKeeperSessionExpire(ZooKeeper zooKeeper) throws Exception {
@@ -117,20 +107,7 @@ public class BaseClientTest {
 		zk.close();
 	}
 
-	void makeCurrentZkClientSessionExpire() throws Exception {
+	static void makeCurrentZkClientSessionExpire(ZKClient zkClient) throws Exception {
 		makeZooKeeperSessionExpire(zkClient.getZooKeeper());
-	}
-
-	@After
-	public void tearDown() {
-		if (zkClient != null) {
-			zkClient.destroy();
-		}
-		if (cli != null) {
-			cli.close();
-		}
-		if (zkSwitch != null) {
-			zkSwitch.close();
-		}
 	}
 }

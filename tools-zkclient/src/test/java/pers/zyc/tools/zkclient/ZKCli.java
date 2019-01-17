@@ -6,19 +6,25 @@ import org.apache.zookeeper.ZooKeeper;
 import org.apache.zookeeper.ZooKeeperMain;
 
 import java.io.Closeable;
-import java.io.IOException;
+import java.util.concurrent.CountDownLatch;
 
 /**
  * @author zhangyancheng
  */
 class ZKCli extends ZooKeeperMain implements Closeable {
 
-	ZKCli(String connectString) throws IOException {
-		super(new ZooKeeper(connectString, 30000, new Watcher() {
+	ZKCli(String connectString) throws Exception {
+		super(new ZooKeeper(connectString, 30000, null));
+		final CountDownLatch latch = new CountDownLatch(1);
+		zk.register(new Watcher() {
 			@Override
 			public void process(WatchedEvent event) {
+				if (event.getState() == Event.KeeperState.SyncConnected) {
+					latch.countDown();
+				}
 			}
-		}));
+		});
+		latch.await();
 	}
 
 	@Override
