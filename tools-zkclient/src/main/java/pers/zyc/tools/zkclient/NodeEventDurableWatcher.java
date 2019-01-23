@@ -243,7 +243,7 @@ class NodeEventDurableWatcher extends Reactor implements NodeEventWatcher {
 
 		@Override
 		Stat reWatch() throws Exception {
-			return zkClient.exists(path, watcher);
+			return zkClient.getZooKeeper().exists(path, watcher);
 		}
 
 		@Override
@@ -287,7 +287,7 @@ class NodeEventDurableWatcher extends Reactor implements NodeEventWatcher {
 		@Override
 		PathData reWatch() throws Exception {
 			Stat stat = new Stat();
-			byte[] pathData = zkClient.getData(path, watcher, stat);
+			byte[] pathData = zkClient.getZooKeeper().getData(path, watcher, stat);
 			return new PathData(stat, pathData);
 		}
 
@@ -307,7 +307,7 @@ class NodeEventDurableWatcher extends Reactor implements NodeEventWatcher {
 
 		@Override
 		List<String> reWatch() throws Exception {
-			return zkClient.getChildren(path, watcher);
+			return zkClient.getZooKeeper().getChildren(path, watcher);
 		}
 
 		@Override

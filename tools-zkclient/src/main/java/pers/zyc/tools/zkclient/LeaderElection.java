@@ -3,6 +3,7 @@ package pers.zyc.tools.zkclient;
 import org.apache.zookeeper.CreateMode;
 import org.apache.zookeeper.KeeperException;
 import org.apache.zookeeper.WatchedEvent;
+import org.apache.zookeeper.ZooDefs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.utils.event.EventListener;
@@ -149,8 +150,8 @@ class LeaderElection extends Reactor implements Election {
 				}
 			} else if (zkClient.isConnected()) {
 				if (member == null) {
-					member = zkClient.create(path + "/" + electorMode.prefix(),
-							memberData, CreateMode.EPHEMERAL_SEQUENTIAL).substring(path.length() + 1);
+					member = zkClient.getZooKeeper().create(path + "/" + electorMode.prefix(), memberData,
+							ZooDefs.Ids.OPEN_ACL_UNSAFE, CreateMode.EPHEMERAL_SEQUENTIAL).substring(path.length() + 1);
 					LOGGER.info("{} join election {}", member, path);
 				}
 
@@ -169,7 +170,7 @@ class LeaderElection extends Reactor implements Election {
 	}
 
 	private ElectionEvent elect() throws KeeperException, InterruptedException {
-		List<String> children = zkClient.getChildren(path, this);
+		List<String> children = zkClient.getZooKeeper().getChildren(path, this);
 
 		if (!children.contains(member)) {
 			throw new IllegalStateException(member + " not in children list!");
@@ -263,7 +264,7 @@ class LeaderElection extends Reactor implements Election {
 	private void deleteSelf() {
 		try {
 			if (zkClient.isConnected()) {
-				zkClient.delete(path + "/" + member);
+				zkClient.getZooKeeper().delete(path + "/" + member, -1);
 			}
 		} catch (KeeperException.NoNodeException noNodeException) {
 			LOGGER.warn("Member[{}] already deleted", member);
