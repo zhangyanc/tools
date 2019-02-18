@@ -11,11 +11,7 @@ public class HeartbeatRequestHandlerFactory implements RequestHandlerFactory {
 
 	private static final Logger LOGGER = LoggerFactory.getLogger(HeartbeatRequestHandlerFactory.class);
 
-	private final RequestHandler heartbeatHandler = new SingleRequestSupportRequestHandler<Heartbeat>() {
-
-		{
-			setExecutor(SyncExecutor.INSTANCE);
-		}
+	private final RequestHandler heartbeatHandler = new SingleTypeRequestHandler<Heartbeat>() {
 
 		@Override
 		public int supportedRequestType() {

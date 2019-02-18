@@ -10,7 +10,7 @@ import pers.zyc.tools.network.Header;
 public class HeartbeatCommandFactory implements CommandFactory {
 
 	@Override
-	public Command createByType(Header header) {
+	public Command createByHeader(Header header) {
 		return new Heartbeat(header);
 	}
 }

@@ -617,7 +617,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 			Header header = new Header();
 			header.decode(frame);//解码命令头
 
-			Command command = commandFactory.createByType(header);
+			Command command = commandFactory.createByHeader(header);
 			command.decode(frame);//解码命令体
 			return command;
 		}
