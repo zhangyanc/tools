@@ -31,12 +31,20 @@ public class NetServer extends NetService {
 	/**
 	 * 服务端口号
 	 */
-	private int port;
+	private int port = -1;
 
 	/**
 	 * 服务端Netty引导器
 	 */
 	private final ServerBootstrap bootstrap = new ServerBootstrap();
+
+	@Override
+	protected void beforeStart() throws Exception {
+		super.beforeStart();
+		if (port < 0) {
+			throw new IllegalArgumentException("Invalid port: " + port);
+		}
+	}
 
 	@Override
 	protected void doStart() {
@@ -68,6 +76,7 @@ public class NetServer extends NetService {
 				.childHandler(new PipelineAssembler());
 
 		bootstrap.bind().syncUninterruptibly();
+		logger.info("{}[:{}] started", getName(), getPort());
 	}
 
 	@Override
@@ -75,6 +84,7 @@ public class NetServer extends NetService {
 		bootstrap.config().group().shutdownGracefully();
 		bootstrap.config().childGroup().shutdownGracefully();
 		super.doStop();
+		logger.info("{}[:{}] stopped", getName(), getPort());
 	}
 
 	public boolean isUseEPoll() {

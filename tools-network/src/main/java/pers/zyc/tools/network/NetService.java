@@ -102,7 +102,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	/**
 	 * 异步请求时，发送响应回调的执行器，为null表示在收到响应的线程中执行
 	 */
-	private ExecutorService multicastExecutor;
+	private Executor multicastExecutor;
 
 	/**
 	 * 请求信号量，用于控制最大并发请求数，为null时表示不控制
@@ -114,7 +114,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	 */
 	private final ConcurrentSet<Channel> requestedChannelSet = new ConcurrentSet<>();
 
-	private final Logger logger = LoggerFactory.getLogger(getClass());
+	protected final Logger logger = LoggerFactory.getLogger(getClass());
 
 	/**
 	 * 日志记录广播异常
@@ -135,21 +135,20 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 			new Multicaster<EventListener<ChannelEvent>>() {};
 
 	@Override
-	protected void doStart() {
-		if (multicastExecutor == null) {
-			multicastExecutor = Executors.newSingleThreadExecutor(new GeneralThreadFactory("Multicaster") {
-				{
-					setDaemon(true);
-				}
-			});
-		}
+	protected void beforeStart() throws Exception {
+		Objects.requireNonNull(commandFactory, "commandFactory is null");
+	}
 
-		channelEventMulticaster.setMulticastExecutor(multicastExecutor);
+	@Override
+	protected void doStart() {
+		if (multicastExecutor != null) {
+			channelEventMulticaster.setMulticastExecutor(multicastExecutor);
+		}
 		channelEventMulticaster.setExceptionHandler(multicastExceptionHandler);
 
 		requestPermits = maxProcessingRequests > 0 ? new Semaphore(maxProcessingRequests) : null;
 
-		//设置当前服务线程名
+		//设置请求超时清理线程名
 		setThreadFactory(new GeneralThreadFactory("TimeoutRequestCleaner"));
 
 		//添加连接事件监听器，异常时关闭连接，连接关闭时清理所有通过此连接发送的请求
@@ -167,7 +166,6 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 				}
 			}
 		});
-		logger.info(getName() + " started");
 	}
 
 	@Override
@@ -206,7 +204,6 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 			respondAllChannelPromise(channel, new NetworkException("Service stopped!"));
 		}
 		super.doStop();
-		logger.info(getName() + " stopped");
 	}
 
 	@Override
@@ -251,7 +248,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 		checkRunning();
 
 		if (request.getHeader().isNeedAck()) {
-			throw new IllegalArgumentException("Request need ack");
+			throw new IllegalArgumentException("One-way request need ack");
 		}
 
 		Channel channel = request.getChannel();
@@ -372,7 +369,9 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 		}
 		return new ResponsePromise(request, requestTimeout, new Multicaster<ResponseFutureListener>() {
 			{
-				setMulticastExecutor(multicastExecutor);
+				if (multicastExecutor != null) {
+					setMulticastExecutor(multicastExecutor);
+				}
 				setExceptionHandler(multicastExceptionHandler);
 				setEventListeners(new HashSet<ResponseFutureListener>());
 			}
@@ -382,10 +381,10 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	private void respondAllChannelPromise(Channel channel, Throwable cause) {
 		Map<Integer, ResponsePromise> responsePromiseMap = channel.attr(RESPONSE_PROMISE_KEY).get();
 		if (responsePromiseMap != null) {
+			requestedChannelSet.remove(channel);
 			for (ResponsePromise promise : responsePromiseMap.values()) {
 				promise.response(cause);
 			}
-			requestedChannelSet.remove(channel);
 		}
 	}
 
@@ -518,6 +517,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 		public void operationComplete(ChannelFuture future) throws Exception {
 			if (!future.isSuccess()) {
 				logger.error(future.channel() + " write error", future.cause());
+				respondAllChannelPromise(future.channel(), future.cause());
 				publishChannelEvent(future.channel(), ChannelEvent.EventType.EXCEPTION);
 			}
 		}
@@ -568,6 +568,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 		@Override
 		public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
 			logger.error(ctx.channel() + " exception caught", cause);
+			respondAllChannelPromise(ctx.channel(), cause);
 			publishChannelEvent(ctx.channel(), ChannelEvent.EventType.EXCEPTION);
 		}
 
@@ -733,11 +734,11 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 		this.requestHandlerFactory = requestHandlerFactory;
 	}
 
-	public ExecutorService getMulticastExecutor() {
+	public Executor getMulticastExecutor() {
 		return multicastExecutor;
 	}
 
-	public void setMulticastExecutor(ExecutorService multicastExecutor) {
+	public void setMulticastExecutor(Executor multicastExecutor) {
 		this.multicastExecutor = multicastExecutor;
 	}
 }
