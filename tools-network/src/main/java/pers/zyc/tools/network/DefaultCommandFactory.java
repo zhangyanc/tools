@@ -5,7 +5,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 可注册命令工厂
+ * 默认命令工厂
  *
  * @author zhangyancheng
  */
@@ -29,12 +29,12 @@ public class DefaultCommandFactory implements CommandFactory {
 	}
 
 	/**
-	 * 添加命令，命令类必须提供单独入参为Header对象的构造方法
+	 * 注册命令，命令类必须提供单独入参为Header对象的构造方法
 	 *
 	 * @param commandType 命令类型
 	 * @param commandClass 命令类
 	 */
-	public void addCommand(Class<? extends Command> commandClass, int commandType) {
+	public void register(int commandType, Class<? extends Command> commandClass) {
 		try {
 			Constructor<? extends Command> constructor = commandClass.getConstructor(Header.class);
 			constructor.newInstance(new Header());

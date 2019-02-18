@@ -135,11 +135,6 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 			new Multicaster<EventListener<ChannelEvent>>() {};
 
 	@Override
-	protected void beforeStart() throws Exception {
-		Objects.requireNonNull(commandFactory, "commandFactory is null");
-	}
-
-	@Override
 	protected void doStart() {
 		if (multicastExecutor != null) {
 			channelEventMulticaster.setMulticastExecutor(multicastExecutor);

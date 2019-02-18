@@ -21,25 +21,23 @@ public class DefaultRequestHandlerFactory implements RequestHandlerFactory {
 	}
 
 	/**
-	 * 添加请求处理器
+	 * 注册请求处理器
 	 *
+	 * @param requestType 请求类型
 	 * @param requestHandler 请求处理器
-	 * @param requestTypes 请求类型
 	 */
-	public void addHandler(RequestHandler requestHandler, int... requestTypes) {
-		for (int requestType : requestTypes) {
-			requestHandlerMap.put(requestType, requestHandler);
-		}
+	public void register(int requestType, RequestHandler requestHandler) {
+		requestHandlerMap.put(requestType, requestHandler);
 	}
 
 	/**
-	 * 添加单一类型请求处理器
+	 * 注册单一类型请求处理器
 	 *
 	 * @param singleTypeRequestHandlers 单一命令请求处理器
 	 */
-	public void addHandler(SingleTypeRequestHandler... singleTypeRequestHandlers) {
+	public void register(SingleTypeRequestHandler... singleTypeRequestHandlers) {
 		for (SingleTypeRequestHandler requestHandler : singleTypeRequestHandlers) {
-			addHandler(requestHandler, requestHandler.supportedRequestType());
+			register(requestHandler.supportedRequestType(), requestHandler);
 		}
 	}
 }
