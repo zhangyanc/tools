@@ -12,4 +12,10 @@
 
 	<artifactId>tools-jmx-client</artifactId>
 
+	<dependencies>
+		<dependency>
+			<groupId>pers.zyc.tools</groupId>
+			<artifactId>tools-utils</artifactId>
+		</dependency>
+	</dependencies>
 </project>
