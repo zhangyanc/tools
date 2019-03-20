@@ -19,4 +19,8 @@ public class JmxHost extends Pair<String, Integer> {
 	public int getPort() {
 		return value();
 	}
+
+	public String getHost() {
+		return getIp() + ":" + getPort();
+	}
 }
