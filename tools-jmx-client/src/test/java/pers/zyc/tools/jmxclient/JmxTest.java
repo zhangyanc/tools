@@ -6,7 +6,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pers.zyc.tools.utils.event.EventListener;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryUsage;
+import java.lang.management.RuntimeMXBean;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -37,5 +42,33 @@ public class JmxTest {
 		}
 		jmxClient.disconnect();
 		cdl.await();
+	}
+
+	@Test
+	public void case_1() {
+		JmxHost host = new JmxHost("172.25.46.10", 10088);
+		JmxUser user = new JmxUser("admin", "admin");
+
+		MemoryUsage memoryUsage = JmxTemplate.execute(host, user, new JmxCallback.ClientCallback<MemoryUsage>() {
+			@Override
+			public MemoryUsage call(JmxClient jmxClient) {
+				MemoryMXBean memoryMXBean = JvmStandardMXBeans.getMemoryMXBean(jmxClient);
+				return memoryMXBean.getHeapMemoryUsage();
+			}
+		});
+		LOGGER.info("Max: {} Used: {}", memoryUsage.getMax(), memoryUsage.getUsed());
+
+		Map<String, String> systemProperties = JmxTemplate.execute(host, user, RuntimeMXBean.class,
+				ManagementFactory.RUNTIME_MXBEAN_NAME,
+				new JmxCallback.MBeanCallback<RuntimeMXBean, Map<String, String>>() {
+					@Override
+					public Map<String, String> call(RuntimeMXBean runtimeMXBean) {
+						return runtimeMXBean.getSystemProperties();
+					}
+				}
+		);
+		for (Map.Entry<String, String> entry : systemProperties.entrySet()) {
+			LOGGER.info("{} -> {}", entry.getKey(), entry.getValue());
+		}
 	}
 }
