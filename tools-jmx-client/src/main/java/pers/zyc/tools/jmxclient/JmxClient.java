@@ -9,6 +9,7 @@ import pers.zyc.tools.utils.event.Multicaster;
 import javax.management.*;
 import javax.management.remote.JMXServiceURL;
 import java.io.IOException;
+import java.lang.reflect.Proxy;
 import java.net.MalformedURLException;
 import java.util.Objects;
 import java.util.Set;
@@ -112,13 +113,19 @@ public class JmxClient implements EventSource<ConnectionEvent> {
 		Objects.requireNonNull(clazz);
 		Object mbean = mbeanMap.get(objectName);
 		if (mbean == null) {
-			Object mBeanProxy = JmxInvocationHandler.createMBeanProxy(getConnection(), clazz, objectName);
+			Object mBeanProxy = createProxy(getConnection(), clazz, objectName);
 			mbean = mbeanMap.putIfAbsent(objectName, mBeanProxy);
 			if (mbean == null) {
 				mbean = mBeanProxy;
 			}
 		}
 		return (T) mbean;
+	}
+
+	private static <M> M createProxy(MBeanServerConnection connection, Class<M> interfaceClass, ObjectName objectName) {
+		Object proxy = Proxy.newProxyInstance(interfaceClass.getClassLoader(), new Class<?>[] {interfaceClass},
+				new MBeanServerInvocationHandler(connection, objectName, JMX.isMXBeanInterface(interfaceClass)));
+		return interfaceClass.cast(proxy);
 	}
 
 	ObjectName getObjectName(String objectName) {
