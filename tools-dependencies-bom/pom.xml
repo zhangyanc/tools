@@ -21,7 +21,7 @@
 			<!--zyc tools-->
 			<dependency>
 				<groupId>pers.zyc.tools</groupId>
-				<artifactId>tools-jmxclient</artifactId>
+				<artifactId>tools-jmx-client</artifactId>
 				<version>${revision}</version>
 			</dependency>
 			<dependency>
