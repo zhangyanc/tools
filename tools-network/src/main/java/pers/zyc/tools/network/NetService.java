@@ -100,6 +100,11 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	private RequestHandlerFactory requestHandlerFactory;
 
 	/**
+	 * 请求处理异常，异常处理器
+	 */
+	private RequestHandleExceptionHandler requestHandleExceptionHandler;
+
+	/**
 	 * 异步请求时，发送响应回调的执行器，为null表示在收到响应的线程中执行
 	 */
 	private Executor multicastExecutor;
@@ -140,6 +145,16 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 			channelEventMulticaster.setMulticastExecutor(multicastExecutor);
 		}
 		channelEventMulticaster.setExceptionHandler(multicastExceptionHandler);
+
+		if (requestHandleExceptionHandler == null) {
+			requestHandleExceptionHandler = new RequestHandleExceptionHandler() {
+				@Override
+				public Response handleException(Throwable cause, Request request) {
+					logger.error(request + " handle failed, Channel: " + request.getChannel(), cause);
+					return null;
+				}
+			};
+		}
 
 		requestPermits = maxProcessingRequests > 0 ? new Semaphore(maxProcessingRequests) : null;
 
@@ -384,17 +399,6 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 	}
 
 	/**
-	 * 请求处理异常
-	 *
-	 * @param channel 连接
-	 * @param request 请求
-	 * @param e 异常
-	 */
-	protected void requestHandleFailed(Channel channel, Request request, Exception e) {
-		logger.error(request + " handle failed, Channel: " + channel, e);
-	}
-
-	/**
 	 * write监听器
 	 */
 	private class CommandSendFutureListener implements ChannelFutureListener {
@@ -464,18 +468,17 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 						@Override
 						public void run() {
 							request.setChannel(channel);
+
 							Response response;
 							try {
 								response = requestHandler.handle(request);
 							} catch (Exception e) {
-								requestHandleFailed(channel, request, e);
-								return;
+								response = requestHandleExceptionHandler.handleException(e, request);
 							}
 
-							if (!request.getHeader().isNeedAck() || response == null) {
-								return;
+							if (request.getHeader().isNeedAck() && response != null) {
+								channel.writeAndFlush(response).addListener(new CommandSendFutureListener(response));
 							}
-							channel.writeAndFlush(response).addListener(new CommandSendFutureListener(response));
 						}
 					});
 					break;
@@ -727,6 +730,14 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 
 	public void setRequestHandlerFactory(RequestHandlerFactory requestHandlerFactory) {
 		this.requestHandlerFactory = requestHandlerFactory;
+	}
+
+	public RequestHandleExceptionHandler getRequestHandleExceptionHandler() {
+		return requestHandleExceptionHandler;
+	}
+
+	public void setRequestHandleExceptionHandler(RequestHandleExceptionHandler requestHandleExceptionHandler) {
+		this.requestHandleExceptionHandler = Objects.requireNonNull(requestHandleExceptionHandler);
 	}
 
 	public Executor getMulticastExecutor() {
