@@ -14,7 +14,7 @@ public abstract class SingleTypeRequestHandler<R extends Request> extends BaseRe
 
 	@SuppressWarnings("unchecked")
 	@Override
-	public Response handle(Request request) {
+	public Response handle(Request request) throws Exception {
 		return handle0((R) request);
 	}
 
@@ -24,5 +24,5 @@ public abstract class SingleTypeRequestHandler<R extends Request> extends BaseRe
 	 * @param request 请求
 	 * @return 响应
 	 */
-	protected abstract Response handle0(R request);
+	protected abstract Response handle0(R request) throws Exception;
 }

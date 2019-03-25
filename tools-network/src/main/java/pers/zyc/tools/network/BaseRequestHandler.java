@@ -1,5 +1,6 @@
 package pers.zyc.tools.network;
 
+import java.util.Objects;
 import java.util.concurrent.Executor;
 
 /**
@@ -33,6 +34,6 @@ public abstract class BaseRequestHandler implements RequestHandler {
 	 * @param executor 执行器
 	 */
 	public void setExecutor(Executor executor) {
-		this.executor = executor;
+		this.executor = Objects.requireNonNull(executor);
 	}
 }
