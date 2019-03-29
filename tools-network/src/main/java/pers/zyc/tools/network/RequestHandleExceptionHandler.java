@@ -5,7 +5,7 @@ import pers.zyc.tools.utils.ExceptionHandler;
 /**
  * @author zhangyancheng
  */
-public interface RequestHandleExceptionHandler extends ExceptionHandler<Throwable, Request, Response> {
+public interface RequestHandleExceptionHandler extends ExceptionHandler<Exception, Request, Response> {
 
 	/**
 	 * 异常处理
@@ -15,5 +15,5 @@ public interface RequestHandleExceptionHandler extends ExceptionHandler<Throwabl
 	 * @return 响应
 	 */
 	@Override
-	Response handleException(Throwable cause, Request request);
+	Response handleException(Exception cause, Request request);
 }

@@ -149,7 +149,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 		if (requestHandleExceptionHandler == null) {
 			requestHandleExceptionHandler = new RequestHandleExceptionHandler() {
 				@Override
-				public Response handleException(Throwable cause, Request request) {
+				public Response handleException(Exception cause, Request request) {
 					logger.error(request + " handle failed, Channel: " + request.getChannel(), cause);
 					return null;
 				}
