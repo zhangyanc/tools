@@ -30,12 +30,7 @@ class NetWorker extends ThreadService {
 	@Override
 	protected void doStop() throws Exception {
 		super.doStop();
-
-		try {
-			selector.close();
-		} catch (IOException e) {
-			LOGGER.warn("Close selector error!", e);
-		}
+		selector.close();
 	}
 
 	@Override

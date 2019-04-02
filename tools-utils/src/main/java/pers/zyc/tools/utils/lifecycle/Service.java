@@ -122,7 +122,7 @@ public abstract class Service implements Lifecycle, Stateful<ServiceState> {
 	/**
 	 * 子类需要重写的具体启动逻辑
 	 */
-	protected abstract void doStart();
+	protected abstract void doStart() throws Exception;
 
 	/**
 	 * 只有在afterStart中启动的线程才能保证读到RUNNING状态

@@ -43,15 +43,11 @@ class ConnectionPool extends ThreadService implements EventListener<ConnectionEv
 	}
 
 	@Override
-	protected void doStart() {
+	protected void doStart() throws Exception {
 		netWorkGroup.start();
 
 		if (config.isNeedPreparePool()) {
-			try {
-				pool.preparePool();
-			} catch (Exception e) {
-				throw new RedisClientException("Pool prepare error", e);
-			}
+			pool.preparePool();
 		}
 		pool.setSwallowedExceptionListener(new SwallowedExceptionListener() {
 			@Override

@@ -13,7 +13,7 @@ public abstract class ThreadService extends Service {
 	private ThreadFactory threadFactory;
 
 	@Override
-	protected void doStart() {
+	protected void doStart() throws Exception {
 	}
 
 	@Override

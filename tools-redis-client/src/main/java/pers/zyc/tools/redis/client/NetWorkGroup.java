@@ -2,7 +2,6 @@ package pers.zyc.tools.redis.client;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import pers.zyc.tools.redis.client.exception.RedisClientException;
 import pers.zyc.tools.utils.GeneralThreadFactory;
 import pers.zyc.tools.utils.lifecycle.Service;
 
@@ -43,7 +42,7 @@ class NetWorkGroup extends Service {
 	}
 
 	@Override
-	protected void doStart() {
+	protected void doStart() throws Exception {
 		try {
 			for (int i = 0; i < netWorkers.length; i++) {
 				NetWorker netWorker = new NetWorker();
@@ -53,7 +52,7 @@ class NetWorkGroup extends Service {
 			}
 		} catch (IOException e) {
 			closeWorkers(this.netWorkers);
-			throw new RedisClientException("Worker start error!");
+			throw e;
 		}
 	}
 
