@@ -10,7 +10,7 @@ public abstract class BaseRequestHandler implements RequestHandler {
 	/**
 	 * 在提交任务线程中执行
 	 */
-	private static final Executor SYNC_EXECUTOR = new Executor() {
+	static final Executor SYNC_EXECUTOR = new Executor() {
 
 		@Override
 		public void execute(Runnable runnable) {

@@ -464,7 +464,15 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 				case Header.REQUEST:
 					final Request request = (Request) command;
 					final RequestHandler requestHandler = requestHandlerFactory.getHandler(request.getType());
-					requestHandler.getExecutor().execute(new Runnable() {
+					if (requestHandler == null) {
+						throw new NetworkException("Unsupported request type: " +
+								request.getType() + ", at " + getName());
+					}
+					Executor handlerExecutor = requestHandler.getExecutor();
+					if (handlerExecutor == null) {
+						handlerExecutor = BaseRequestHandler.SYNC_EXECUTOR;
+					}
+					handlerExecutor.execute(new Runnable() {
 						@Override
 						public void run() {
 							request.setChannel(channel);
@@ -498,7 +506,7 @@ public class NetService extends ThreadService implements EventSource<ChannelEven
 						logger.warn("ID[{}] {} not matched!", response.getId(), response);
 					}
 					break;
-				default: throw new RuntimeException("UnKnown type: " + command.getHeader().getType());
+				default: throw new NetworkException("UnKnown type: " + command.getHeader().getType());
 			}
 		}
 	}
