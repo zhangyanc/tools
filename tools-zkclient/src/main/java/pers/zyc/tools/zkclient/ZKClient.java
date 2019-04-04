@@ -35,6 +35,8 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 	 */
 	private static final byte MAGIC_BYTE = '^';
 
+	public static final int DEFAULT_SESSION_TIMEOUT = 30000;
+
 	private final Multicaster<ClientDestroyListener> multicaster = new Multicaster<ClientDestroyListener>() {
 		{
 			setExceptionHandler(new LogMulticastExceptionHandler(LOGGER));
@@ -66,6 +68,10 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 	 * 销毁标志
 	 */
 	private final AtomicBoolean destroyed = new AtomicBoolean();
+
+	public ZKClient(String connectStr) {
+		this(connectStr, DEFAULT_SESSION_TIMEOUT);
+	}
 
 	public ZKClient(String connectStr, int sessionTimeout) {
 		this(connectStr, sessionTimeout, 0, 0);
