@@ -245,13 +245,15 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 	}
 
 	/**
-	 * 获取节点事件观察器, 如果不存在则新建
+	 * 创建节点事件监听器
 	 *
 	 * @param nodePath 节点路径
 	 * @return 事件观察器
 	 */
 	public NodeEventWatcher createNodeEventWatcher(String nodePath) {
-		return new NodeEventDurableWatcher(nodePath, this);
+		NodeEventDurableWatcher nodeEventWatcher = new NodeEventDurableWatcher(nodePath, this);
+		nodeEventWatcher.start();
+		return nodeEventWatcher;
 	}
 
 	public Election createElection(String electionPath, Elector.Mode mode) {
@@ -259,7 +261,7 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 	}
 
 	/**
-	 * 获取给定节点上的选举器, 如果不存在则新建
+	 * 创建在节点上的Leader选举器
 	 *
 	 * @param electionPath 选举节点
 	 *                     1. 节点必须符合zookeeper path格式,且不能是临时节点
@@ -269,7 +271,9 @@ public class ZKClient implements ZooKeeperOperations, Listenable<ClientDestroyLi
 	 * @return 选举器
 	 */
 	public Election createElection(String electionPath, Elector.Mode mode, byte[] memberData) {
-		return new LeaderElection(electionPath, this, mode, memberData);
+		LeaderElection leaderElection = new LeaderElection(electionPath, this, mode, memberData);
+		leaderElection.start();
+		return leaderElection;
 	}
 
 	/**

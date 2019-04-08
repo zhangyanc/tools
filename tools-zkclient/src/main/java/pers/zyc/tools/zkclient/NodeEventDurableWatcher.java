@@ -52,8 +52,11 @@ class NodeEventDurableWatcher extends Reactor implements NodeEventWatcher {
 
 	NodeEventDurableWatcher(String path, ZKClient zkClient) {
 		super(path, zkClient);
+	}
 
-		start();
+	@Override
+	public void quit() {
+		stop();
 	}
 
 	@Override

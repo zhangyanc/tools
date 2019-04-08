@@ -10,6 +10,11 @@ import pers.zyc.tools.zkclient.listener.ExistsEventListener;
 public interface NodeEventWatcher {
 
 	/**
+	 * 退出监听
+	 */
+	void quit();
+
+	/**
 	 * @return 节点路径
 	 */
 	String getWatchedNodePath();
