@@ -1,9 +1,10 @@
 package pers.zyc.tools.utils;
 
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
+import java.net.*;
+import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * @author zhangyancheng
@@ -61,6 +62,22 @@ public class IPUtil {
 		
 		result[1] = (byte) (port >> 8);
 		result[0] = (byte) (port);
+		return result;
+	}
+
+	public static Set<String> getAllLocalIP() throws SocketException {
+		Enumeration<NetworkInterface> networkInterfaces = NetworkInterface.getNetworkInterfaces();
+		Set<String> result = new HashSet<>();
+		while (networkInterfaces.hasMoreElements()) {
+			NetworkInterface ni = networkInterfaces.nextElement();
+			Enumeration<InetAddress> inetAddresses = ni.getInetAddresses();
+			while (inetAddresses.hasMoreElements()) {
+				InetAddress address = inetAddresses.nextElement();
+				if (!address.isLoopbackAddress() && address instanceof Inet4Address) {
+					result.add(address.getHostAddress());
+				}
+			}
+		}
 		return result;
 	}
 }
