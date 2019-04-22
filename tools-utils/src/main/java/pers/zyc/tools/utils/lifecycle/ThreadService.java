@@ -61,9 +61,13 @@ public abstract class ThreadService extends Service {
 		}
 
 		/**
-		 * 间隔
+		 * 间隔（默认返回0表示无间隔）
+		 *
+		 * @return execute方法执行间隔，小于等于0表示无间隔
 		 */
-		protected abstract long getInterval();
+		protected long getInterval() {
+			return 0;
+		}
 
 		/**
 		 * 服务逻辑

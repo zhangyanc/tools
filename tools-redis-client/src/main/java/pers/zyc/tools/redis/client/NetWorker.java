@@ -38,11 +38,6 @@ class NetWorker extends ThreadService {
 		return new ServiceRunnable() {
 
 			@Override
-			protected long getInterval() {
-				return 0;
-			}
-
-			@Override
 			protected void execute() throws InterruptedException {
 				try {
 					select();

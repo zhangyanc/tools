@@ -191,11 +191,6 @@ final class ZKConnector extends ThreadService implements Watcher, Listenable<Con
 		return new ServiceRunnable() {
 
 			@Override
-			protected long getInterval() {
-				return 0;
-			}
-
-			@Override
 			protected void execute() throws InterruptedException {
 				execute0();
 			}
