@@ -1,5 +1,7 @@
 package pers.zyc.tools.utils;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.Condition;
@@ -9,7 +11,7 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * @author zhangyancheng
  */
-public class BatchOutBuffer<E> {
+public class BatchFetchQueue<E> {
 
 	/**
 	 * 缓存数组
@@ -39,7 +41,7 @@ public class BatchOutBuffer<E> {
 	/**
 	 * @param capacity 容量
 	 */
-	public BatchOutBuffer(int capacity) {
+	public BatchFetchQueue(int capacity) {
 		elements = new Object[capacity];
 	}
 
@@ -48,8 +50,8 @@ public class BatchOutBuffer<E> {
 	}
 
 	private void in(Object element) {
-		elements[putIndex++] = element;
 		remain++;
+		elements[putIndex++] = element;
 		if (putIndex == elements.length) {
 			putIndex = 0;
 		}
@@ -57,25 +59,23 @@ public class BatchOutBuffer<E> {
 	}
 
 	@SuppressWarnings("unchecked")
-	private E[] out(int size) {
-		Object[] result = new Object[size];
-		for (int i = 0; i < size; i++) {
-			result[i++] = elements[takeIndex++];
+	private List<E> out(int size) {
+		remain -= size;
+		ArrayList<E> result = new ArrayList<>(size);
+		while (size-- > 0) {
+			result.add((E) elements[takeIndex++]);
 			if (takeIndex == elements.length) {
 				takeIndex = 0;
 			}
 		}
-		remain -= size;
-		if (size > 0) {
-			notFull.signalAll();
-		}
-		return (E[]) result;
+		notFull.signalAll();
+		return result;
 	}
 
 	/**
-	 * 缓存是否为空
+	 * 是否为空
 	 *
-	 * @return 如果缓存为空返回true，非空返回false
+	 * @return 如果队列为空返回true，非空返回false
 	 */
 	public boolean isEmpty() {
 		bufferLock.lock();
@@ -87,7 +87,7 @@ public class BatchOutBuffer<E> {
 	}
 
 	/**
-	 * 元素放入缓存，如果缓存满了则等待直到成功放入
+	 * 元素放入队列，如果队列满了则等待直到成功放入
 	 *
 	 * @param element 元素
 	 * @throws InterruptedException 线程被中断
@@ -105,7 +105,7 @@ public class BatchOutBuffer<E> {
 	}
 
 	/**
-	 * 元素放入缓存，如果缓存满了返回false
+	 * 元素放入队列，如果队列满了返回false
 	 *
 	 * @param element 元素
 	 * @return 成功放入时true，否则false
@@ -124,13 +124,13 @@ public class BatchOutBuffer<E> {
 	}
 
 	/**
-	 * 元素放入缓存，如果缓存满了则等待直到成功放入或者超时
+	 * 元素放入队列，如果队列满了则等待直到成功放入或者超时
 	 *
 	 * @param element 元素
 	 * @param timeout 超时时间
 	 * @param timeUnit 超时时间单位
 	 * @return 超时前成功放入返回true，否则返回false
-	 * @throws InterruptedException 等待缓存非满时线程被中断
+	 * @throws InterruptedException 等待队列非满时线程被中断
 	 */
 	public boolean add(E element, long timeout, TimeUnit timeUnit) throws InterruptedException {
 		long timeoutNanos = timeUnit.toNanos(timeout);
@@ -150,11 +150,11 @@ public class BatchOutBuffer<E> {
 	}
 
 	/**
-	 * 取出当前全部缓存
+	 * 取出队列当前全部元素
 	 *
 	 * @return 元素组
 	 */
-	public E[] drain() {
+	public List<E> fetchAll() {
 		bufferLock.lock();
 		try {
 			return out(remain);
@@ -164,13 +164,13 @@ public class BatchOutBuffer<E> {
 	}
 
 	/**
-	 * 取出缓存，不少于指定条数
+	 * 取出元素，不少于指定条数
 	 *
 	 * @param count 指定的最少取出条数
 	 * @return 元素组
 	 * @throws InterruptedException 等待数据时线程被中断
 	 */
-	public E[] takeLeast(int count) throws InterruptedException {
+	public List<E> fetchLeast(int count) throws InterruptedException {
 		if (count < 1 || count > elements.length) {
 			throw new IllegalArgumentException("At least 'count' must between 1 and " + elements.length);
 		}
@@ -186,7 +186,7 @@ public class BatchOutBuffer<E> {
 	}
 
 	/**
-	 * 取出缓存，不少于指定条数。超时未够最少条数将抛出异常
+	 * 取出元素，不少于指定条数。超时未够最少条数将抛出异常
 	 *
 	 * @param count 指定的最少取出条数
 	 * @param timeout 超时时间
@@ -195,7 +195,7 @@ public class BatchOutBuffer<E> {
 	 * @throws InterruptedException 等待数据时线程被中断
 	 * @throws TimeoutException 超时未够最少条数
 	 */
-	public E[] takeLeast(int count, long timeout, TimeUnit timeUnit)
+	public List<E> fetchLeast(int count, long timeout, TimeUnit timeUnit)
 			throws InterruptedException, TimeoutException {
 		if (count < 1 || count > elements.length) {
 			throw new IllegalArgumentException("At least 'count' must between 1 and " + elements.length);
@@ -216,7 +216,7 @@ public class BatchOutBuffer<E> {
 	}
 
 	/**
-	 * 取出缓存，尝试不少于指定条数。如果超时仍未够指定条数返回剩余条数
+	 * 取出元素，尝试不少于指定条数。如果超时仍未够指定条数返回剩余条数
 	 *
 	 * @param count 指定条数
 	 * @param timeout 超时时间
@@ -224,7 +224,7 @@ public class BatchOutBuffer<E> {
 	 * @return 元素组
 	 * @throws InterruptedException 等待数据时线程被中断
 	 */
-	public E[] tryLeast(int count, long timeout, TimeUnit timeUnit) throws InterruptedException {
+	public List<E> tryFetchLeast(int count, long timeout, TimeUnit timeUnit) throws InterruptedException {
 		if (count < 1 || count > elements.length) {
 			throw new IllegalArgumentException("At least 'count' must between 1 and " + elements.length);
 		}
@@ -241,13 +241,13 @@ public class BatchOutBuffer<E> {
 	}
 
 	/**
-	 * 取出缓存，不多余指定条数。返回后至少包含一条数据
+	 * 取出元素，不多余指定条数。返回后至少包含一条数据
 	 *
 	 * @param count 指定的最多取出条数
 	 * @return 元素组
 	 * @throws InterruptedException 等待数据时线程被中断
 	 */
-	public E[] takeMost(int count) throws InterruptedException {
+	public List<E> fetchMost(int count) throws InterruptedException {
 		if (count < 1) {
 			throw new IllegalArgumentException("At least 'count' must > 0");
 		}
@@ -263,7 +263,7 @@ public class BatchOutBuffer<E> {
 	}
 
 	/**
-	 * 取出缓存，不多余指定条数。返回元素组可能为空
+	 * 取出元素，不多余指定条数。返回元素组可能为空
 	 *
 	 * @param count 指定的最多取出条数
 	 * @param timeout 超时时间
@@ -271,7 +271,7 @@ public class BatchOutBuffer<E> {
 	 * @return 元素组
 	 * @throws InterruptedException 等待数据时线程被中断
 	 */
-	public E[] takeMost(int count, int timeout, TimeUnit timeUnit) throws InterruptedException {
+	public List<E> fetchMost(int count, int timeout, TimeUnit timeUnit) throws InterruptedException {
 		if (count < 1) {
 			throw new IllegalArgumentException("At least 'count' must > 0");
 		}
@@ -288,7 +288,7 @@ public class BatchOutBuffer<E> {
 	}
 
 	/**
-	 * 取出缓存，不多余指定条数。返回元素组可能为空
+	 * 取出元素，不多余指定条数。返回元素组可能为空
 	 *
 	 * @param count 指定最多取出条数
 	 * @param timeout 超时时间
@@ -296,7 +296,7 @@ public class BatchOutBuffer<E> {
 	 * @return 元素组
 	 * @throws InterruptedException 等待数据时线程被中断
 	 */
-	public E[] tryMost(int count, int timeout, TimeUnit timeUnit) throws InterruptedException {
+	public List<E> tryFetchMost(int count, int timeout, TimeUnit timeUnit) throws InterruptedException {
 		if (count < 1) {
 			throw new IllegalArgumentException("At least 'count' must > 0");
 		}
