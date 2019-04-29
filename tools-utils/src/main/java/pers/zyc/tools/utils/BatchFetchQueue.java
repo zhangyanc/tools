@@ -164,17 +164,27 @@ public class BatchFetchQueue<E> {
 	}
 
 	/**
+	 * 取出元素，返回后至少包含一条数据
+	 *
+	 * @return 元素集合
+	 * @throws InterruptedException 等待数据时线程被中断
+	 */
+	public List<E> fetch() throws InterruptedException {
+		return fetchLeast(1);
+	}
+
+	/**
 	 * 取出元素，不少于指定条数
 	 *
 	 * @param count 指定的最少取出条数
-	 * @return 元素组
+	 * @return 元素集合
 	 * @throws InterruptedException 等待数据时线程被中断
 	 */
 	public List<E> fetchLeast(int count) throws InterruptedException {
 		if (count < 1 || count > elements.length) {
 			throw new IllegalArgumentException("At least 'count' must between 1 and " + elements.length);
 		}
-		bufferLock.lock();
+		bufferLock.lockInterruptibly();
 		try {
 			while (remain < count) {
 				notEmpty.await();
@@ -191,7 +201,7 @@ public class BatchFetchQueue<E> {
 	 * @param count 指定的最少取出条数
 	 * @param timeout 超时时间
 	 * @param timeUnit 超时时间单位
-	 * @return 元素组
+	 * @return 元素集合
 	 * @throws InterruptedException 等待数据时线程被中断
 	 * @throws TimeoutException 超时未够最少条数
 	 */
@@ -201,7 +211,7 @@ public class BatchFetchQueue<E> {
 			throw new IllegalArgumentException("At least 'count' must between 1 and " + elements.length);
 		}
 		long timeoutNanos = timeUnit.toNanos(timeout);
-		bufferLock.lock();
+		bufferLock.lockInterruptibly();
 		try {
 			while (remain < count) {
 				if (timeoutNanos <= 0) {
@@ -221,7 +231,7 @@ public class BatchFetchQueue<E> {
 	 * @param count 指定条数
 	 * @param timeout 超时时间
 	 * @param timeUnit 超时时间单位
-	 * @return 元素组
+	 * @return 元素集合
 	 * @throws InterruptedException 等待数据时线程被中断
 	 */
 	public List<E> tryFetchLeast(int count, long timeout, TimeUnit timeUnit) throws InterruptedException {
@@ -229,7 +239,7 @@ public class BatchFetchQueue<E> {
 			throw new IllegalArgumentException("At least 'count' must between 1 and " + elements.length);
 		}
 		long timeoutNanos = timeUnit.toNanos(timeout);
-		bufferLock.lock();
+		bufferLock.lockInterruptibly();
 		try {
 			while (remain < count && timeoutNanos > 0) {
 				timeoutNanos = notEmpty.awaitNanos(timeoutNanos);
@@ -244,14 +254,14 @@ public class BatchFetchQueue<E> {
 	 * 取出元素，不多余指定条数。返回后至少包含一条数据
 	 *
 	 * @param count 指定的最多取出条数
-	 * @return 元素组
+	 * @return 元素集合
 	 * @throws InterruptedException 等待数据时线程被中断
 	 */
 	public List<E> fetchMost(int count) throws InterruptedException {
 		if (count < 1) {
 			throw new IllegalArgumentException("At least 'count' must > 0");
 		}
-		bufferLock.lock();
+		bufferLock.lockInterruptibly();
 		try {
 			while (remain == 0) {
 				notEmpty.await();
@@ -268,7 +278,7 @@ public class BatchFetchQueue<E> {
 	 * @param count 指定的最多取出条数
 	 * @param timeout 超时时间
 	 * @param timeUnit 超时时间单位
-	 * @return 元素组
+	 * @return 元素集合
 	 * @throws InterruptedException 等待数据时线程被中断
 	 */
 	public List<E> fetchMost(int count, int timeout, TimeUnit timeUnit) throws InterruptedException {
@@ -276,7 +286,7 @@ public class BatchFetchQueue<E> {
 			throw new IllegalArgumentException("At least 'count' must > 0");
 		}
 		long timeoutNanos = timeUnit.toNanos(timeout);
-		bufferLock.lock();
+		bufferLock.lockInterruptibly();
 		try {
 			while (remain == 0 && timeoutNanos > 0) {
 				timeoutNanos = notEmpty.awaitNanos(timeoutNanos);
@@ -293,7 +303,7 @@ public class BatchFetchQueue<E> {
 	 * @param count 指定最多取出条数
 	 * @param timeout 超时时间
 	 * @param timeUnit 超时时间单位
-	 * @return 元素组
+	 * @return 元素集合
 	 * @throws InterruptedException 等待数据时线程被中断
 	 */
 	public List<E> tryFetchMost(int count, int timeout, TimeUnit timeUnit) throws InterruptedException {
@@ -301,7 +311,7 @@ public class BatchFetchQueue<E> {
 			throw new IllegalArgumentException("At least 'count' must > 0");
 		}
 		long timeoutNanos = timeUnit.toNanos(timeout);
-		bufferLock.lock();
+		bufferLock.lockInterruptibly();
 		try {
 			while (remain < count && timeoutNanos > 0) {
 				timeoutNanos = notEmpty.awaitNanos(timeoutNanos);
