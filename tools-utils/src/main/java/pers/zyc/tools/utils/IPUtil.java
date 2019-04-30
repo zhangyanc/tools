@@ -3,7 +3,6 @@ package pers.zyc.tools.utils;
 import java.net.*;
 import java.util.Enumeration;
 import java.util.HashSet;
-import java.util.Objects;
 import java.util.Set;
 
 /**
@@ -12,16 +11,7 @@ import java.util.Set;
 public class IPUtil {
 	
 	public static byte[] toBytes(InetSocketAddress socketAddress) {
-		InetAddress inetAddress = Objects.requireNonNull(socketAddress.getAddress());
-		return toBytes(inetAddress, socketAddress.getPort());
-	}
-	
-	public static byte[] toBytes(String ip, int port) {
-		try {
-			return toBytes(InetAddress.getByName(ip), port);
-		} catch (UnknownHostException e) {
-			throw new RuntimeException("Never happen with a ip address: " + ip);
-		}
+		return socketAddress.getAddress().getAddress();
 	}
 
 	public static byte[] toBytes(String ip) {
@@ -53,16 +43,6 @@ public class IPUtil {
 		bytes[2] = (byte) (ip >> 8 & 0xFF);// ip & 0xFF00 >> 8
 		bytes[3] = (byte) (ip);// ip & 0xFF >> 0
 		return toIp(bytes);
-	}
-	
-	private static byte[] toBytes(InetAddress inetAddress, int port) {
-		byte[] ipBytes = inetAddress.getAddress();
-		byte[] result = new byte[ipBytes.length + 2];// 加两字节端口
-		System.arraycopy(ipBytes, 0, result, 2, ipBytes.length);
-		
-		result[1] = (byte) (port >> 8);
-		result[0] = (byte) (port);
-		return result;
 	}
 
 	public static Set<String> getAllLocalIP() throws SocketException {
