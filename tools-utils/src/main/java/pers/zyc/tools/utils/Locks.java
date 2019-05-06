@@ -30,7 +30,7 @@ public class Locks {
 	 * @param action 回调
 	 * @throws E 回调异常
 	 */
-	public static <E  extends Throwable> void execute(Lock lock, RunAction<E> action) throws E {
+	public static <E  extends Exception> void execute(Lock lock, RunAction<E> action) throws E {
 		lock.lock();
 		try {
 			action.run();
@@ -67,20 +67,12 @@ public class Locks {
 	 * @return 返回值
 	 * @throws E 异常
 	 */
-	public static <R, E extends Throwable> R execute(Lock lock, CallAction<R, E> callAction) throws E {
+	public static <R, E extends Exception> R execute(Lock lock, CallAction<R, E> callAction) throws E {
 		lock.lock();
 		try {
 			return callAction.call();
 		} finally {
 			lock.unlock();
 		}
-	}
-
-	public interface RunAction<E extends Throwable> {
-		void run() throws E;
-	}
-
-	public interface CallAction<R, E extends Throwable> {
-		R call() throws E;
 	}
 }
