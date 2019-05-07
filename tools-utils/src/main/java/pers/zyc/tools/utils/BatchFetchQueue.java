@@ -134,7 +134,7 @@ public class BatchFetchQueue<E> {
 	 */
 	public boolean add(E element, long timeout, TimeUnit timeUnit) throws InterruptedException {
 		long timeoutNanos = timeUnit.toNanos(timeout);
-		bufferLock.lock();
+		bufferLock.lockInterruptibly();
 		try {
 			while (isFull()) {
 				if (timeoutNanos <= 0) {
